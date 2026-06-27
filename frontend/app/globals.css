@@ -1,0 +1,137 @@
+:root {
+  --bg: #f4efe7;
+  --bg-accent: #e7dccd;
+  --surface: rgba(255, 252, 247, 0.82);
+  --ink: #1c1a18;
+  --muted: #665f57;
+  --line: rgba(28, 26, 24, 0.08);
+  --accent: #0e6d5a;
+  --accent-soft: #d5ece6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(14, 109, 90, 0.16), transparent 28%),
+    radial-gradient(circle at right 20%, rgba(176, 87, 44, 0.18), transparent 24%),
+    linear-gradient(180deg, var(--bg), #fbf8f3 48%, var(--bg-accent));
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.page-shell {
+  width: min(1100px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 72px 0 96px;
+}
+
+.hero {
+  padding: 36px;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 60px rgba(59, 43, 27, 0.08);
+  animation: rise 800ms ease-out both;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+.hero h1 {
+  margin: 0;
+  max-width: 10ch;
+  font-size: clamp(3rem, 7vw, 5.8rem);
+  line-height: 0.95;
+}
+
+.intro {
+  margin: 22px 0 0;
+  max-width: 60ch;
+  font-size: 1.08rem;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.card {
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: rgba(255, 250, 243, 0.78);
+  transform: translateY(16px);
+  opacity: 0;
+  animation: rise 700ms ease-out forwards;
+}
+
+.card:nth-child(2) {
+  animation-delay: 80ms;
+}
+
+.card:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+.card:nth-child(4) {
+  animation-delay: 240ms;
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 1.3rem;
+}
+
+.card p {
+  margin: 0;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    width: min(100% - 20px, 1100px);
+    padding-top: 28px;
+  }
+
+  .hero {
+    padding: 24px;
+    border-radius: 22px;
+  }
+
+  .hero h1 {
+    max-width: none;
+  }
+}
+

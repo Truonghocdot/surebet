@@ -1,0 +1,18 @@
+{
+  "name": "@surebet/collector-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "shared",
+    "bookmaker-a",
+    "bookmaker-b-lobby1",
+    "bookmaker-b-lobby2",
+    "bookmaker-b-lobby3"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}
+
