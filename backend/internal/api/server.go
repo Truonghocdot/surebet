@@ -15,10 +15,12 @@ import (
 type Dependencies struct {
 	Health       health.Reporter
 	Logger       logger.Logger
+	AuthLogin    AuthLoginService
 	OddsQuery    OddsQueryService
 	SurebetQuery SurebetQueryService
 	BetCommand   BetCommandService
 	FeatureQuery FeatureQueryService
+	ConfigQuery  ConfigQueryService
 }
 
 type Server struct {

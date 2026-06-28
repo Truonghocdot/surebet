@@ -3,11 +3,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL DEFAULT '',
     full_name TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT 'operator',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     locale TEXT NOT NULL DEFAULT 'en',
     timezone TEXT NOT NULL DEFAULT 'UTC',
+    last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -17,6 +19,7 @@ CREATE TABLE IF NOT EXISTS bookmakers (
     id TEXT PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
+    site_url TEXT NOT NULL DEFAULT '',
     region TEXT NOT NULL DEFAULT 'global',
     is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     supports_auto BOOLEAN NOT NULL DEFAULT FALSE,
@@ -30,8 +33,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
     bookmaker_id TEXT NOT NULL REFERENCES bookmakers(id),
-    external_ref TEXT NOT NULL DEFAULT '',
+    external_ref TEXT NOT NULL UNIQUE,
     label TEXT NOT NULL DEFAULT '',
+    login_username TEXT NOT NULL DEFAULT '',
+    login_password TEXT NOT NULL DEFAULT '',
     currency TEXT NOT NULL DEFAULT 'USD',
     balance NUMERIC(18, 4) NOT NULL DEFAULT 0,
     available_stake NUMERIC(18, 4) NOT NULL DEFAULT 0,
@@ -144,4 +149,3 @@ CREATE TABLE IF NOT EXISTS configurations (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
 );
-

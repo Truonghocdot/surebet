@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,33 +10,68 @@ import (
 )
 
 type OddsQueryService interface {
-	ListCurrentOdds(ctx *gin.Context, filter dto.OddsFilter) ([]dto.OddsView, error)
+	ListCurrentOdds(ctx context.Context, filter dto.OddsFilter) ([]dto.OddsView, error)
+}
+
+type AuthLoginService interface {
+	Login(ctx context.Context, request dto.LoginRequest) (dto.LoginResponse, error)
 }
 
 type SurebetQueryService interface {
-	ListCurrentSurebets(ctx *gin.Context) ([]dto.SurebetView, error)
+	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
 
 type BetCommandService interface {
-	CreateManualBet(ctx *gin.Context, request dto.CreateManualBetRequest) (dto.BetOrderView, error)
+	CreateManualBet(ctx context.Context, request dto.CreateManualBetRequest) (dto.BetOrderView, error)
 }
 
 type FeatureQueryService interface {
-	ListFeatureFlags(ctx *gin.Context) ([]dto.FeatureFlagView, error)
+	ListFeatureFlags(ctx context.Context) ([]dto.FeatureFlagView, error)
+}
+
+type ConfigQueryService interface {
+	ListBookmakers(ctx context.Context) ([]dto.BookmakerView, error)
+	ListBookmakerAccounts(ctx context.Context) ([]dto.BookmakerAccountView, error)
+	ListConfigurations(ctx context.Context, prefix string) ([]dto.ConfigurationView, error)
 }
 
 func (s *Server) registerRoutes() {
 	s.engine.GET("/healthz", s.handleHealth)
 
 	v1 := s.engine.Group("/v1")
+	v1.POST("/auth/login", s.handleLogin)
 	v1.GET("/odds", s.handleOdds)
 	v1.GET("/surebets", s.handleSurebets)
 	v1.GET("/features", s.handleFeatures)
+	v1.GET("/bookmakers", s.handleBookmakers)
+	v1.GET("/bookmaker-accounts", s.handleBookmakerAccounts)
+	v1.GET("/configurations", s.handleConfigurations)
 	v1.POST("/bets/manual", s.handleCreateManualBet)
 }
 
 func (s *Server) handleHealth(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, s.deps.Health.Snapshot(ctx.Request.Context()))
+}
+
+func (s *Server) handleLogin(ctx *gin.Context) {
+	if s.deps.AuthLogin == nil {
+		placeholder(ctx, "auth login service is not wired yet")
+		return
+	}
+
+	var request dto.LoginRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := s.deps.AuthLogin.Login(ctx.Request.Context(), request)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"data": response})
 }
 
 func (s *Server) handleOdds(ctx *gin.Context) {
@@ -50,7 +86,7 @@ func (s *Server) handleOdds(ctx *gin.Context) {
 		FixtureID:   ctx.Query("fixture_id"),
 	}
 
-	items, err := s.deps.OddsQuery.ListCurrentOdds(ctx, filter)
+	items, err := s.deps.OddsQuery.ListCurrentOdds(ctx.Request.Context(), filter)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -65,7 +101,7 @@ func (s *Server) handleSurebets(ctx *gin.Context) {
 		return
 	}
 
-	items, err := s.deps.SurebetQuery.ListCurrentSurebets(ctx)
+	items, err := s.deps.SurebetQuery.ListCurrentSurebets(ctx.Request.Context())
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -80,7 +116,52 @@ func (s *Server) handleFeatures(ctx *gin.Context) {
 		return
 	}
 
-	items, err := s.deps.FeatureQuery.ListFeatureFlags(ctx)
+	items, err := s.deps.FeatureQuery.ListFeatureFlags(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"data": items})
+}
+
+func (s *Server) handleBookmakers(ctx *gin.Context) {
+	if s.deps.ConfigQuery == nil {
+		placeholder(ctx, "configuration query service is not wired yet")
+		return
+	}
+
+	items, err := s.deps.ConfigQuery.ListBookmakers(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"data": items})
+}
+
+func (s *Server) handleBookmakerAccounts(ctx *gin.Context) {
+	if s.deps.ConfigQuery == nil {
+		placeholder(ctx, "configuration query service is not wired yet")
+		return
+	}
+
+	items, err := s.deps.ConfigQuery.ListBookmakerAccounts(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"data": items})
+}
+
+func (s *Server) handleConfigurations(ctx *gin.Context) {
+	if s.deps.ConfigQuery == nil {
+		placeholder(ctx, "configuration query service is not wired yet")
+		return
+	}
+
+	items, err := s.deps.ConfigQuery.ListConfigurations(ctx.Request.Context(), ctx.Query("prefix"))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -101,7 +182,7 @@ func (s *Server) handleCreateManualBet(ctx *gin.Context) {
 		return
 	}
 
-	order, err := s.deps.BetCommand.CreateManualBet(ctx, request)
+	order, err := s.deps.BetCommand.CreateManualBet(ctx.Request.Context(), request)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -12,14 +12,14 @@ export function OrdersScreen() {
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="Orders"
-        title="Vong doi lenh dat cuoc"
-        description="Moc state machine hien tai san sang de thay bang API that sau khi backend co order endpoint."
+        eyebrow="Lệnh cược"
+        title="Vòng đời lệnh đặt cược"
+        description="Mốc state machine hiện tại sẵn sàng để thay bằng API thật sau khi backend có order endpoint."
       />
 
       <DataPanel
-        title="Lenh gan day"
-        description="Execution lifecycle duoc bieu dien ro rang de tranh state ambiguity."
+        title="Lệnh gần đây"
+        description="Execution lifecycle được biểu diễn rõ ràng để tránh state ambiguity."
       >
         <QueryShell<Order[]> {...query}>
           {(items) => (

@@ -32,7 +32,7 @@ export function QueryShell<T>({
         <p className="max-w-md text-center text-sm text-[var(--danger)]">
           {error instanceof Error
             ? error.message
-            : "Khong tai duoc du lieu giao dien. Thu tai lai sau."}
+            : "Không tải được dữ liệu giao diện. Vui lòng thử lại sau."}
         </p>
       </div>
     );
@@ -40,4 +40,3 @@ export function QueryShell<T>({
 
   return <>{children(data)}</>;
 }
-

@@ -13,14 +13,14 @@ export function FeatureFlagsScreen() {
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="Feature Flags"
-        title="Dieu khien tinh nang runtime"
-        description="Trang nay la diem dat cho admin control, audit va scope-level override."
+        eyebrow="Feature flags"
+        title="Điều khiển tính năng runtime"
+        description="Trang này là điểm đặt cho admin control, audit và scope-level override."
       />
 
       <DataPanel
-        title="Flags dang ap dung"
-        description="Moi flag co the duoc mo rong theo scope global, bookmaker, lobby hoac account."
+        title="Các flag đang áp dụng"
+        description="Mỗi flag có thể được mở rộng theo scope global, bookmaker, lobby hoặc account."
       >
         <QueryShell<FeatureFlag[]> {...query}>
           {(items) => (
@@ -32,10 +32,10 @@ export function FeatureFlagsScreen() {
                 >
                   <div>
                     <p className="font-semibold">{item.name}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">Scope: {item.scope}</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">Phạm vi: {item.scope}</p>
                   </div>
                   <Badge variant={item.value === "ON" ? "teal" : "red"}>
-                    {item.value}
+                    {item.value === "ON" ? "BẬT" : "TẮT"}
                   </Badge>
                 </div>
               ))}

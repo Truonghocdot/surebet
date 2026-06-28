@@ -12,14 +12,14 @@ export function AccountsScreen() {
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="Accounts"
-        title="Quan ly account bookmaker"
-        description="Server-state cua account readiness duoc cache bang TanStack Query de tranh duplicate fetch."
+        eyebrow="Tài khoản"
+        title="Quản lý account bookmaker"
+        description="Server-state của account readiness được cache bằng TanStack Query để tránh duplicate fetch."
       />
 
       <DataPanel
-        title="Tinh trang account"
-        description="Scaffold nay san sang de thay bang API response va websocket updates."
+        title="Tình trạng account"
+        description="Màn hình này đã sẵn sàng để thay bằng API response và websocket updates."
       >
         <QueryShell<Account[]> {...query}>
           {(items) => (
@@ -37,7 +37,7 @@ export function AccountsScreen() {
                     <p className="font-semibold">{item.balance}</p>
                     <p
                       className={
-                        item.status === "ACTIVE"
+                        item.status === "Hoạt động"
                           ? "mt-1 text-sm text-teal-700"
                           : "mt-1 text-sm text-orange-700"
                       }

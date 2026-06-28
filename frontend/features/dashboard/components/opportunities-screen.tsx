@@ -16,21 +16,21 @@ export function OpportunitiesScreen() {
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="Opportunities"
-        title="Danh sach surebet hien tai"
-        description="Trang nay dung TanStack Query cho du lieu va Zustand cho view-mode cua operator."
+        eyebrow="Cơ hội"
+        title="Danh sách surebet hiện tại"
+        description="Trang này dùng TanStack Query cho dữ liệu và Zustand cho view-mode của operator."
       />
 
       <DataPanel
-        title="Bang co hoi"
-        description="Loc nhanh theo do uu tien ma khong can day state xuong qua nhieu tang component."
+        title="Bảng cơ hội"
+        description="Lọc nhanh theo độ ưu tiên mà không cần đẩy state xuống quá nhiều tầng component."
       >
         <div className="space-y-5">
           <div className="flex flex-wrap gap-2">
             {[
-              { label: "Tat ca", value: "all" },
-              { label: "Loi nhuan cao", value: "high-profit" },
-              { label: "Moi cap nhat", value: "fresh" }
+              { label: "Tất cả", value: "all" },
+              { label: "Lợi nhuận cao", value: "high-profit" },
+              { label: "Mới cập nhật", value: "fresh" }
             ].map((item) => (
               <Button
                 className="min-w-[140px]"
@@ -52,8 +52,8 @@ export function OpportunitiesScreen() {
                   : mode === "fresh"
                     ? items.filter(
                         (item) =>
-                          item.freshness.includes("8s") ||
-                          item.freshness.includes("11s")
+                          item.freshness.includes("8 giây") ||
+                          item.freshness.includes("11 giây")
                       )
                     : items;
 
@@ -62,11 +62,11 @@ export function OpportunitiesScreen() {
                   <table className="w-full min-w-[640px] border-separate border-spacing-y-3 text-left">
                     <thead>
                       <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                        <th className="pb-2 font-medium">Fixture</th>
-                        <th className="pb-2 font-medium">Market</th>
-                        <th className="pb-2 font-medium">Profit</th>
-                        <th className="pb-2 font-medium">Spread</th>
-                        <th className="pb-2 font-medium">Freshness</th>
+                          <th className="pb-2 font-medium">Trận đấu</th>
+                          <th className="pb-2 font-medium">Market</th>
+                          <th className="pb-2 font-medium">Lợi nhuận</th>
+                          <th className="pb-2 font-medium">Spread</th>
+                          <th className="pb-2 font-medium">Độ mới</th>
                       </tr>
                     </thead>
                     <tbody>

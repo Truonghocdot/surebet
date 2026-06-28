@@ -45,7 +45,10 @@ export const dashboardSnapshotSchema = z.object({
   opportunities: z.array(opportunitySchema),
   orders: z.array(orderSchema),
   accounts: z.array(accountSchema),
-  flags: z.array(featureFlagSchema)
+  flags: z.array(featureFlagSchema),
+  bookmakers: z.array(z.unknown()).optional(),
+  configurations: z.array(z.unknown()).optional(),
+  risk: z.array(z.unknown()).optional()
 });
 
 export type DashboardSnapshot = z.infer<typeof dashboardSnapshotSchema>;
@@ -54,4 +57,3 @@ export type Order = z.infer<typeof orderSchema>;
 export type Account = z.infer<typeof accountSchema>;
 export type FeatureFlag = z.infer<typeof featureFlagSchema>;
 export type RiskCheckpoint = z.infer<typeof riskCheckpointSchema>;
-

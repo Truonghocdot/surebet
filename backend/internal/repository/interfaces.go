@@ -9,18 +9,25 @@ import (
 
 type UserRepository interface {
 	GetByID(ctx context.Context, id string) (models.User, error)
+	GetByEmail(ctx context.Context, email string) (models.User, error)
 	List(ctx context.Context) ([]models.User, error)
+	Upsert(ctx context.Context, user models.User) error
+	UpdateLastLogin(ctx context.Context, id string, loggedAt time.Time) error
 }
 
 type AccountRepository interface {
 	GetByID(ctx context.Context, id string) (models.Account, error)
+	List(ctx context.Context) ([]models.Account, error)
 	ListByBookmaker(ctx context.Context, bookmakerID string) ([]models.Account, error)
+	Upsert(ctx context.Context, account models.Account) error
 	UpdateBalance(ctx context.Context, accountID string, balance float64, updatedAt time.Time) error
 }
 
 type BookmakerRepository interface {
 	GetByCode(ctx context.Context, code string) (models.Bookmaker, error)
+	List(ctx context.Context) ([]models.Bookmaker, error)
 	ListEnabled(ctx context.Context) ([]models.Bookmaker, error)
+	Upsert(ctx context.Context, bookmaker models.Bookmaker) error
 }
 
 type SessionRepository interface {
@@ -50,6 +57,8 @@ type FeatureFlagRepository interface {
 
 type ConfigurationRepository interface {
 	GetByKey(ctx context.Context, key string) (models.Configuration, error)
+	List(ctx context.Context, prefix string) ([]models.Configuration, error)
+	Upsert(ctx context.Context, configuration models.Configuration) error
 }
 
 type OddsSnapshotRepository interface {
@@ -78,4 +87,12 @@ type LockRepository interface {
 type Lock interface {
 	Key() string
 	Release(ctx context.Context) error
+}
+
+var ErrNotFound = errNotFound("repository record not found")
+
+type errNotFound string
+
+func (e errNotFound) Error() string {
+	return string(e)
 }

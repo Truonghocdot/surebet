@@ -15,7 +15,7 @@ export function LoginForm() {
   const [state, formAction, isPending] = useActionState(loginAction, initialState);
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form action={formAction} className="space-y-5 w-full">
       <div>
         <Label htmlFor="email">Email</Label>
         <Input
@@ -33,12 +33,12 @@ export function LoginForm() {
       </div>
 
       <div>
-        <Label htmlFor="password">Mat khau</Label>
+        <Label htmlFor="password">Mật khẩu</Label>
         <Input
           error={state.fieldErrors?.password}
           id="password"
           name="password"
-          placeholder="Nhap mat khau"
+          placeholder="Nhập mật khẩu"
           required
           type="password"
         />
@@ -54,7 +54,7 @@ export function LoginForm() {
       ) : null}
 
       <Button className="w-full" disabled={isPending} type="submit">
-        {isPending ? "Dang xu ly..." : "Dang nhap he thong"}
+        {isPending ? "Đang xử lý..." : "Đăng nhập hệ thống"}
       </Button>
     </form>
   );

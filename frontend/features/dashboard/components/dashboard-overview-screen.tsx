@@ -13,9 +13,9 @@ export function DashboardOverviewScreen() {
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="Tong quan"
-        title="Dashboard van hanh realtime"
-        description="Server-state di qua TanStack Query + axios, du lieu duoc parse bang Zod, con shell state va filter state duoc giu gon trong Zustand."
+        eyebrow="Tổng quan"
+        title="Dashboard vận hành thời gian thực"
+        description="Góc nhìn tổng hợp về cơ hội surebet, trạng thái lệnh, tài khoản bookmaker và các feature flag đang ảnh hưởng tới hệ thống."
       />
 
       <QueryShell<DashboardSnapshot> {...query}>
@@ -30,18 +30,18 @@ export function DashboardOverviewScreen() {
             <div className="grid gap-4 xl:grid-cols-12">
               <div className="xl:col-span-7">
                 <DataPanel
-                  title="Surebet dang duoc uu tien"
-                  description="Nhung co hoi moi nhat dang co loi nhuan du nguong va can tiep tuc theo doi."
+                  title="Surebet đang được ưu tiên"
+                  description="Những cơ hội mới nhất đang có lợi nhuận đủ ngưỡng và cần tiếp tục theo dõi."
                 >
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] border-separate border-spacing-y-3 text-left">
                       <thead>
                         <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                          <th className="pb-2 font-medium">Fixture</th>
+                          <th className="pb-2 font-medium">Trận đấu</th>
                           <th className="pb-2 font-medium">Market</th>
-                          <th className="pb-2 font-medium">Profit</th>
+                          <th className="pb-2 font-medium">Lợi nhuận</th>
                           <th className="pb-2 font-medium">Spread</th>
-                          <th className="pb-2 font-medium">Freshness</th>
+                          <th className="pb-2 font-medium">Độ mới</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -69,8 +69,8 @@ export function DashboardOverviewScreen() {
 
               <div className="xl:col-span-5">
                 <DataPanel
-                  title="Order timeline"
-                  description="Trang thai cap nhat cua nhung lenh gan day theo state machine."
+                  title="Tiến trình lệnh cược"
+                  description="Trạng thái cập nhật của những lệnh gần đây theo state machine."
                 >
                   <div className="space-y-3">
                     {snapshot.orders.map((item) => (
@@ -98,8 +98,8 @@ export function DashboardOverviewScreen() {
 
               <div className="xl:col-span-7">
                 <DataPanel
-                  title="Tinh trang account"
-                  description="Theo doi balance, session va do san sang cua cac account bookmaker."
+                  title="Tình trạng account"
+                  description="Theo dõi balance, session và độ sẵn sàng của các account bookmaker."
                 >
                   <div className="space-y-3">
                     {snapshot.accounts.map((item) => (
@@ -117,7 +117,7 @@ export function DashboardOverviewScreen() {
                           <p className="font-semibold">{item.balance}</p>
                           <p
                             className={
-                              item.status === "ACTIVE"
+                              item.status === "Hoạt động"
                                 ? "mt-1 text-sm text-teal-700"
                                 : "mt-1 text-sm text-orange-700"
                             }
@@ -133,8 +133,8 @@ export function DashboardOverviewScreen() {
 
               <div className="xl:col-span-5">
                 <DataPanel
-                  title="Runtime feature flags"
-                  description="Nhung cong tac hien dang anh huong den execution va validation."
+                  title="Feature flag runtime"
+                  description="Những công tắc hiện đang ảnh hưởng đến execution và validation."
                 >
                   <div className="space-y-3">
                     {snapshot.flags.map((item) => (
@@ -145,7 +145,7 @@ export function DashboardOverviewScreen() {
                         <div>
                           <p className="font-semibold">{item.name}</p>
                           <p className="mt-1 text-sm text-[var(--muted)]">
-                            Scope: {item.scope}
+                            Phạm vi: {item.scope}
                           </p>
                         </div>
                         <p
@@ -155,7 +155,7 @@ export function DashboardOverviewScreen() {
                               : "font-semibold text-red-700"
                           }
                         >
-                          {item.value}
+                          {item.value === "ON" ? "BẬT" : "TẮT"}
                         </p>
                       </div>
                     ))}

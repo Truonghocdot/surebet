@@ -2,12 +2,17 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
 	App      AppConfig
+	Auth     AuthConfig
 	HTTP     HTTPConfig
 	RabbitMQ RabbitMQConfig
 	Redis    RedisConfig
@@ -18,6 +23,11 @@ type Config struct {
 type AppConfig struct {
 	Name string
 	Env  string
+}
+
+type AuthConfig struct {
+	TokenSecret string
+	TokenTTL    time.Duration
 }
 
 type HTTPConfig struct {
@@ -47,11 +57,19 @@ type RuntimeConfig struct {
 	FeatureDefaults map[string]bool
 }
 
+var loadDotEnvOnce sync.Once
+
 func LoadFromEnv() Config {
+	loadDotEnv()
+
 	return Config{
 		App: AppConfig{
 			Name: envString("APP_NAME", "surebet-platform"),
 			Env:  envString("APP_ENV", "development"),
+		},
+		Auth: AuthConfig{
+			TokenSecret: envString("AUTH_TOKEN_SECRET", "surebet-dev-secret-change-me"),
+			TokenTTL:    envDuration("AUTH_TOKEN_TTL", 12*time.Hour),
 		},
 		HTTP: HTTPConfig{
 			Address:      envString("HTTP_ADDRESS", ":8080"),
@@ -93,6 +111,48 @@ func envString(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func loadDotEnv() {
+	loadDotEnvOnce.Do(func() {
+		workingDir, err := os.Getwd()
+		if err != nil {
+			return
+		}
+
+		for _, candidate := range envCandidates(workingDir) {
+			if _, err := os.Stat(candidate); err == nil {
+				_ = godotenv.Load(candidate)
+				return
+			}
+		}
+	})
+}
+
+func envCandidates(start string) []string {
+	candidates := make([]string, 0, 16)
+	seen := make(map[string]struct{})
+
+	for current := start; ; current = filepath.Dir(current) {
+		for _, candidate := range []string{
+			filepath.Join(current, ".env"),
+			filepath.Join(current, "backend", ".env"),
+		} {
+			if _, ok := seen[candidate]; ok {
+				continue
+			}
+
+			seen[candidate] = struct{}{}
+			candidates = append(candidates, candidate)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+
+	return candidates
 }
 
 func envInt(key string, fallback int) int {

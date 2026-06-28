@@ -17,6 +17,11 @@ type TokenManager interface {
 	ParseAccessToken(ctx context.Context, token string) (Claims, error)
 }
 
+type PasswordHasher interface {
+	Hash(password string) (string, error)
+	Compare(hash, password string) error
+}
+
 type SessionAuthorizer interface {
 	ValidateAccountAccess(ctx context.Context, userID, accountID string) error
 }

@@ -18,39 +18,39 @@ export type NavItem = {
 
 export const navigationItems: NavItem[] = [
   {
-    label: "Dashboard",
+    label: "Tổng quan",
     href: "/dashboard",
-    description: "Tong quan realtime",
+    description: "Tổng quan thời gian thực",
     icon: Activity
   },
   {
-    label: "Opportunities",
+    label: "Cơ hội",
     href: "/opportunities",
-    description: "Surebet dang hoat dong",
+    description: "Surebet đang hoạt động",
     icon: ArrowLeftRight
   },
   {
-    label: "Orders",
+    label: "Lệnh cược",
     href: "/orders",
-    description: "Vong doi dat cuoc",
+    description: "Vòng đời đặt cược",
     icon: ShieldCheck
   },
   {
-    label: "Accounts",
+    label: "Tài khoản",
     href: "/accounts",
-    description: "Tai khoan bookmaker",
+    description: "Tài khoản bookmaker",
     icon: Building2
   },
   {
-    label: "Risk",
+    label: "Rủi ro",
     href: "/risk",
-    description: "Kiem soat canh bao",
+    description: "Kiểm soát cảnh báo",
     icon: TriangleAlert
   },
   {
-    label: "Feature Flags",
+    label: "Feature flags",
     href: "/feature-flags",
-    description: "Cong tac runtime",
+    description: "Công tắc runtime",
     icon: Flag
   }
 ];

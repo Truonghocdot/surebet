@@ -11,18 +11,21 @@ type BaseModel struct {
 
 type User struct {
 	BaseModel
-	Email    string `json:"email" gorm:"uniqueIndex;not null"`
-	FullName string `json:"full_name"`
-	Role     string `json:"role"`
-	IsActive bool   `json:"is_active"`
-	Locale   string `json:"locale"`
-	Timezone string `json:"timezone"`
+	Email        string     `json:"email" gorm:"uniqueIndex;not null"`
+	PasswordHash string     `json:"-" gorm:"not null"`
+	FullName     string     `json:"full_name"`
+	Role         string     `json:"role"`
+	IsActive     bool       `json:"is_active"`
+	Locale       string     `json:"locale"`
+	Timezone     string     `json:"timezone"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
 }
 
 type Bookmaker struct {
 	BaseModel
 	Code          string `json:"code" gorm:"uniqueIndex;not null"`
 	Name          string `json:"name"`
+	SiteURL       string `json:"site_url"`
 	Region        string `json:"region"`
 	IsEnabled     bool   `json:"is_enabled"`
 	SupportsAuto  bool   `json:"supports_auto"`
@@ -33,8 +36,10 @@ type Account struct {
 	BaseModel
 	UserID         string     `json:"user_id" gorm:"index;not null"`
 	BookmakerID    string     `json:"bookmaker_id" gorm:"index;not null"`
-	ExternalRef    string     `json:"external_ref"`
+	ExternalRef    string     `json:"external_ref" gorm:"uniqueIndex;not null"`
 	Label          string     `json:"label"`
+	LoginUsername  string     `json:"login_username"`
+	LoginPassword  string     `json:"-"`
 	Currency       string     `json:"currency"`
 	Balance        float64    `json:"balance"`
 	AvailableStake float64    `json:"available_stake"`

@@ -2,14 +2,13 @@ import { z } from "zod";
 
 export const loginSchema = z.object({
   email: z
-    .string({ message: "Vui long nhap email." })
+    .string({ message: "Vui lòng nhập email." })
     .trim()
-    .email("Email khong hop le."),
+    .email("Email không hợp lệ."),
   password: z
-    .string({ message: "Vui long nhap mat khau." })
+    .string({ message: "Vui lòng nhập mật khẩu." })
     .trim()
-    .min(8, "Mat khau toi thieu 8 ky tu.")
+    .min(8, "Mật khẩu tối thiểu 8 ký tự.")
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-

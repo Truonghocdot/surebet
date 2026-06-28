@@ -50,7 +50,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
               <div>
                 <p className="font-display text-lg font-semibold">Surebet CRM</p>
                 <p className="text-sm text-[var(--muted)]">
-                  Control tower for ops and execution
+                  Trung tâm điều phối vận hành và thực thi
                 </p>
               </div>
             </div>
@@ -64,7 +64,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
             <form action={logout}>
               <Button className="gap-2" type="submit" variant="secondary">
                 <LogOut className="size-4" />
-                Dang xuat
+                Đăng xuất
               </Button>
             </form>
           </div>
@@ -91,11 +91,11 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
           <div className="flex h-full flex-col gap-4">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
-                Ops cockpit
+                Bảng điều khiển vận hành
               </p>
               <p className="mt-3 font-display text-xl font-semibold leading-8">
-                Giam sat surebet, validation, execution va feature switch trong mot
-                bo dieu khien duy nhat.
+                Giám sát surebet, validation, execution và feature switch trong
+                một bảng điều khiển duy nhất.
               </p>
             </div>
 
@@ -137,11 +137,11 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
 
             <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,155,84,0.18),rgba(255,255,255,0.06))] p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
-                Realtime safety
+                An toàn thời gian thực
               </p>
               <p className="mt-3 text-sm leading-7 text-white/78">
-                Auto bet van phai qua validation pipeline va risk gate truoc khi
-                duoc xep hang cho worker.
+                Auto bet vẫn phải qua validation pipeline và risk gate trước khi
+                được xếp hàng cho worker.
               </p>
             </div>
           </div>
@@ -152,4 +152,3 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
     </div>
   );
 }
-

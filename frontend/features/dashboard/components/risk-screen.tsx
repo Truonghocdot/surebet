@@ -14,13 +14,13 @@ export function RiskScreen() {
     <div className="dashboard-page">
       <SectionHeader
         eyebrow="Risk"
-        title="Risk va validation control"
-        description="Checkpoint duoc parse bang Zod truoc khi vao UI, giup page nay on dinh khi doi nguon du lieu sau nay."
+        title="Kiểm soát risk và validation"
+        description="Checkpoint được parse bằng Zod trước khi vào UI, giúp trang này ổn định khi đổi nguồn dữ liệu sau này."
       />
 
       <DataPanel
-        title="Pipeline checkpoints"
-        description="Cac checkpoint nay phu hop voi validation order da dinh nghia o backend."
+        title="Các checkpoint trong pipeline"
+        description="Các checkpoint này phù hợp với validation order đã định nghĩa ở backend."
       >
         <QueryShell<RiskCheckpoint[]> {...query}>
           {(items) => (

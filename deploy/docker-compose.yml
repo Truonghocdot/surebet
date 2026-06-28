@@ -17,7 +17,7 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
+  redis:  
     image: redis:8
     container_name: surebet-redis
     command: ["redis-server", "--appendonly", "yes"]
