@@ -5,7 +5,10 @@ import { createBackendSettingsProvider } from "../core/backend-provider-factory.
 import { FileSessionStateStore } from "../session/file-session-state-store.js";
 import { Jun88SessionBootstrapper } from "../session/jun88-session-bootstrapper.js";
 import { Jun88BtiRuntime } from "./jun88-bti-runtime.js";
+import { Jun88CmdRuntime } from "./jun88-cmd-runtime.js";
+import { Jun88IbcRuntime } from "./jun88-ibc-runtime.js";
 import { Jun88LobbyRuntime } from "./jun88-lobby-runtime.js";
+import { Jun88M8Runtime } from "./jun88-m8-runtime.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 
 const sessionStore = new FileSessionStateStore(path.resolve("tmp/session"));
@@ -20,7 +23,13 @@ export function createJun88LobbyCollector(
   lobbyId: "ibc" | "bti" | "cmd" | "m8"
 ): Collector {
   const runtime =
-    lobbyId === "bti"
+    lobbyId === "ibc"
+      ? new Jun88IbcRuntime(collectorId)
+      : lobbyId === "cmd"
+      ? new Jun88CmdRuntime(collectorId)
+      : lobbyId === "m8"
+      ? new Jun88M8Runtime(collectorId)
+      : lobbyId === "bti"
       ? new Jun88BtiRuntime(collectorId)
       : new Jun88LobbyRuntime(collectorId, lobbyId);
 

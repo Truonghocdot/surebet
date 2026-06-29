@@ -24,6 +24,19 @@ export type OddsSnapshot = {
   selections: OddsSelection[];
 };
 
+export type OddsDelta = {
+  source: CollectorSource;
+  collectedAt: string;
+  fixtureId: string;
+  marketId: string;
+  outcomeId: string;
+  outcomeName: string;
+  odds: number;
+  availableStake: number;
+  suspended: boolean;
+  op: "upsert" | "remove";
+};
+
 export type BookmakerSetting = {
   bookmakerCode: BookmakerCode;
   bookmakerName: string;
@@ -55,12 +68,33 @@ export type CollectContext = {
   session?: SessionState;
 };
 
+export type CollectorHeartbeat = {
+  collectorId: string;
+  bookmakerId: BookmakerCode;
+  lobbyId: LobbyCode;
+  sentAt: string;
+};
+
 export interface Collector {
   collect(): Promise<OddsSnapshot>;
 }
 
 export interface CollectorRuntime {
   collect(context: CollectContext): Promise<OddsSnapshot>;
+}
+
+export interface StreamingCollectorRuntime extends CollectorRuntime {
+  stream(context: CollectContext, sink: CollectorSink): Promise<void>;
+}
+
+export interface CollectorSink {
+  pushBootstrap(snapshot: OddsSnapshot): Promise<void>;
+  pushDelta(deltas: OddsDelta[]): Promise<void>;
+  heartbeat(payload: CollectorHeartbeat): Promise<void>;
+}
+
+export interface StreamableCollector extends Collector {
+  stream(sink: CollectorSink): Promise<void>;
 }
 
 export interface BookmakerSettingsProvider {

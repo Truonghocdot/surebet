@@ -39,6 +39,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Bookmaker{},
 		&models.Account{},
 		&models.Session{},
+		&models.OddsQuote{},
 		&models.BetOrder{},
 		&models.BetOrderLeg{},
 		&models.BetResult{},

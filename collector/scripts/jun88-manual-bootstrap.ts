@@ -5,6 +5,7 @@ import {
   BackendSettingsProvider,
   FileSessionStateStore,
   JUN88_LOBBIES,
+  envString,
   type Jun88LobbyAccess,
   type SessionState
 } from "@surebet/collector-shared";
@@ -345,7 +346,7 @@ async function openLobby(
 }
 
 async function main() {
-  const backendURL = process.env.BACKEND_API_URL ?? "http://127.0.0.1:8080";
+  const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
   console.log(`Đang lấy cấu hình jun88 từ backend: ${backendURL}`);
   const provider = new BackendSettingsProvider(backendURL);
   const setting = await provider.getBookmakerSetting("jun88");

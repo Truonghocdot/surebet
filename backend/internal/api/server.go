@@ -17,6 +17,7 @@ type Dependencies struct {
 	Logger       logger.Logger
 	AuthLogin    AuthLoginService
 	OddsQuery    OddsQueryService
+	CollectorIngest CollectorIngestService
 	SurebetQuery SurebetQueryService
 	BetCommand   BetCommandService
 	FeatureQuery FeatureQueryService

@@ -12,7 +12,11 @@
   ],
   "scripts": {
     "bootstrap:jun88": "tsx scripts/jun88-manual-bootstrap.ts",
+    "run:jun88-workers": "tsx scripts/run-jun88-workers.ts",
     "test:bti-parser": "tsx scripts/test-bti-parser.ts",
+    "test:cmd-parser": "tsx scripts/test-cmd-parser.ts",
+    "test:ibc-parser": "tsx scripts/test-ibc-parser.ts",
+    "test:m8-parser": "tsx scripts/test-m8-parser.ts",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces"

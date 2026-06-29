@@ -10,4 +10,4 @@ build/
 coverage/
 tmp/
 bin/
-
+collector/.env
