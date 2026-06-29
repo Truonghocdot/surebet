@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -19,24 +18,14 @@ func main() {
 	cfg := config.LoadFromEnv()
 	log := logger.NewStdLogger(os.Stdout, "api")
 
-	db, err := gormstore.Open(cfg.Postgres)
+	db, err := gormstore.OpenAndMigrate(cfg.Postgres)
 	if err != nil {
-		log.Error("failed to open postgres", "error", err.Error())
-		os.Exit(1)
-	}
-
-	if err := gormstore.AutoMigrate(db); err != nil {
-		log.Error("failed to migrate postgres schema", "error", err.Error())
+		log.Error("failed to open or migrate postgres", "error", err.Error())
 		os.Exit(1)
 	}
 
 	passwordHasher := auth.NewSHA256Hasher()
 	tokenManager := auth.NewHMACTokenManager(cfg.Auth.TokenSecret, cfg.Auth.TokenTTL)
-
-	if err := gormstore.SeedDefaultData(context.Background(), db, passwordHasher); err != nil {
-		log.Error("failed to seed default data", "error", err.Error())
-		os.Exit(1)
-	}
 
 	userRepository := gormstore.NewUserRepository(db)
 	accountRepository := gormstore.NewAccountRepository(db)

@@ -1,6 +1,6 @@
 export type BookmakerCode = "8xbet" | "jun88";
 
-export type LobbyCode = "default" | "lobby1" | "lobby2" | "lobby3";
+export type LobbyCode = "default" | "ibc" | "bti" | "cmd" | "m8";
 
 export type CollectorSource = {
   collectorId: string;
@@ -41,11 +41,13 @@ export type SessionState = {
   preparedAt: string;
   storageStatePath: string;
   accessibleLobbies: LobbyCode[];
+  visitedOrigins?: string[];
 };
 
 export type Jun88LobbyAccess = {
   lobbyId: Exclude<LobbyCode, "default">;
   launchURL: string;
+  expectedOriginPatterns?: string[];
 };
 
 export type CollectContext = {
@@ -73,4 +75,3 @@ export interface SessionStateStore {
   read(bookmakerCode: BookmakerCode): Promise<SessionState | null>;
   write(state: SessionState): Promise<void>;
 }
-

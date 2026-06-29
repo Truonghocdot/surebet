@@ -20,6 +20,19 @@ func Open(cfg config.PostgresConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
+func OpenAndMigrate(cfg config.PostgresConfig) (*gorm.DB, error) {
+	db, err := Open(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := AutoMigrate(db); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&models.User{},

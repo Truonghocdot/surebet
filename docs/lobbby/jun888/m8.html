@@ -1,0 +1,1912 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <title>
+
+    </title>
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="-1">
+    <script src="script/jquery-my.min.js" type="text/javascript"></script>
+    <script type="text/javascript" src="script/Util.js?v=20250609"></script>
+    <script type="text/javascript" src="script/panel.js?v=20260322"></script>
+
+    <link href="../Images/v1/css/portal.css?v=20200810" rel="stylesheet">
+    <script src="script/panelTableBetBox.js?v=20260322" type="text/javascript"></script>
+    <script src="script/panelSportsMenu.js?v=20260322" type="text/javascript"></script>
+    <script src="script/showPanel.js?20260322" type="text/javascript"></script>
+    <style type="text/css">
+        .BlinkBG {
+            background: url(../Images/v1/images/odds/altitemnew.gif);
+            width: 50px;
+        }
+
+        .BetBox_container_par>div {
+            width: 160px;
+            border: solid 1px #808080;
+            margin: 0 0 -1px 0;
+        }
+
+        .GridItem_par {
+            font-weight: normal;
+            font-size: 12px;
+            color: black;
+            font-family: Tahoma, Helvetica, sans-serif;
+            background-color: #c6d4f1;
+        }
+
+        .GridRunItem_par {
+            font-weight: normal;
+            font-size: 12px;
+            color: black;
+            font-family: Tahoma, Helvetica, sans-serif;
+            background-color: #ffddd2;
+        }
+
+        .OddsChgBlink,
+        .BetBoxBlink {
+            background-image: url('../Images/v1/images/odds/altitemnew.gif');
+        }
+
+        .live-pill {
+            width: 30px;
+            height: 12px;
+            position: relative;
+            top: -3px;
+            color: #fff;
+            border-radius: 5px;
+            font: 600 8px / 10px system-ui, -apple-system, Segoe UI, Roboto, Arial;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 0 4px;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, .05) inset;
+            animation: bgBlink 1s infinite steps(1);
+        }
+
+        .live-pill .dot {
+            /*width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #fff;
+                position: relative;*/
+        }
+
+        .live-pill .dot::after {
+            /*content:"";
+                    position:absolute; 
+                    inset:-3px;
+                    border-radius:50%;
+                    border:2px solid rgba(255,255,255,.85);
+                    opacity:.6;
+                    animation:pulse 1s infinite;*/
+        }
+
+        /*@keyframes pulse{
+                    0%   { transform:scale(0.6); opacity:.9; }
+                    70%  { transform:scale(1.2); opacity:0; }
+                    100% { transform:scale(1.2); opacity:0; }
+                }*/
+        @keyframes bgBlink {
+
+            0%,
+            50% {
+                background: orange;
+            }
+
+            51%,
+            100% {
+                background: orange;
+            }
+        }
+
+        .txt {
+            letter-spacing: .3px;
+        }
+    </style>
+
+
+    <style type="text/css">
+        .ui-widget-overlay {
+            z-index: 99999;
+            background: #aaaaaa;
+            opacity: .3;
+            filter: Alpha(Opacity=30);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .BetBox_container_par {
+            display: grid;
+            justify-content: center;
+        }
+
+        .border-R {
+            border-left: 2px solid #B50000;
+        }
+
+        .border-T {
+            border-left: 2px solid #000099;
+        }
+
+        .title-R {
+            color: #B50000;
+            font-weight: bold;
+        }
+
+        .title-T {
+            color: #000099;
+            font-weight: bold;
+        }
+
+        .MM_blue {
+            font-weight: bold;
+            font-size: 11px;
+            color: #2e3192;
+        }
+
+        .MM_red {
+            font-weight: bold;
+            font-size: 11px;
+            color: #990000;
+        }
+
+        .Normal_Stake font span {
+            display: inline-block;
+            max-width: 187px;
+        }
+    </style>
+
+    <script type="text/javascript">
+        var lang = "EN-IE";
+        var RS_Panel_WaitingCancelled = "Chờ & Hủy Bỏ";
+        var RS_Panel_BetListMini = "Bảng Cược (Mini)";
+        var RS_Panel_VoidCancelledBet = "Cược bị vô hiệu/Hủy";
+        var RS_Transactionlimitexceeded2 = "Giao dịch vượt quá giới hạn!";
+        var RS_Pleaseenteranamount = "Xin vui lòng nhập số tiền!";
+        var RS_Oddsisnotavailable = "Không có tỉ lệ cược này";
+        var RS_Gameissuspendedupdattingodds = "Tạm ngừng, không cho đăt cược";
+        var RS_Atleast2gamesmustbeselectedforparlay = "Phải có tối thiểu 2 game được chọn để đánh xiên!";
+        var RS_Atleast3gamesmustbeselectedforparlay = "Phải có tối thiểu 3 game được chọn để đánh xiên!";
+        var RS_Soccer = "Bóng đá";
+        var RS_Basketball = "Bóng rổ";
+
+        // panel profile info
+        var RS_Balance = "Số dư";
+        var RS_HANDICAP = "Tỉ lệ Châu Á";
+        var RS_Credit = "Tín dụng";
+        var RS_Panel_MyFavorite = "Mục ưa thích của tôi";
+        var RS_Panel_EventFavorite = "EURO Favorite";
+        var RS_Panel_BasketballFavorite = "Basketball Favorite";
+        var RS_MyanmarFavorite = "Myanmar Mục Yêu Thích";
+        var RS_HideSportsMenu = "Hide Sports Menu";
+        var RS_ShowSportsMenu = "Show Sports Menu";
+        var RS_Panel_Live = "<span>Trực tiếp</span>";
+        var RS_Panel_Early = "<span>Sớm</span>";
+        var RS_Panel_Today = "<span>Hôm nay</span>";
+        var RS_Panel_BetMini = "Bet Mini";
+        var RS_Waiting_Bet = "Cược Chờ";
+        var RS_Void = "Hủy";
+        var RS_In_Play = "Trực tiếp";
+        var RS_TodaySport = "Today Sport";
+
+        // panelTableBetBox
+        var RS_HANDICAP = "Tỉ lệ Châu Á";
+        var RS_OVERUNDER = "Tài / Xỉu";
+        var RS_ODDEVEN = "Đơn/Chẳn";
+        var RS_1X2 = "1X2";
+        var RS_PARLAY = "Qua ải";
+        var RS_Step = "Thái hôn hợp";
+        var RS_MyanmarParlay = "Myanmar Parlay";
+        var RS_CORRECTSCORE2 = "Tỉ số Chính xác";
+        var RS_TOTALGOAL2 = "Tổng số bàn thắng";
+        var RS_HALFTIMEFULLTIME2 = "Nửa trận / Toàn trận";
+        var RS_FIRSTGOALLASTGOAL2 = "Bàn Đầu / Bàn cuối";
+        var RS_DOUBLECHANCE = "DOUBLE CHANCE";
+        var RS_OUTRIGHT2 = "ĐỘI VÔ ĐỊCH";
+        var RS_2DGame = "2D Game";
+        var RS_1D2D = "1D & 2D";
+        var RS_DrawDate = "Draw Date ";
+        var RS_Digit = "Con số";
+        var RS_Odds = "Tỷ lệ cược";
+        var RS_OVER = "Tài";
+        var RS_UNDER = "Xỉu";
+        var RS_ODD = "Đơn";
+        var RS_EVEN = "Chẳn";
+        var RS_Win = "Chiến Thắng";
+        var RS_Draw = "Hòa";
+        var RS_DRAW2 = "Hòa";
+        var RS_WIN2 = "Chiến Thắng";
+        var RS_Amount = "Tổng Số tiền";
+        var RS_Confirmbet = "Xác nhận đặt cược";
+        var RS_Confirmbet_Par = "Cược này sẽ chấp nhận bất kỳ tỷ lệ cược thay đổi. Gửi cá cược";
+        var RS_MaxPayout = "Max Payout";
+        var RS_MinBet = "Tiền đặt cược nhỏ nhất";
+        var RS_MaxBet = "đăt cược lớn nhất";
+        var RS_MatchLimit = "trận đấu Hạn chế";
+        var RS_ProcessBet = "Đặt cược";
+        var RS_Cancel = "Huỷ";
+        var RS_Oddshaschangedfrom = "Odds has changed from";
+        var RS_To2 = "to";
+        var RS_Oddshaschanged = "Tỷ lệ đã thay đổi";
+        var RS_Pcthaschangedfrom = "Pct has changed from";
+        var RS_FirstHalf2 = "Hiệp 1";
+        var RS_LangClass = "";
+        var RS_Over2 = "Tài";
+        var RS_Under2 = "Xỉu";
+        var RS_Odd2 = "Đơn";
+        var RS_Even2 = "Chẳn";
+        var RS_AutoRefresh = "Tự Làm Mới";
+
+        var RS_PlaceBet = "Đăt cược";
+        var RS_Stake = "Stake Cổ phần";
+
+        // Account - Config - Util - Special
+        var CFG_PanelAutoRefresh = "9";
+        var CFG_DangerRefresh = "10";
+        var CFG_CompType = "5";
+        var CFG_IsESports = "0";
+        var CFG_LoginIndex = "0";
+        var CFG_IsSportsOnly = "0";
+
+        var page_IsOneWallet = "False";
+        var page_curCode = "VND";
+        var page_balance = "0.00";
+        var page_multiParMaxBet = '25000';
+
+        var Util_isGuest = "False";
+        var Util_UserName = "v08c1bs8s1...";
+        var Util_IsCurCode = "False";
+        var Util_isGetBalance = "False";
+        var Util_isAPI_AllCompType = "True";
+        var Util_IsCompTypeInGroup_S919 = "False";
+        var Util_IsShow1Decimal = "False" == "True" ? true : false;
+
+        var ACC_ot = "t";
+        var ACC_IsHG = "False" == "True" ? true : false;
+        var ACC_MenuLayoutId = "0";
+        var ACC_FixModId = ""
+        var ACC_IsOmega = false;
+
+        function topSameDomainWindow(win) {
+            win = win || window;
+            var top = win;
+            while (win.parent != win) {
+                try {
+                    // Will throw when the parent window is from a different domain
+                    win.parent.document;
+                    top = win.parent;
+                }
+                catch (e) { //            
+                }
+                win = win.parent;
+            }
+            return top;
+        }
+
+        var topSameDomainWin = topSameDomainWindow();
+
+        function logout() {
+            if (Util_isAPI_AllCompType == "True") //API
+                window.open('../Signout.aspx', 'fraMain');
+            else
+                window.open('../Signout.aspx', '_top');
+        }
+    </script>
+
+    <script type="text/javascript">
+        function GetParTrans(querystr) {
+            ChildWindow = window.open('../_Norm/ParTrans.aspx?' + querystr, '', 'width=300,height=450,top=200,left=400,toolbars=no,scrollbars=yes,status=no,resizable=yes');
+        }
+
+        function GetPamTrans(querystr) {
+            ChildWindow = window.open('../_norm/PamTrans.aspx?' + querystr, '', 'width=550,height=544,top=200,left=400,toolbars=no,scrollbars=yes,status=no,resizable=yes');
+
+        }
+
+        function GetPasTrans(querystr) {
+            ChildWindow = window.open('../_Norm/PasTrans.aspx?' + querystr, '', 'width=300,height=450,top=200,left=400,toolbars=no,scrollbars=yes,status=no,resizable=yes');
+        }
+    </script>
+
+</head>
+
+<body class="Background" style="margin: 0px 0px 0px 0px; overflow-y: scroll;">
+    <form name="form1" method="post" action="./Panel.aspx" id="form1">
+        <div>
+            <input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+            <input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+            <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE"
+                value="j0wBWVSv02Otb+zmNMbaQMlISVDWksmjLf3HjBXO4SZ6H6CVI075fTYqf4svMLMuoT5UaPwc/sGm4sa9qT4fEpc2wmqlbUJLL+wvLfwGyavS3gP1C98m3T/0XbvkIhI+/lgoia9jisWKky2+fS9s/b/xQp7/L38nmRTYwHXJHUBeMK427LadWMAfPTVKg+urXSr5SD2O8cziRViaVJKZLg==">
+        </div>
+
+        <script type="text/javascript">
+            //<![CDATA[
+            var theForm = document.forms['form1'];
+            if (!theForm) {
+                theForm = document.form1;
+            }
+            function __doPostBack(eventTarget, eventArgument) {
+                if (!theForm.onsubmit || (theForm.onsubmit() != false)) {
+                    theForm.__EVENTTARGET.value = eventTarget;
+                    theForm.__EVENTARGUMENT.value = eventArgument;
+                    theForm.submit();
+                }
+            }
+            //]]>
+        </script>
+
+
+        <script
+            src="/WebResource.axd?d=o4O4qKC7G0AXRx8d4M1FT-xHwNd7MmpbtBk4hb-sAydmJlTGiP-lxjULyTV3eSlEIIOFMSzjTq-r2t9cO-6y5Ig4EJW9txH_76G9nLUH2yo1&amp;t=638914652334897068"
+            type="text/javascript"></script>
+
+
+        <script
+            src="/ScriptResource.axd?d=evs7vHA0x1sFc_SYpgeqhcPd2kXTWsnh8Hqjtp6Gs7Mm_w_JYCrTbZ_ay63JWpCWaCQYgEk1TT8Bryb_KKNxT2gIapQXoMvbmIP6U74bDoOTwD2u_loFobZERxf0bNXphdqBsVKnDAxt0dR4sSNKpdSzFAtwaXkvKuVQGljH-fE1&amp;t=ffffffff9763f56e"
+            type="text/javascript"></script>
+        <script
+            src="/ScriptResource.axd?d=GCAtbkqNyybtOi3jhQhrJ_zpFj_IIjuyAkgJpsGTvq5gE40hOPwKILi30qVJcxnbrhSvfqsl9Ax9oO7ZZMEV3CW4vOvdbI1sfuB8xRLMPj-ax5MJoR6YNOnQlUg3oLQNWfyiJ9gSL58Yv84wQ5scnfyymc9C5JB5k-VudFU-8D8SFn55T5ziPipVpl6Ccfv20&amp;t=ffffffff9763f56e"
+            type="text/javascript"></script>
+        <div>
+
+            <input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="C1F6A25C">
+            <input type="hidden" name="__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="">
+        </div>
+        <script type="text/javascript">
+            //<![CDATA[
+            Sys.WebForms.PageRequestManager._initialize('ScriptManager', 'form1', ['tUpdatePanel1', '', 'tUpdatePanel2', ''], [], [], 90, '');
+            //]]>
+        </script>
+
+        <table cellspacing="0" cellpadding="0" align="center" border="0" style="width: 100%; height: 100%">
+            <tbody>
+                <tr valign="top">
+                    <td>
+                        <table cellspacing="0" cellpadding="0" width="100%" align="center" border="0">
+                            <tbody>
+                                <tr>
+                                    <td>
+                                        <div id="ProfileInfo">
+                                            <table cellspacing="0" cellpadding="0" border="0" align="center"
+                                                class="Border_Left Border_Right Background_ProfileInfo"
+                                                style="width: 198px; height: 66px;">
+                                                <tbody>
+                                                    <tr style="height: 25px;" align="center">
+                                                        <td style="width: 10px">&nbsp;</td>
+                                                        <td align="left" class="PanelBalanceUS">v08c1bs8s1...</td>
+                                                        <td align="right">
+                                                            <div class="PanelBalanceRef"
+                                                                onclick="window.open('Panel.aspx', 'fraPanel'); return false;">
+                                                            </div>
+                                                        </td>
+                                                        <td style="width: 10px">&nbsp;</td>
+                                                    </tr>
+                                                    <tr class="Box_1" align="center">
+                                                        <td width="10px">&nbsp;</td>
+                                                        <td align="left" class="CurrencyBold">Số dư</td>
+                                                        <td align="right" class="Bold"><label id="lblCredit"
+                                                                style="display: inline;">0.00</label></td>
+                                                        <td width="10px">&nbsp;</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="4" style="height: 8px"></td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div id="ProfileInfoSwitch"></div>
+                                    </td>
+                                </tr>
+
+                                <!-------------------------- Button redirect m8hg member BEGIN ------------------------->
+
+                                <!-------------------------- Button redirect m8hg member END ------------------------->
+
+                                <!-------------------------- Button Event BEGIN ------------------------->
+                                <tr>
+                                    <td>
+                                        <div id="Event">
+                                            <table cellpadding="0" cellspacing="0" border="0" align="center"
+                                                class="Border_Left Border_Right">
+                                                <tbody>
+                                                    <tr align="left">
+                                                        <td><a href="../_View/RMOdds1.aspx?ot=t&amp;isWC=1&amp;ia=2"
+                                                                target="fraMain" title="FIFA WORLD CUP 26"><img
+                                                                    src="../Images/v1/images/panel/event.png?321"
+                                                                    style="cursor: pointer; width: 196px; height: 54px"></a>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div id="EventSwitch"></div>
+                                    </td>
+                                </tr>
+                                <!-------------------------- Button Event END ------------------------->
+
+                                <!-------------------------- Menu Game BEGIN ------------------------->
+
+                                <!-------------------------- Menu Game END ------------------------->
+
+                                <tr>
+                                    <td>
+                                        <div id="EventFavourite"></div>
+                                        <div id="EventFavouriteSwitch"></div>
+                                    </td>
+                                </tr>
+
+                                <tr>
+                                    <td>
+                                        <div id="MyFavourite">
+                                            <table align="center" cellpadding="0" cellspacing="0" border="0"
+                                                class="Border_Left Border_Right Background_MyFavourite">
+                                                <tbody>
+                                                    <tr align="left">
+                                                        <td style="height:3px"></td>
+                                                    </tr>
+                                                    <tr align="left">
+                                                        <td style="cursor: pointer;" width="196px" height="25px"
+                                                            onclick="Toggle('favoriteItem');" class="MyFavorite"><a>Mục
+                                                                ưa thích của tôi</a></td>
+                                                    </tr>
+                                                    <tr id="favoriteItem" style="display: none;">
+                                                        <td>
+                                                            <table align="center" cellpadding="0" cellspacing="0"
+                                                                border="0" class="MyFavorite_item_bg">
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td></td>
+                                                                    </tr>
+                                                                    <tr align="left">
+                                                                        <td style="cursor: pointer;" width="196px"
+                                                                            height="25px"
+                                                                            onclick="window.open('../_View/RMOdds1.aspx?ot=t&amp;isSiteFav=true','fraMain');"
+                                                                            class="MyFavorite_item">
+                                                                            <div class="IconRight"></div><a
+                                                                                style="margin-left: 30px;">Bóng đá</a>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr align="left">
+                                                                        <td style="cursor: pointer;" width="196px"
+                                                                            height="25px"
+                                                                            onclick="window.open('../_View/RMOdds9.aspx?ot=t&amp;isSiteFav=true','fraMain');"
+                                                                            class="MyFavorite_item">
+                                                                            <div class="IconRight"></div><a
+                                                                                style="margin-left: 30px;">Bóng rổ</a>
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="height: 3px"></td>
+                                                        <td></td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div id="MyFavouriteSwitch"></div>
+                                    </td>
+                                </tr>
+
+                                <!-------------------------- JSonBetBox BEGIN ------------------------->
+                                <tr valign="top">
+                                    <td>
+                                        <div id="tableBetBox"></div>
+                                        <div id="tableBetBoxSwitch"></div>
+                                        <div id="tableBetBoxPar"></div>
+                                    </td>
+                                </tr>
+                                <!------------------------------- JSonBetBox END ------------------------->
+
+                                <!------------------------------- SportsMenu BEGIN ------------------------->
+                                <tr>
+                                    <td align="center">
+                                        <div id="tablePanelSportsMenu">
+                                            <table align="center" cellpadding="0" cellspacing="0" border="0"
+                                                class="Border_SportsMenu">
+                                                <tbody>
+                                                    <tr align="center">
+                                                        <td valign="bottom">
+                                                            <table border="0" cellpadding="0" cellspacing="0"
+                                                                style="width: 196px; height: 26px;"
+                                                                class="Background_SportsMenu">
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td id="tdHideMenu"
+                                                                            onclick="toggleSportsMenuAll();"
+                                                                            class="SportsMenu" style=""><a
+                                                                                style="margin-left: 30px;">Hide Sports
+                                                                                Menu</a></td>
+                                                                        <td id="tdShowMenu"
+                                                                            onclick="toggleSportsMenuAll();"
+                                                                            class="SportsMenu" style="display: none;"><a
+                                                                                style="margin-left: 30px;">Show Sports
+                                                                                Menu</a></td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                    <tr id="trToggleOtMenu">
+                                                        <td>
+                                                            <table border="0" cellpadding="0" cellspacing="0"
+                                                                style="width: 196px; height: 100%; text-align: center;">
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td class="Early_Today_Live1" runat="server"
+                                                                            id="tdEarly" onclick="toggleOtMenu('e')">
+                                                                            <span>Sớm</span></td>
+                                                                        <td class="Early_Today_Live2" runat="server"
+                                                                            id="tdToday" onclick="toggleOtMenu('t')">
+                                                                            <span>Hôm nay</span></td>
+                                                                        <td class="Early_Today_Live1" runat="server"
+                                                                            id="tdLive" onclick="toggleOtMenu('r')">
+                                                                            <span>Trực tiếp</span>&nbsp;<label
+                                                                                id="lblRunCnt"
+                                                                                style="display: inline;">45</label></td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td align="center">
+                                                            <table border="0" cellpadding="0" cellspacing="0"
+                                                                style="width: 196px; height: 100%">
+                                                                <tbody>
+                                                                    <tr class="SportsMenuBg">
+                                                                        <td align="center">
+                                                                            <div id="tableSportsMenu">
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuSoccer'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuSoccer"
+                                                                                                    class="Soccer_active">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng đá</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right">
+                                                                                                <div class="live-pill"
+                                                                                                    aria-live="polite"
+                                                                                                    role="status"><span
+                                                                                                        class="dot"
+                                                                                                        aria-hidden="true"></span><span
+                                                                                                        class="txt">LIVE</span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                352</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuSoccer" style="display:;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds1.aspx?ot=t"
+                                                                                                        target="fraMain">Tỉ
+                                                                                                        lệ Châu Á</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">154
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds5.aspx?ot=t"
+                                                                                                        target="fraMain">FT/FH
+                                                                                                        1X2 Đơn/
+                                                                                                        chẳn</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">25
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds4.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">16
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsPas1.aspx?ot=t"
+                                                                                                        target="fraMain">Thái
+                                                                                                        hôn hợp</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">16
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsDC.aspx?ot=t"
+                                                                                                        target="fraMain">Cược
+                                                                                                        Đôi</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">4</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMCSROdds.aspx?ot=t"
+                                                                                                        target="fraMain">FT/FH
+                                                                                                        Tỉ số Chính
+                                                                                                        xác</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">16
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsTG.aspx?ot=t"
+                                                                                                        target="fraMain">FT/FH
+                                                                                                        Tổng số bàn
+                                                                                                        thắng</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">4</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsHTFT.aspx?ot=t"
+                                                                                                        target="fraMain">Nửa
+                                                                                                        trận / Toàn
+                                                                                                        trận</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">4</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsFGLG.aspx?ot=t"
+                                                                                                        target="fraMain">FT/FH
+                                                                                                        FGLG</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">8</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds50.aspx?ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">105
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuPerdana3D'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuPerdana3D"
+                                                                                                    class="Perdana3D">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Perdana
+                                                                                                    3D</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right">
+                                                                                                <div class="live-pill"
+                                                                                                    aria-live="polite"
+                                                                                                    role="status"><span
+                                                                                                        class="dot"
+                                                                                                        aria-hidden="true"></span><span
+                                                                                                        class="txt">LIVE</span>
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                61</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuPerdana3D"
+                                                                                    style="display: none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsPerAllMkt.aspx?ot=t"
+                                                                                                        target="fraMain">BSOE
+                                                                                                        &amp;
+                                                                                                        AT/STRAIGHT</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">25
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsPer3D.aspx?ot=t"
+                                                                                                        target="fraMain">3D</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">12
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/Per3DDOdds1.aspx?ot=t"
+                                                                                                        target="fraMain">1D
+                                                                                                        &amp; 2D</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">24
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenu4DSpecials'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenu4DSpecials"
+                                                                                                    class="_4DSpecials">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Đặc biệt
+                                                                                                    4D</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                115</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenu4DSpecials"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds4D.aspx?ot=t"
+                                                                                                        target="fraMain">3D,
+                                                                                                        4D Lớn/Nhỏ &amp;
+                                                                                                        Lẻ/chẳn</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">87
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds87.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/DOdds1.aspx?ot=t"
+                                                                                                        target="fraMain">1D
+                                                                                                        &amp; 2D</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">28
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuBasketball'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuBasketball"
+                                                                                                    class="Basketball">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng rổ</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                66</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuBasketball"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds9.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">30
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds10.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">12
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=31&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">24
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuBaseball'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuBaseball"
+                                                                                                    class="Baseball">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng
+                                                                                                    chày</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                19</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuBaseball"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds29.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=39&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">19
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuESport'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuESport"
+                                                                                                    class="ESport">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">E-Sport</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                10</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuESport"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsEspAll.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">9</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=101&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">1</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuHuayThai'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuHuayThai"
+                                                                                                    class="HuayThai">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Vé Số
+                                                                                                    (TH,VN,LAOS)</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                24</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuHuayThai"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMHT2Odds1D.aspx?ot=t&amp;gameCatId=11"
+                                                                                                        target="fraMain">1D
+                                                                                                        Game</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">9</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMHT2Odds2D.aspx?ot=t&amp;gameCatId=11"
+                                                                                                        target="fraMain">2D
+                                                                                                        Game</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">7</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMHT2Odds3D.aspx?ot=t&amp;gameCatId=11"
+                                                                                                        target="fraMain">3D
+                                                                                                        Game</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">8</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuSnooker'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuSnooker"
+                                                                                                    class="Snooker">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Snooker</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                3</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuSnooker"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds11.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=32&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">3</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuTennis'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuTennis"
+                                                                                                    class="Tennis">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Tennis</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                20</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuTennis"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds21.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">12
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds66.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=36&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">8</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuVolleyball'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuVolleyball"
+                                                                                                    class="Volleyball">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng
+                                                                                                    chuyền</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                3</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuVolleyball"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds23.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=62&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">3</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuHandball'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuHandball"
+                                                                                                    class="Handball">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng
+                                                                                                    ném</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                2</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuHandball"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds41.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds42.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=43&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">2</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuIceHoc'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuIceHoc"
+                                                                                                    class="IceHockey">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Khúc côn
+                                                                                                    cầu trên băng</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                24</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuIceHoc"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds14.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds15.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=33&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">24
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuRugby'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuRugby"
+                                                                                                    class="Rugby"></div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng bầu
+                                                                                                    dục</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                12</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuRugby"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds17.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds18.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=34&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">12
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuUsfootball'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuUsfootball"
+                                                                                                    class="USFootball">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Bóng đá
+                                                                                                    Mỹ</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                13</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuUsfootball"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds12.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds13.aspx?ot=t"
+                                                                                                        target="fraMain">Xiên</a>
+                                                                                                </td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=30&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">13
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuMotorSports'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuMotorSports"
+                                                                                                    class="MotorSports">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Đua xe</a>
+                                                                                            </td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                13</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuMotorSports"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOddsOut.aspx?g=46&amp;ot=t"
+                                                                                                        target="fraMain">Đội
+                                                                                                        vô địch</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">13
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds49.aspx?ot=t"
+                                                                                                        target="fraMain">Đối
+                                                                                                        đầu</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">0</td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                                <table border="0" cellpadding="1"
+                                                                                    cellspacing="0" width="100%"
+                                                                                    onclick="toggleSportsMenu('SMenuSuperCombo'); return false;"
+                                                                                    class="SpMenuHeaderBg">
+                                                                                    <tbody>
+                                                                                        <tr style="height:25px">
+                                                                                            <td width="15px"
+                                                                                                align="center">
+                                                                                                <div id="imgSMenuSuperCombo"
+                                                                                                    class="SuperCombo">
+                                                                                                </div>
+                                                                                            </td>
+                                                                                            <td width="*"
+                                                                                                class="SpMenuHeader"><a
+                                                                                                    class="SpMenuHeader"
+                                                                                                    href="#">Super
+                                                                                                    Combo</a></td>
+                                                                                            <td width="30px"
+                                                                                                align="right"
+                                                                                                class="SpMenuHeader SpCnt">
+                                                                                                31</td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <div id="SMenuSuperCombo"
+                                                                                    style="display:none;">
+                                                                                    <table border="0" cellpadding="1"
+                                                                                        cellspacing="0" width="100%"
+                                                                                        class="SpMenuItem">
+                                                                                        <tbody>
+                                                                                            <tr>
+                                                                                                <td width="15px"
+                                                                                                    align="center">
+                                                                                                    &nbsp;</td>
+                                                                                                <td width="*"><a
+                                                                                                        href="../_View/RMOdds99.aspx?ot=t"
+                                                                                                        target="fraMain">Tất
+                                                                                                        cả các thị
+                                                                                                        trường</a></td>
+                                                                                                <td width="30px"
+                                                                                                    align="right"
+                                                                                                    class="SpCnt">31
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <!------------------------------- SportsMenu END ------------------------->
+
+                                <!------------------------------- (Switch m8) SportsMenu In-Play BEGIN ------------------------->
+                                <tr>
+                                    <td align="center">
+                                        <div id="tablePanelSportsMenuInPlay"></div>
+                                    </td>
+                                </tr>
+                                <!------------------------------- SportsMenu END ------------------------->
+
+                                <!------------------------------- (Switch m8) SportsMenu Today BEGIN ------------------------->
+                                <tr>
+                                    <td align="center">
+                                        <div id="tablePanelSportsMenuToday"></div>
+                                    </td>
+                                </tr>
+                                <!------------------------------- SportsMenu END ------------------------->
+
+
+
+                                <!------------------------------- PanelStake (BetList) BEGIN ------------------------->
+                                <tr id="trStake">
+                                    <td align="center">
+                                        <div id="tableHeaderStake">
+                                            <table align="center" cellpadding="0" cellspacing="0" border="0"
+                                                class="Border_Left Border_Right">
+                                                <tbody>
+                                                    <tr align="left">
+                                                        <td>
+                                                            <table border="0" cellpadding="0" cellspacing="0"
+                                                                style="width: 196px; height: 26px;"
+                                                                class="Background_BetMini">
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td class="Wait_Cancel"
+                                                                            style="width: 196px; height: 28px"><a
+                                                                                style="margin-left: 30px;"><label
+                                                                                    id="lblStake">Bet Mini</label></a>
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td align="center" style="width: 196px">
+                                                            <table border="0" cellpadding="0" cellspacing="0"
+                                                                class="PanelItemBg" style="width: 100%; height: 100%;">
+                                                                <tbody>
+                                                                    <tr style="height: 5px;">
+                                                                        <td></td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td align="center" style="display: flex">
+                                                                            <div class="WaitingBet_Void" id="btnWait"
+                                                                                onclick="toggleStake('wait')">Cược Chờ
+                                                                            </div>
+                                                                            <div class="WaitingBet_Void" id="btnLast"
+                                                                                onclick="toggleStake('last')"
+                                                                                style="display: none;">Bảng Cược (Mini)
+                                                                            </div>
+                                                                            <div class="WaitingBet_Void" id="btnVoid"
+                                                                                onclick="toggleStake('void')">Hủy</div>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr style="height: 6px;">
+                                                                        <td></td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td>
+                                                                            <div id="tableStake" style="display: none">
+                                                                                <table style="display:none;">
+                                                                                    <tbody>
+                                                                                        <tr style="display:none;">
+                                                                                            <td>StAtUs=0</td>
+                                                                                        </tr>
+                                                                                        <tr style="display:none;">
+                                                                                            <td>
+                                                                                                <creditstart>0.00
+                                                                                                    <creditend>
+                                                                                                    </creditend>
+                                                                                                </creditstart>
+                                                                                            </td>
+                                                                                            <td>
+                                                                                                <balancestart>0.00
+                                                                                                    <balanceend>
+                                                                                                    </balanceend>
+                                                                                                </balancestart>
+                                                                                            </td>
+                                                                                            <td>
+                                                                                                <igcreditstart>0.00
+                                                                                                    <igcreditend>
+                                                                                                    </igcreditend>
+                                                                                                </igcreditstart>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                                <table class="StakeBg1" border="0"
+                                                                                    width="100%" cellpadding="0"
+                                                                                    cellspacing="0">
+                                                                                    <tbody>
+                                                                                        <tr>
+                                                                                            <td>
+                                                                                                <table
+                                                                                                    class="GridItem StakeBg2 PanelStakeGrid"
+                                                                                                    width="100%"
+                                                                                                    cellpadding="3"
+                                                                                                    cellspacing="0">
+                                                                                                    <tbody>
+                                                                                                        <tr>
+                                                                                                            <td
+                                                                                                                align="center">
+                                                                                                                No
+                                                                                                                waiting
+                                                                                                                bet(s)
+                                                                                                            </td>
+                                                                                                        </tr>
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+                                                                            <div id="tableStake2" style="display: none">
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div id="tableHeaderStakeSwitch"></div>
+                                    </td>
+                                </tr>
+                                <!-------------------------------- PanelStake (BetList) END ------------------------------------>
+
+
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="height: 20px;"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <script
+            language="javascript">showPanel(); getStake(); periodUpdateStake('r=552704869', 10); getSportsMenu('t'); PeriodUpdateSportsMenu(600)</script>
+
+    </form>
+    <div class="ui-widget-overlay" style="display: none"></div>
+    <script defer=""
+        src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496"
+        integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ=="
+        data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;3547a82e98694f149da1d13669a09fbc&quot;,&quot;r&quot;:1,&quot;server_timing&quot;:{&quot;name&quot;:{&quot;cfCacheStatus&quot;:true,&quot;cfEdge&quot;:true,&quot;cfExtPri&quot;:true,&quot;cfL4&quot;:true,&quot;cfOrigin&quot;:true,&quot;cfSpeedBrain&quot;:true},&quot;location_startswith&quot;:null}}"
+        crossorigin="anonymous"></script>
+
+
+</body><ddict-div style="visibility: visible !important;"></ddict-div>
+
+</html>

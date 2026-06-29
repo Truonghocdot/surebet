@@ -1,9 +1,18 @@
 GO ?= go
 
-.PHONY: build tidy test deps-audit deps-why-all deps-why-json deps-runtime-json
+.PHONY: build tidy test migrate seed cleanup deps-audit deps-why-all deps-why-json deps-runtime-json
 
 build:
 	$(GO) build ./...
+
+migrate:
+	$(GO) run ./cmd/migrate
+
+seed:
+	$(GO) run ./cmd/seed
+
+cleanup:
+	$(GO) run ./cmd/cleanup
 
 tidy:
 	$(GO) mod tidy
@@ -27,4 +36,3 @@ deps-why-json:
 
 deps-runtime-json:
 	@$(GO) list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./... | sort -u | rg 'github.com/(bytedance/sonic|goccy/go-json|json-iterator/go)' || true
-

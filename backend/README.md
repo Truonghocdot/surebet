@@ -15,6 +15,19 @@ Backend được tổ chức theo ranh giới clean architecture:
 
 Hiện chưa có business logic. Toàn bộ package được tổ chức theo hướng interface-first và sẵn sàng để gắn adapter thực tế.
 
+## Vận hành dữ liệu
+
+Các lệnh vận hành DB đã được tách riêng:
+
+- `go run ./cmd/migrate`
+  - Chỉ migrate schema PostgreSQL
+- `go run ./cmd/seed`
+  - Seed dữ liệu dev mặc định
+- `go run ./cmd/cleanup`
+  - Chạy migrate/cleanup one-off cho dữ liệu bookmaker legacy
+
+API runtime không còn tự seed dữ liệu khi khởi động.
+
 ## Chính sách dependency
 
 - Giữ dependency trực tiếp ở mức tối thiểu và chỉ thêm khi đã có use case thật sự

@@ -5,14 +5,23 @@
   "workspaces": [
     "shared",
     "bookmaker-a",
-    "bookmaker-b-lobby1",
-    "bookmaker-b-lobby2",
-    "bookmaker-b-lobby3"
+    "jun88-ibc",
+    "jun88-bti",
+    "jun88-cmd",
+    "jun88-m8"
   ],
   "scripts": {
+    "bootstrap:jun88": "tsx scripts/jun88-manual-bootstrap.ts",
+    "test:bti-parser": "tsx scripts/test-bti-parser.ts",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^24.3.0",
+    "jsdom": "^26.1.0",
+    "playwright": "^1.54.2",
+    "tsx": "^4.20.5"
   }
 }
-

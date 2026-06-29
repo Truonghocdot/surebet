@@ -1,4 +1,4 @@
-import path from "node:path";
+import { access } from "node:fs/promises";
 import type {
   BookmakerSetting,
   Jun88LobbyAccess,
@@ -19,20 +19,16 @@ export class Jun88SessionBootstrapper implements SessionBootstrapper {
   async prepare(setting: BookmakerSetting): Promise<SessionState> {
     const existing = await this.options.stateStore.read("jun88");
     if (existing) {
+      await access(existing.storageStatePath);
       return existing;
     }
 
-    const preparedState: SessionState = {
-      bookmakerCode: "jun88",
-      originURL: setting.url,
-      bootstrapMode: "manual",
-      preparedAt: new Date().toISOString(),
-      storageStatePath: path.resolve(this.options.storageStatePath),
-      accessibleLobbies: this.options.lobbies.map((item) => item.lobbyId)
-    };
-
-    await this.options.stateStore.write(preparedState);
-    return preparedState;
+    throw new Error(
+      [
+        `Jun88 shared session is missing for ${setting.bookmakerName}.`,
+        "Run the manual bootstrap script first to create a storage state file.",
+        "Suggested command: npm run bootstrap:jun88"
+      ].join(" ")
+    );
   }
 }
-
