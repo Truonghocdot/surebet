@@ -1,14 +1,17 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchAccounts,
+  fetchBookmakerSettings,
   fetchDashboardSnapshot,
   fetchFeatureFlags,
   fetchOpportunities,
   fetchOrders,
-  fetchRiskCheckpoints
+  fetchRiskCheckpoints,
+  updateBookmakerSetting
 } from "@/features/dashboard/api/mock-dashboard-api";
+import type { UpdateBookmakerSettingInput } from "@/features/dashboard/schemas/crm-schemas";
 
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
@@ -16,7 +19,8 @@ export const crmQueryKeys = {
   orders: ["crm", "orders"] as const,
   accounts: ["crm", "accounts"] as const,
   risk: ["crm", "risk"] as const,
-  flags: ["crm", "flags"] as const
+  flags: ["crm", "flags"] as const,
+  settings: ["crm", "settings"] as const
 };
 
 export function useDashboardSnapshotQuery() {
@@ -58,6 +62,29 @@ export function useFeatureFlagsQuery() {
   return useQuery({
     queryKey: crmQueryKeys.flags,
     queryFn: fetchFeatureFlags
+  });
+}
+
+export function useBookmakerSettingsQuery() {
+  return useQuery({
+    queryKey: crmQueryKeys.settings,
+    queryFn: fetchBookmakerSettings
+  });
+}
+
+export function useUpdateBookmakerSettingMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: UpdateBookmakerSettingInput) =>
+      updateBookmakerSetting(payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: crmQueryKeys.settings }),
+        queryClient.invalidateQueries({ queryKey: crmQueryKeys.accounts }),
+        queryClient.invalidateQueries({ queryKey: crmQueryKeys.dashboard })
+      ]);
+    }
   });
 }
 

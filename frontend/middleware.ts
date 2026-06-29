@@ -34,6 +34,7 @@ export const config = {
     "/orders/:path*",
     "/accounts/:path*",
     "/risk/:path*",
-    "/feature-flags/:path*"
+    "/feature-flags/:path*",
+    "/settings/:path*"
   ]
 };

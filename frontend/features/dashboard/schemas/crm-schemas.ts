@@ -57,3 +57,27 @@ export type Order = z.infer<typeof orderSchema>;
 export type Account = z.infer<typeof accountSchema>;
 export type FeatureFlag = z.infer<typeof featureFlagSchema>;
 export type RiskCheckpoint = z.infer<typeof riskCheckpointSchema>;
+
+export const bookmakerSettingSchema = z.object({
+  bookmaker_code: z.string(),
+  bookmaker_name: z.string(),
+  url: z.string(),
+  username: z.string(),
+  password: z.string()
+});
+
+export const bookmakerSettingsResponseSchema = z.object({
+  data: z.array(bookmakerSettingSchema)
+});
+
+export const updateBookmakerSettingSchema = z.object({
+  bookmaker_code: z.string().min(1),
+  url: z.string().url("URL không hợp lệ."),
+  username: z.string().min(1, "Vui lòng nhập tên đăng nhập."),
+  password: z.string().min(1, "Vui lòng nhập mật khẩu.")
+});
+
+export type BookmakerSetting = z.infer<typeof bookmakerSettingSchema>;
+export type UpdateBookmakerSettingInput = z.infer<
+  typeof updateBookmakerSettingSchema
+>;

@@ -14,8 +14,8 @@ const bodyFont = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Surebet CRM",
-  description: "Đăng nhập và vận hành nền tảng surebet theo kiểu CRM"
+  title: "Surebet",
+  description: "Đăng nhập và vận hành nền tảng"
 };
 
 export default function RootLayout({

@@ -18,6 +18,10 @@ const (
 )
 
 func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHasher) error {
+	if err := migrateLegacyBookmakers(ctx, db); err != nil {
+		return err
+	}
+
 	user, err := ensureOperatorUser(ctx, db, hasher)
 	if err != nil {
 		return err
@@ -25,9 +29,9 @@ func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHashe
 
 	if _, err := ensureBookmaker(ctx, db, models.Bookmaker{
 		BaseModel:     models.BaseModel{ID: uuid.NewString()},
-		Code:          "bookmaker-a",
-		Name:          "Bookmaker A",
-		SiteURL:       "https://bookmaker-a.example.com",
+		Code:          "8xbet",
+		Name:          "8xbet",
+		SiteURL:       "https://8xbet.example.com",
 		Region:        "global",
 		IsEnabled:     true,
 		SupportsAuto:  true,
@@ -38,9 +42,9 @@ func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHashe
 
 	bookmakerB, err := ensureBookmaker(ctx, db, models.Bookmaker{
 		BaseModel:     models.BaseModel{ID: uuid.NewString()},
-		Code:          "bookmaker-b",
-		Name:          "Bookmaker B",
-		SiteURL:       "https://bookmaker-b.example.com",
+		Code:          "jun88",
+		Name:          "jun88",
+		SiteURL:       "https://jun88.example.com",
 		Region:        "global",
 		IsEnabled:     true,
 		SupportsAuto:  false,
@@ -50,7 +54,7 @@ func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHashe
 		return err
 	}
 
-	bookmakerA, err := getBookmakerByCode(ctx, db, "bookmaker-a")
+	bookmakerA, err := getBookmakerByCode(ctx, db, "8xbet")
 	if err != nil {
 		return err
 	}
@@ -59,10 +63,10 @@ func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHashe
 		BaseModel:      models.BaseModel{ID: uuid.NewString()},
 		UserID:         user.ID,
 		BookmakerID:    bookmakerA.ID,
-		ExternalRef:    "bookmaker-a-primary",
-		Label:          "Bookmaker A Primary",
-		LoginUsername:  "bmka.ops.primary",
-		LoginPassword:  "DevBookmakerA123!",
+		ExternalRef:    "8xbet-primary",
+		Label:          "8xbet Primary",
+		LoginUsername:  "8xbet.ops.primary",
+		LoginPassword:  "Dev8xbet123!",
 		Currency:       "VND",
 		Balance:        25000,
 		AvailableStake: 6000,
@@ -75,10 +79,10 @@ func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHashe
 		BaseModel:      models.BaseModel{ID: uuid.NewString()},
 		UserID:         user.ID,
 		BookmakerID:    bookmakerB.ID,
-		ExternalRef:    "bookmaker-b-primary",
-		Label:          "Bookmaker B Primary",
-		LoginUsername:  "bmkb.ops.primary",
-		LoginPassword:  "DevBookmakerB123!",
+		ExternalRef:    "jun88-primary",
+		Label:          "jun88 Primary",
+		LoginUsername:  "jun88.ops.primary",
+		LoginPassword:  "DevJun88123!",
 		Currency:       "VND",
 		Balance:        18000,
 		AvailableStake: 4200,
@@ -90,17 +94,17 @@ func SeedDefaultData(ctx context.Context, db *gorm.DB, hasher auth.PasswordHashe
 	for _, configuration := range []models.Configuration{
 		{
 			BaseModel:   models.BaseModel{ID: uuid.NewString()},
-			Key:         "bookmaker.bookmaker-a.site_url",
+			Key:         "bookmaker.8xbet.site_url",
 			Value:       bookmakerA.SiteURL,
 			ValueType:   "string",
-			Description: "Default site URL for Bookmaker A",
+			Description: "Default site URL for 8xbet",
 		},
 		{
 			BaseModel:   models.BaseModel{ID: uuid.NewString()},
-			Key:         "bookmaker.bookmaker-b.site_url",
+			Key:         "bookmaker.jun88.site_url",
 			Value:       bookmakerB.SiteURL,
 			ValueType:   "string",
-			Description: "Default site URL for Bookmaker B",
+			Description: "Default site URL for jun88",
 		},
 		{
 			BaseModel:   models.BaseModel{ID: uuid.NewString()},
@@ -225,4 +229,141 @@ func getBookmakerByCode(ctx context.Context, db *gorm.DB, code string) (models.B
 	var bookmaker models.Bookmaker
 	err := db.WithContext(ctx).Where("code = ?", code).First(&bookmaker).Error
 	return bookmaker, err
+}
+
+func migrateLegacyBookmakers(ctx context.Context, db *gorm.DB) error {
+	type legacyMapping struct {
+		oldCode        string
+		newCode        string
+		newName        string
+		newURL         string
+		oldExternalRef string
+		newExternalRef string
+		newLabel       string
+		oldConfigKey   string
+		newConfigKey   string
+	}
+
+	mappings := []legacyMapping{
+		{
+			oldCode:        "bookmaker-a",
+			newCode:        "8xbet",
+			newName:        "8xbet",
+			newURL:         "https://8xbet.example.com",
+			oldExternalRef: "bookmaker-a-primary",
+			newExternalRef: "8xbet-primary",
+			newLabel:       "8xbet Primary",
+			oldConfigKey:   "bookmaker.bookmaker-a.site_url",
+			newConfigKey:   "bookmaker.8xbet.site_url",
+		},
+		{
+			oldCode:        "bookmaker-b",
+			newCode:        "jun88",
+			newName:        "jun88",
+			newURL:         "https://jun88.example.com",
+			oldExternalRef: "bookmaker-b-primary",
+			newExternalRef: "jun88-primary",
+			newLabel:       "jun88 Primary",
+			oldConfigKey:   "bookmaker.bookmaker-b.site_url",
+			newConfigKey:   "bookmaker.jun88.site_url",
+		},
+	}
+
+	for _, mapping := range mappings {
+		var legacyBookmaker models.Bookmaker
+		if err := db.WithContext(ctx).Where("code = ?", mapping.oldCode).First(&legacyBookmaker).Error; err == nil {
+			var modernBookmaker models.Bookmaker
+			err = db.WithContext(ctx).Where("code = ?", mapping.newCode).First(&modernBookmaker).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				legacyBookmaker.Code = mapping.newCode
+				legacyBookmaker.Name = mapping.newName
+				legacyBookmaker.SiteURL = mapping.newURL
+				if saveErr := db.WithContext(ctx).Save(&legacyBookmaker).Error; saveErr != nil {
+					return saveErr
+				}
+				modernBookmaker = legacyBookmaker
+			} else if err == nil {
+				if mergeErr := db.WithContext(ctx).Model(&models.Account{}).
+					Where("bookmaker_id = ?", legacyBookmaker.ID).
+					Update("bookmaker_id", modernBookmaker.ID).Error; mergeErr != nil {
+					return mergeErr
+				}
+
+				if deleteErr := db.WithContext(ctx).Delete(&legacyBookmaker).Error; deleteErr != nil {
+					return deleteErr
+				}
+			} else {
+				return err
+			}
+		}
+
+		var legacyAccount models.Account
+		if err := db.WithContext(ctx).Where("external_ref = ?", mapping.oldExternalRef).First(&legacyAccount).Error; err == nil {
+			var modernAccount models.Account
+			err = db.WithContext(ctx).Where("external_ref = ?", mapping.newExternalRef).First(&modernAccount).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				legacyAccount.ExternalRef = mapping.newExternalRef
+				legacyAccount.Label = mapping.newLabel
+				if saveErr := db.WithContext(ctx).Save(&legacyAccount).Error; saveErr != nil {
+					return saveErr
+				}
+			} else if err == nil {
+				if modernAccount.LoginUsername == "" {
+					modernAccount.LoginUsername = legacyAccount.LoginUsername
+				}
+				if modernAccount.LoginPassword == "" {
+					modernAccount.LoginPassword = legacyAccount.LoginPassword
+				}
+				if modernAccount.UserID == "" {
+					modernAccount.UserID = legacyAccount.UserID
+				}
+				if modernAccount.BookmakerID == "" {
+					modernAccount.BookmakerID = legacyAccount.BookmakerID
+				}
+				if modernAccount.Label == "" {
+					modernAccount.Label = mapping.newLabel
+				}
+				if modernAccount.Balance == 0 {
+					modernAccount.Balance = legacyAccount.Balance
+				}
+				if modernAccount.AvailableStake == 0 {
+					modernAccount.AvailableStake = legacyAccount.AvailableStake
+				}
+				if saveErr := db.WithContext(ctx).Save(&modernAccount).Error; saveErr != nil {
+					return saveErr
+				}
+				if deleteErr := db.WithContext(ctx).Delete(&legacyAccount).Error; deleteErr != nil {
+					return deleteErr
+				}
+			} else {
+				return err
+			}
+		}
+
+		var legacyConfig models.Configuration
+		if err := db.WithContext(ctx).Where("key = ?", mapping.oldConfigKey).First(&legacyConfig).Error; err == nil {
+			var modernConfig models.Configuration
+			err = db.WithContext(ctx).Where("key = ?", mapping.newConfigKey).First(&modernConfig).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				legacyConfig.Key = mapping.newConfigKey
+				legacyConfig.Description = "Default site URL for " + mapping.newName
+				if saveErr := db.WithContext(ctx).Save(&legacyConfig).Error; saveErr != nil {
+					return saveErr
+				}
+			} else if err == nil {
+				modernConfig.Value = legacyConfig.Value
+				modernConfig.Description = "Default site URL for " + mapping.newName
+				if saveErr := db.WithContext(ctx).Save(&modernConfig).Error; saveErr != nil {
+					return saveErr
+				}
+				if deleteErr := db.WithContext(ctx).Delete(&legacyConfig).Error; deleteErr != nil {
+					return deleteErr
+				}
+			} else {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

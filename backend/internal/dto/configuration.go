@@ -32,3 +32,18 @@ type ConfigurationView struct {
 	ValueType   string `json:"value_type"`
 	Description string `json:"description"`
 }
+
+type BookmakerSettingView struct {
+	BookmakerCode string `json:"bookmaker_code"`
+	BookmakerName string `json:"bookmaker_name"`
+	URL           string `json:"url"`
+	Username      string `json:"username"`
+	Password      string `json:"password"`
+}
+
+type UpdateBookmakerSettingRequest struct {
+	BookmakerCode string `json:"bookmaker_code" binding:"required"`
+	URL           string `json:"url" binding:"required,url"`
+	Username      string `json:"username" binding:"required"`
+	Password      string `json:"password" binding:"required"`
+}

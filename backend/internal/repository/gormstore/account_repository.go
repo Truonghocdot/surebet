@@ -23,6 +23,18 @@ func (r *AccountRepository) GetByID(ctx context.Context, id string) (models.Acco
 	return account, mapError(err)
 }
 
+func (r *AccountRepository) GetByExternalRef(ctx context.Context, externalRef string) (models.Account, error) {
+	var account models.Account
+	err := r.db.WithContext(ctx).Where("external_ref = ?", externalRef).First(&account).Error
+	return account, mapError(err)
+}
+
+func (r *AccountRepository) GetByExternalRefRaw(ctx context.Context, externalRef string) (models.Account, error) {
+	var account models.Account
+	err := r.db.WithContext(ctx).Where("external_ref = ?", externalRef).First(&account).Error
+	return account, err
+}
+
 func (r *AccountRepository) List(ctx context.Context) ([]models.Account, error) {
 	var accounts []models.Account
 	err := r.db.WithContext(ctx).Order("created_at asc").Find(&accounts).Error

@@ -56,6 +56,10 @@ func main() {
 			accountRepository,
 			configurationRepository,
 		),
+		ConfigWrite: configuration.NewSettingsService(
+			bookmakerRepository,
+			accountRepository,
+		),
 	})
 
 	log.Info("api service configured", "service", cfg.App.Name, "env", cfg.App.Env, "addr", server.Addr())

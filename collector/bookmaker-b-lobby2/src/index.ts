@@ -1,16 +1,12 @@
-import type { Collector, OddsSnapshot } from "@surebet/collector-shared/src/contracts.js";
+import {
+  createJun88LobbyCollector,
+  type Collector
+} from "@surebet/collector-shared";
 
-export class BookmakerBLobby2Collector implements Collector {
-  async collect(): Promise<OddsSnapshot> {
-    return {
-      source: {
-        collectorId: "bookmaker-b-lobby2",
-        bookmakerId: "bookmaker-b",
-        lobbyId: "lobby2"
-      },
-      collectedAt: new Date().toISOString(),
-      selections: []
-    };
+export class Jun88Lobby2Collector implements Collector {
+  private readonly base = createJun88LobbyCollector("jun88-lobby2", "lobby2");
+
+  async collect() {
+    return this.base.collect();
   }
 }
-

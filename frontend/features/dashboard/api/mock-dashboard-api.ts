@@ -1,5 +1,6 @@
 import {
   accountSchema,
+  bookmakerSettingsResponseSchema,
   dashboardSnapshotSchema,
   featureFlagSchema,
   opportunitySchema,
@@ -38,3 +39,13 @@ export async function fetchFeatureFlags() {
   return response.data.map((item: unknown) => featureFlagSchema.parse(item));
 }
 
+export async function fetchBookmakerSettings() {
+  const response = await crmHttp.get("/crm/settings");
+  const parsed = bookmakerSettingsResponseSchema.parse(response.data);
+  return parsed.data;
+}
+
+export async function updateBookmakerSetting(payload: unknown) {
+  const response = await crmHttp.put("/crm/settings", payload);
+  return response.data;
+}

@@ -22,6 +22,12 @@ func (r *BookmakerRepository) GetByCode(ctx context.Context, code string) (model
 	return bookmaker, mapError(err)
 }
 
+func (r *BookmakerRepository) GetByCodeRaw(ctx context.Context, code string) (models.Bookmaker, error) {
+	var bookmaker models.Bookmaker
+	err := r.db.WithContext(ctx).Where("code = ?", code).First(&bookmaker).Error
+	return bookmaker, err
+}
+
 func (r *BookmakerRepository) List(ctx context.Context) ([]models.Bookmaker, error) {
 	var bookmakers []models.Bookmaker
 	err := r.db.WithContext(ctx).Order("name asc").Find(&bookmakers).Error

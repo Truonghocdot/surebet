@@ -21,6 +21,7 @@ type Dependencies struct {
 	BetCommand   BetCommandService
 	FeatureQuery FeatureQueryService
 	ConfigQuery  ConfigQueryService
+	ConfigWrite  ConfigWriteService
 }
 
 type Server struct {

@@ -3,13 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "echo 'lint not configured yet'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^24.3.0",
     "typescript": "^5.9.2"
   }
 }
-

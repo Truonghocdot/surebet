@@ -78,20 +78,20 @@ export const orderTimelineSeed = [
 
 export const accountHealthSeed = [
   {
-    bookmaker: "Bookmaker A",
+    bookmaker: "8xbet",
     account: "VN Prime 01",
     balance: "$18,420",
     status: "Hoạt động"
   },
   {
-    bookmaker: "Bookmaker B",
-    account: "Lobby 2 - Alpha",
+    bookmaker: "jun88",
+    account: "jun88 Primary",
     balance: "$9,210",
     status: "Cần làm mới session"
   },
   {
-    bookmaker: "Bookmaker B",
-    account: "Lobby 3 - Delta",
+    bookmaker: "jun88",
+    account: "jun88 Reserve",
     balance: "$11,045",
     status: "Hoạt động"
   }
@@ -110,7 +110,7 @@ export const featureFlagsSeed = [
   },
   {
     name: "BALANCE_CHECK",
-    scope: "bookmaker-b",
+    scope: "jun88",
     value: "ON"
   }
 ] as const;

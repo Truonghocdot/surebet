@@ -3,6 +3,7 @@ import {
   Activity,
   ArrowLeftRight,
   Building2,
+  Cog,
   Flag,
   ShieldCheck,
   TriangleAlert,
@@ -38,7 +39,7 @@ export const navigationItems: NavItem[] = [
   {
     label: "Tài khoản",
     href: "/accounts",
-    description: "Tài khoản bookmaker",
+    description: "Tài khoản",
     icon: Building2
   },
   {
@@ -52,5 +53,11 @@ export const navigationItems: NavItem[] = [
     href: "/feature-flags",
     description: "Công tắc runtime",
     icon: Flag
+  },
+  {
+    label: "Cấu hình",
+    href: "/settings",
+    description: "Thông tin truy cập",
+    icon: Cog
   }
 ];

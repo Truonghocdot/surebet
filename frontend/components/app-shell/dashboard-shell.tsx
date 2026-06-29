@@ -32,7 +32,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
       <SessionHydrator user={user} />
 
       <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-[1600px] items-center justify-between gap-4 px-4 md:px-6">
+        <div className="mx-auto flex h-20 w-full items-center justify-between gap-4 px-4 md:px-6">
           <div className="flex items-center gap-3">
             <button
               aria-label="Toggle navigation"
@@ -71,7 +71,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1600px] gap-0">
+      <div className="mx-auto flex w-full gap-0">
         {mobileOpened ? (
           <button
             aria-label="Close navigation overlay"
@@ -92,10 +92,6 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
                 Bảng điều khiển vận hành
-              </p>
-              <p className="mt-3 font-display text-xl font-semibold leading-8">
-                Giám sát surebet, validation, execution và feature switch trong
-                một bảng điều khiển duy nhất.
               </p>
             </div>
 
@@ -138,10 +134,6 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
             <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,155,84,0.18),rgba(255,255,255,0.06))] p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
                 An toàn thời gian thực
-              </p>
-              <p className="mt-3 text-sm leading-7 text-white/78">
-                Auto bet vẫn phải qua validation pipeline và risk gate trước khi
-                được xếp hàng cho worker.
               </p>
             </div>
           </div>

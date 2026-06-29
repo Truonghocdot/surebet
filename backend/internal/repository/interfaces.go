@@ -17,6 +17,7 @@ type UserRepository interface {
 
 type AccountRepository interface {
 	GetByID(ctx context.Context, id string) (models.Account, error)
+	GetByExternalRef(ctx context.Context, externalRef string) (models.Account, error)
 	List(ctx context.Context) ([]models.Account, error)
 	ListByBookmaker(ctx context.Context, bookmakerID string) ([]models.Account, error)
 	Upsert(ctx context.Context, account models.Account) error
