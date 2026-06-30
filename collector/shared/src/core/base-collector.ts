@@ -24,10 +24,9 @@ export class BaseCollector implements Collector {
 
   async collect() {
     const setting = await this.deps.settings.getBookmakerSetting(this.bookmakerCode);
-    const session =
-      this.bookmakerCode === "jun88" && this.deps.sessionBootstrapper
-        ? await this.deps.sessionBootstrapper.prepare(setting)
-        : undefined;
+    const session = this.deps.sessionBootstrapper
+      ? await this.deps.sessionBootstrapper.prepare(setting)
+      : undefined;
 
     return this.runtime.collect({
       setting,
@@ -41,10 +40,9 @@ export class BaseCollector implements Collector {
     }
 
     const setting = await this.deps.settings.getBookmakerSetting(this.bookmakerCode);
-    const session =
-      this.bookmakerCode === "jun88" && this.deps.sessionBootstrapper
-        ? await this.deps.sessionBootstrapper.prepare(setting)
-        : undefined;
+    const session = this.deps.sessionBootstrapper
+      ? await this.deps.sessionBootstrapper.prepare(setting)
+      : undefined;
 
     return this.runtime.stream(
       {

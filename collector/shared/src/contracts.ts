@@ -56,6 +56,7 @@ export type SessionState = {
   sessionStoragePath?: string;
   accessibleLobbies: LobbyCode[];
   visitedOrigins?: string[];
+  lobbyURLs?: Partial<Record<LobbyCode, string>>;
 };
 
 export type Jun88LobbyAccess = {

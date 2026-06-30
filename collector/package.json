@@ -10,7 +10,7 @@
     "jun88-cmd",
     "jun88-m8"
   ],
-  "scripts": {
+  "scripts": { 
     "bootstrap:8xbet": "tsx scripts/eightxbet-manual-bootstrap.ts",
     "bootstrap:jun88": "tsx scripts/jun88-manual-bootstrap.ts",
     "run:8xbet-worker": "tsx scripts/run-eightxbet-worker.ts",

@@ -19,6 +19,6 @@ export const JUN88_LOBBIES: Jun88LobbyAccess[] = [
   {
     lobbyId: "m8",
     launchURL: "https://www.jun888e.ren/vi-vn/sports-landing/m8",
-    expectedOriginPatterns: ["m9ongm9.com", "tdgr008d."]
+    expectedOriginPatterns: ["m9ongm9.com", "tdgr008d.", "mywinday.com", "odds.mywinday.com"]
   }
 ];

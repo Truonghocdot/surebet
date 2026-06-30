@@ -17,9 +17,10 @@ export async function writeDebugArtifacts(page: Page, tag: string) {
     fullPage: true
   }).catch(() => undefined);
 
-  await writeFile(path.join(debugDir, `${safeTag}.html`), await page.content(), "utf8").catch(
-    () => undefined
-  );
+  const html = await page.content().catch(() => "");
+  if (html) {
+    await writeFile(path.join(debugDir, `${safeTag}.html`), html, "utf8").catch(() => undefined);
+  }
 }
 
 export function formatError(error: unknown) {

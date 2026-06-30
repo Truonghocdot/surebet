@@ -1,5 +1,5 @@
 import path from "node:path";
-import { chromium, type Page } from "playwright-extra";
+import { chromium, type BrowserContext, type Page } from "playwright-extra";
 import {
   BackendSettingsProvider,
   FileSessionStateStore,
@@ -29,8 +29,30 @@ async function main() {
   });
 
   const context = await browser.newContext({
-    // Keep mobile-ish layout sizing without forcing a mismatched UA fingerprint.
-    viewport: { width: 1400, height: 900 }
+    viewport: { width: 1400, height: 900 },
+    locale: "vi-VN",
+    timezoneId: "Asia/Ho_Chi_Minh",
+    extraHTTPHeaders: {
+      "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
+    }
+  });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "language", {
+      configurable: true,
+      get: () => "vi-VN"
+    });
+    Object.defineProperty(navigator, "languages", {
+      configurable: true,
+      get: () => ["vi-VN", "vi", "en-US", "en"]
+    });
+    try {
+      window.localStorage.setItem("i18nextLng", "vi-VN");
+      window.localStorage.setItem("language", "vi-VN");
+      window.localStorage.setItem("lang", "vi-VN");
+      window.sessionStorage.setItem("i18nextLng", "vi-VN");
+      window.sessionStorage.setItem("language", "vi-VN");
+      window.sessionStorage.setItem("lang", "vi-VN");
+    } catch {}
   });
   const page = await context.newPage();
 
@@ -39,22 +61,72 @@ async function main() {
   await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
 
   const loginAttempted = await tryAutoLogin(page, setting.username, setting.password);
+  const autoLoginSucceeded = await waitForSportEvents(page, 12_000);
 
   console.log("");
   console.log("=== 8xbet manual bootstrap ===");
   console.log(`Backend URL: ${backendURL}`);
   console.log(`Target URL: ${page.url()}`);
   console.log("");
-  if (loginAttempted) {
+  if (autoLoginSucceeded) {
+    console.log("Đã phát hiện redirect sang /sportEvents, coi như login thành công tự động.");
+  } else if (loginAttempted) {
     console.log("Script đã thử mở flow login và điền credential tự động.");
   } else {
     console.log("Script chưa thấy đủ flow login động để tự submit.");
   }
-  console.log("Nếu Cloudflare/challenge xuất hiện, hãy hoàn tất thủ công ngay trên trình duyệt.");
-  console.log("Sau khi bạn đã vào được site hoặc tới trang sau-login mong muốn, nhấn ENTER ở terminal này.");
+  if (!autoLoginSucceeded) {
+    console.log("Nếu Cloudflare/challenge xuất hiện, hãy hoàn tất thủ công ngay trên trình duyệt.");
+    console.log("Sau khi bạn đã vào được site hoặc tới trang sau-login mong muốn, nhấn ENTER ở terminal này.");
+    await waitForEnter();
+  }
 
-  await waitForEnter();
+  await persistEightXBetSession(context, page, stateStore, storageStatePath, sessionStoragePath);
 
+  console.log("");
+  console.log("Đã lưu xong session 8xbet.");
+  console.log(`Storage state: ${storageStatePath}`);
+  console.log(`Session storage: ${sessionStoragePath}`);
+  console.log("Visited URLs:");
+  for (const currentPage of context.pages()) {
+    console.log(`- ${currentPage.url()}`);
+  }
+
+  console.log("");
+  console.log("Bạn có thể đóng trình duyệt thủ công hoặc nhấn CTRL+C.");
+}
+
+async function waitForEnter() {
+  await new Promise<void>((resolve) => {
+    process.stdin.resume();
+    process.stdin.setEncoding("utf8");
+    process.stdin.once("data", () => {
+      resolve();
+    });
+  });
+}
+
+async function waitForSportEvents(page: Page, timeoutMs: number) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (page.url().includes("/sportEvents")) {
+      return true;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  return false;
+}
+
+async function persistEightXBetSession(
+  context: BrowserContext,
+  page: Page,
+  stateStore: FileSessionStateStore,
+  storageStatePath: string,
+  sessionStoragePath: string
+) {
   await context.storageState({ path: storageStatePath });
   await saveEightXBetSessionStorage(
     sessionStoragePath,
@@ -79,28 +151,6 @@ async function main() {
     sessionStoragePath,
     accessibleLobbies: ["default"],
     visitedOrigins: Array.from(new Set(context.pages().map((currentPage) => currentPage.url())))
-  });
-
-  console.log("");
-  console.log("Đã lưu xong session 8xbet.");
-  console.log(`Storage state: ${storageStatePath}`);
-  console.log(`Session storage: ${sessionStoragePath}`);
-  console.log("Visited URLs:");
-  for (const currentPage of context.pages()) {
-    console.log(`- ${currentPage.url()}`);
-  }
-
-  console.log("");
-  console.log("Bạn có thể đóng trình duyệt thủ công hoặc nhấn CTRL+C.");
-}
-
-async function waitForEnter() {
-  await new Promise<void>((resolve) => {
-    process.stdin.resume();
-    process.stdin.setEncoding("utf8");
-    process.stdin.once("data", () => {
-      resolve();
-    });
   });
 }
 

@@ -394,6 +394,7 @@ async function main() {
   console.log("Đang mở các trang sports landing và bấm Cược ngay...");
 
   const successfulLobbies: SessionState["accessibleLobbies"] = [];
+  const lobbyURLs: Partial<Record<SessionState["accessibleLobbies"][number], string>> = {};
   const failedLobbies: Array<{
     lobbyId: string;
     reason: string;
@@ -405,6 +406,7 @@ async function main() {
     const result = await openLobby(context, lobby);
     if (result.success) {
       successfulLobbies.push(result.lobbyId);
+      lobbyURLs[result.lobbyId] = result.finalURL;
       continue;
     }
 
@@ -440,7 +442,8 @@ async function main() {
     preparedAt: new Date().toISOString(),
     storageStatePath,
     accessibleLobbies: successfulLobbies,
-    visitedOrigins
+    visitedOrigins,
+    lobbyURLs
   };
 
   await stateStore.write(state);

@@ -5,11 +5,12 @@ import type {
   CollectorHeartbeat,
   CollectorSink,
   OddsDelta,
+  OddsSnapshot,
   StreamingCollectorRuntime
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
-import { withJun88LobbyPage } from "./jun88-lobby-page.js";
+import { openJun88ResolvedLobbyPage, withJun88LobbyPage } from "./jun88-lobby-page.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
 import { heartbeatOf } from "./streaming-utils.js";
 
@@ -18,7 +19,7 @@ const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header
 export class Jun88CmdRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
-  async collect(context: CollectContext) {
+  async collect(context: CollectContext): Promise<OddsSnapshot> {
     if (!context.session) {
       throw new Error(
         `Jun88 CMD runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
@@ -35,14 +36,15 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
     if (!lobby) {
       throw new Error("Jun88 CMD lobby configuration is missing.");
     }
+    const fallbackURL = new URL("/vi-vn/sports-landing/cmd", context.setting.url).toString();
 
-    return withJun88LobbyPage(context.session, lobby, async (page) => {
+    return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
       const target = await resolveCmdContentTarget(page);
       return parseJun88CmdSnapshot(await target.content(), target.url(), this.collectorId);
-    });
+    }, fallbackURL);
   }
 
-  async stream(context: CollectContext, sink: CollectorSink) {
+  async stream(context: CollectContext, sink: CollectorSink): Promise<void> {
     if (!context.session) {
       throw new Error(
         `Jun88 CMD runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
@@ -59,8 +61,9 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
     if (!lobby) {
       throw new Error("Jun88 CMD lobby configuration is missing.");
     }
+    const fallbackURL = new URL("/vi-vn/sports-landing/cmd", context.setting.url).toString();
 
-    return withJun88LobbyPage(context.session, lobby, async (page) => {
+    return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
       try {
         const target = await resolveCmdContentTarget(page);
         const initialSnapshot = parseJun88CmdSnapshot(
@@ -89,21 +92,48 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
         throw new Error(`[${this.collectorId}] stream failed: ${formatError(error)}`);
       }
-    });
+    }, fallbackURL);
   }
 }
 
 async function resolveCmdContentTarget(page: Page): Promise<Page | Frame> {
-  await page.waitForSelector("#contentIframe", { timeout: 20_000 });
+  await page.waitForSelector(`${CMD_READY_SELECTOR}, #contentIframe`, { timeout: 20_000 }).catch(() => undefined);
 
-  const iframe = await page.locator("#contentIframe").elementHandle();
-  const frame = await iframe?.contentFrame();
-  if (!frame) {
+  const directMatch = await page.locator(CMD_READY_SELECTOR).count().catch(() => 0);
+  if (directMatch > 0) {
     return page;
   }
 
-  await waitForFrameContent(frame);
-  return frame;
+  const iframeLocator = page.locator("#contentIframe").first();
+  const iframeCount = await iframeLocator.count().catch(() => 0);
+  if (iframeCount === 0) {
+    throw new Error("Jun88 CMD page did not expose #contentIframe and no direct match rows were found.");
+  }
+
+  const iframe = await iframeLocator.elementHandle();
+  const frame = await iframe?.contentFrame();
+  if (frame) {
+    await waitForFrameContent(frame).catch(() => undefined);
+  }
+
+  const frames = page.frames();
+  for (const currentFrame of frames) {
+    const count = await currentFrame.locator(CMD_READY_SELECTOR).count().catch(() => 0);
+    if (count > 0) {
+      return currentFrame;
+    }
+  }
+
+  if (frame) {
+    return frame;
+  }
+
+  const retryDirectMatch = await page.locator(CMD_READY_SELECTOR).count().catch(() => 0);
+  if (retryDirectMatch > 0) {
+    return page;
+  }
+
+  throw new Error("Jun88 CMD frame/page did not render match content in time.");
 }
 
 async function waitForFrameContent(frame: Frame) {

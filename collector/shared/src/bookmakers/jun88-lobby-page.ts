@@ -1,4 +1,5 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
+import { collectorLaunchOptions } from "../core/browser.js";
 import type { Jun88LobbyAccess, SessionState } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 
@@ -7,14 +8,13 @@ export async function withJun88LobbyPage<T>(
   lobby: Jun88LobbyAccess,
   run: (page: Page) => Promise<T>
 ) {
-  const browser = await chromium.launch({
-    headless: true
-  });
+  const browser = await chromium.launch(collectorLaunchOptions(true));
 
   try {
     const context = await browser.newContext({
       storageState: session.storageStatePath
     });
+    await warmVisitedOrigins(context, session.visitedOrigins ?? []);
     const page = await openLobby(context, lobby);
     try {
       return await run(page);
@@ -24,6 +24,18 @@ export async function withJun88LobbyPage<T>(
     }
   } finally {
     await browser.close();
+  }
+}
+
+async function warmVisitedOrigins(context: BrowserContext, origins: string[]) {
+  for (const origin of origins) {
+    const page = await context.newPage();
+    try {
+      await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 10_000 }).catch(() => undefined);
+      await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => undefined);
+    } finally {
+      await page.close().catch(() => undefined);
+    }
   }
 }
 
@@ -82,6 +94,35 @@ async function openLobby(context: BrowserContext, lobby: Jun88LobbyAccess, attem
     throw new Error(
       `[${lobby.lobbyId}] open lobby failed on attempt ${attempt}: ${formatError(error)}`
     );
+  }
+}
+
+export async function openJun88ResolvedLobbyPage<T>(
+  session: SessionState,
+  lobby: Jun88LobbyAccess,
+  run: (page: Page) => Promise<T>,
+  fallbackURL?: string
+): Promise<T> {
+  const browser = await chromium.launch(collectorLaunchOptions(true));
+
+  try {
+    const context = await browser.newContext({
+      storageState: session.storageStatePath
+    });
+    await warmVisitedOrigins(context, session.visitedOrigins ?? []);
+
+    const page = await context.newPage();
+    const targetURL = session.lobbyURLs?.[lobby.lobbyId] || fallbackURL || lobby.launchURL;
+    await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+    await waitForStableLobbyPage(page);
+
+    if (isMaintenanceURL(page.url())) {
+      throw new Error(`Lobby ${lobby.lobbyId} is in maintenance mode: ${page.url()}`);
+    }
+
+    return await run(page);
+  } finally {
+    await browser.close();
   }
 }
 

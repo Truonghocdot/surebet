@@ -26,6 +26,27 @@ export function envString(key: string, fallback: string) {
   return process.env[key] || fallback;
 }
 
+export function envBool(key: string, fallback: boolean) {
+  loadCollectorEnv();
+  const raw = process.env[key];
+  if (raw === undefined || raw === "") {
+    return fallback;
+  }
+
+  return /^(1|true|yes|on)$/i.test(raw);
+}
+
+export function envInt(key: string, fallback: number) {
+  loadCollectorEnv();
+  const raw = process.env[key];
+  if (raw === undefined || raw === "") {
+    return fallback;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function envCandidates(start: string) {
   const candidates: string[] = [];
   const seen = new Set<string>();
