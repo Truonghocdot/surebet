@@ -1,0 +1,259 @@
+import crypto from "node:crypto";
+import { JSDOM } from "jsdom";
+import type { OddsSelection, OddsSnapshot } from "../../contracts.js";
+
+type EightXBetMarket = {
+  marketName: string;
+  selections: OddsSelection[];
+};
+
+export function parseEightXBetIncomingSnapshot(
+  html: string,
+  pageUrl: string,
+  collectorId = "8xbet"
+): OddsSnapshot {
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  const cards = Array.from(document.querySelectorAll('[data-testid^="simple-handicap-layout-football-"]'));
+  const selections = cards.flatMap((card) => parseMatchCard(card as HTMLElement));
+
+  return {
+    source: {
+      collectorId,
+      bookmakerId: "8xbet",
+      lobbyId: "default"
+    },
+    collectedAt: new Date().toISOString(),
+    selections:
+      selections.length > 0 ? selections : parseFallbackSelections(document, pageUrl)
+  };
+}
+
+function parseMatchCard(cardNode: HTMLElement) {
+  const leagueName =
+    textContent(
+      cardNode
+        .closest('[data-testid^="v4-sport-asia-simple-handicap-unit-"]')
+        ?.querySelector('[data-testid="simple-handicap-odds-header"] span')
+    ) || "";
+  const fixtureId =
+    extractFixtureId(cardNode.getAttribute("data-testid") || "") ||
+    stableFixtureId(`${leagueName}|${textContent(cardNode)}`);
+  const gameStage = textContent(cardNode.querySelector('[data-testid="simple-game-stage"]'));
+  const teamNames = Array.from(cardNode.querySelectorAll("small.text-text-2"))
+    .map((node) => textContent(node))
+    .filter(Boolean);
+
+  if (teamNames.length < 2) {
+    return [];
+  }
+
+  const [homeTeam, awayTeam] = teamNames;
+  const columns = Array.from(
+    cardNode.querySelectorAll('[data-testid="sport-simple-asia-odds-layout"]')
+  ) as HTMLElement[];
+  const headers = Array.from(cardNode.querySelectorAll('[data-testid="sport-hover-popover"]'))
+    .map((node) => textContent(node))
+    .filter(Boolean);
+
+  const selections: OddsSelection[] = [];
+  for (let index = 0; index < columns.length; index += 1) {
+    const column = columns[index];
+    const marketName = headers[index] || `market-${index + 1}`;
+    selections.push(
+      ...parseMarketColumn(column, {
+        fixtureId,
+        marketName,
+        homeTeam,
+        awayTeam
+      })
+    );
+  }
+
+  void gameStage;
+  return selections;
+}
+
+function parseMarketColumn(
+  columnNode: HTMLElement,
+  context: {
+    fixtureId: string;
+    marketName: string;
+    homeTeam: string;
+    awayTeam: string;
+  }
+) {
+  const buttons = Array.from(columnNode.querySelectorAll('button[data-testid^="oddsBtn-"]')) as HTMLElement[];
+  return buttons.flatMap((buttonNode) => {
+    const info = parseOddsButton(buttonNode, context);
+    return info ? [info] : [];
+  });
+}
+
+function parseOddsButton(
+  buttonNode: HTMLElement,
+  context: {
+    fixtureId: string;
+    marketName: string;
+    homeTeam: string;
+    awayTeam: string;
+  }
+) {
+  const testID = buttonNode.getAttribute("data-testid") || "";
+  const parts = testID.replace(/^oddsBtn-/, "").split("|");
+  if (parts.length < 4) {
+    return null;
+  }
+
+  const marketCode = parts[2] || "";
+  const sideCode = parts[3] || "";
+  const line = extractLine(buttonNode);
+  const oddsText = extractOddsText(buttonNode);
+  const odds = Number.parseFloat(oddsText);
+  if (!Number.isFinite(odds)) {
+    return null;
+  }
+
+  const outcomeName = resolveOutcomeName(
+    context.marketName,
+    marketCode,
+    sideCode,
+    context.homeTeam,
+    context.awayTeam,
+    line
+  );
+
+  return {
+    fixtureId: context.fixtureId,
+    marketId: normalizeToken(context.marketName),
+    outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(outcomeName)}`,
+    outcomeName,
+    odds,
+    availableStake: 0,
+    suspended: buttonNode.className.includes("cursor-default")
+  } satisfies OddsSelection;
+}
+
+function resolveOutcomeName(
+  marketName: string,
+  marketCode: string,
+  sideCode: string,
+  homeTeam: string,
+  awayTeam: string,
+  line: string
+) {
+  if (marketCode.startsWith("ah")) {
+    if (sideCode === "h") {
+      return formatOutcome(homeTeam, normalizeHandicapLine(line, "home"));
+    }
+    if (sideCode === "a") {
+      return formatOutcome(awayTeam, normalizeHandicapLine(line, "away"));
+    }
+  }
+
+  if (marketCode.startsWith("ou")) {
+    if (sideCode === "ov") {
+      return formatOutcome("Over", sanitizeOuLine(line));
+    }
+    if (sideCode === "ud") {
+      return formatOutcome("Under", sanitizeOuLine(line));
+    }
+  }
+
+  if (marketCode.startsWith("1x2")) {
+    if (sideCode === "h") {
+      return homeTeam;
+    }
+    if (sideCode === "a") {
+      return awayTeam;
+    }
+    if (sideCode === "d") {
+      return "Draw";
+    }
+  }
+
+  return [marketName, sideCode, line].filter(Boolean).join(" ").trim();
+}
+
+function extractLine(buttonNode: HTMLElement) {
+  const pieces = Array.from(buttonNode.querySelectorAll("small, div, span"))
+    .map((node) => textContent(node))
+    .filter(Boolean);
+
+  return (
+    pieces.find((value) => /[0-9]/.test(value) && value !== extractOddsText(buttonNode)) || ""
+  );
+}
+
+function extractOddsText(buttonNode: HTMLElement) {
+  const values = Array.from(buttonNode.querySelectorAll("small, div, span"))
+    .map((node) => textContent(node))
+    .filter(Boolean);
+
+  return values.reverse().find((value) => /^-?\d+(\.\d+)?$/.test(value)) || "";
+}
+
+function parseFallbackSelections(document: Document, pageUrl: string) {
+  return Array.from(document.querySelectorAll('[data-testid^="v4-sport-asia-simple-handicap-unit-"]'))
+    .map((node, index) => textContent(node))
+    .filter(Boolean)
+    .map((textValue, index) => ({
+      fixtureId: stableFixtureId(`${pageUrl}|${index}|${textValue}`),
+      marketId: "raw-card",
+      outcomeId: stableFixtureId(`raw-card|${index}|${textValue}`),
+      outcomeName: textValue.slice(0, 120),
+      odds: 0,
+      availableStake: 0,
+      suspended: true
+    }));
+}
+
+function extractFixtureId(value: string) {
+  const match = value.match(/football-(\d+)/i);
+  return match?.[1] || "";
+}
+
+function normalizeHandicapLine(line: string, side: "home" | "away") {
+  if (!line) {
+    return "";
+  }
+
+  const trimmed = line.replace(/\s+/g, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  if (side === "home") {
+    return trimmed.startsWith("-") ? trimmed : `+${trimmed}`;
+  }
+
+  if (trimmed.startsWith("+")) {
+    return `-${trimmed.slice(1)}`;
+  }
+
+  return trimmed.startsWith("-") ? trimmed.slice(1) : `-${trimmed}`;
+}
+
+function formatOutcome(base: string, line: string) {
+  return [base, line].filter(Boolean).join(" ").trim();
+}
+
+function sanitizeOuLine(line: string) {
+  return line.replace(/^(O|U)\s+/i, "").replace(/^(O|U)$/i, "").trim();
+}
+
+function stableFixtureId(input: string) {
+  return crypto.createHash("sha1").update(input).digest("hex");
+}
+
+function normalizeToken(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+}
+
+function textContent(node: Element | null | undefined) {
+  return node?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}

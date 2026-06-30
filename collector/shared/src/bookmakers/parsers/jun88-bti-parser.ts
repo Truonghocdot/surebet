@@ -88,12 +88,19 @@ function parseSelectionGroup(groupNode: HTMLElement): RawMarket | null {
     textContent(groupNode.querySelector(".master_fe_Markets_eventMarket__marketName")) ||
     "";
 
+  const visiblePage =
+    (groupNode.querySelector('[data-swipeable="true"][aria-hidden="false"]') as HTMLElement | null) ??
+    groupNode;
+
   const selections = Array.from(
-    groupNode.querySelectorAll(".master_fe_Selections_selection")
+    visiblePage.querySelectorAll(".master_fe_Selections_selection")
   )
     .map((node) => {
       const selectionName =
-        textContent(node.querySelector(".master_fe_Selections_selectionNameLine")) || "";
+        textContent(node.querySelector(".master_fe_Selections_selectionNameLine > span:first-child")) ||
+        textContent(node.querySelector(".master_fe_Selections_selectionNameLine")) ||
+        "";
+      const points = textContent(node.querySelector(".master_fe_Selections_points")) || "";
       const odds =
         textContent(node.querySelector(".master_fe_Selections_odds")) || "";
 
@@ -103,7 +110,7 @@ function parseSelectionGroup(groupNode: HTMLElement): RawMarket | null {
 
       return {
         selectionName,
-        points: "",
+        points,
         odds
       };
     })

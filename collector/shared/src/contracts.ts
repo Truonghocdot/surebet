@@ -53,6 +53,7 @@ export type SessionState = {
   bootstrapMode: SessionBootstrapMode;
   preparedAt: string;
   storageStatePath: string;
+  sessionStoragePath?: string;
   accessibleLobbies: LobbyCode[];
   visitedOrigins?: string[];
 };

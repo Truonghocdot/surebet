@@ -66,7 +66,7 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
 
-        await installBtiObserver(page, initialSnapshot.source.collectorId);
+        await installBtiObserver(page, initialSnapshot);
 
         let lastHeartbeatAt = Date.now();
         while (!page.isClosed()) {
@@ -95,14 +95,21 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
   }
 }
 
-async function installBtiObserver(page: import("playwright").Page, collectorId: string) {
+async function installBtiObserver(page: import("playwright").Page, snapshot: { source: CollectorSource; selections: Array<{ fixtureId: string; marketId: string; outcomeId: string; outcomeName: string; odds: number }> }) {
+  const seededFingerprints = Object.fromEntries(
+    snapshot.selections.map((selection) => [
+      selection.outcomeId,
+      `${selection.odds}|${selection.outcomeName}`
+    ])
+  );
   const script = `
-    ((runtimeCollectorId) => {
+    ((seededFingerprints) => {
       const win = window;
       if (!win.__surebet_bti_stream__) {
         win.__surebet_bti_stream__ = { queue: [], seen: {} };
       }
       const state = win.__surebet_bti_stream__;
+      state.seen = Object.assign({}, seededFingerprints || {});
       if (state.observer) {
         state.observer.disconnect();
       }
@@ -145,8 +152,11 @@ async function installBtiObserver(page: import("playwright").Page, collectorId: 
             continue;
           }
 
-          for (const selectionNode of Array.from(marketNode.querySelectorAll(".master_fe_Selections_selection"))) {
-            const outcomeName = text(selectionNode.querySelector(".master_fe_Selections_selectionNameLine")) || "";
+          const visiblePage = marketNode.querySelector('[data-swipeable="true"][aria-hidden="false"]') || marketNode;
+          for (const selectionNode of Array.from(visiblePage.querySelectorAll(".master_fe_Selections_selection"))) {
+            const selectionName = text(selectionNode.querySelector(".master_fe_Selections_selectionNameLine > span:first-child")) || text(selectionNode.querySelector(".master_fe_Selections_selectionNameLine")) || "";
+            const points = text(selectionNode.querySelector(".master_fe_Selections_points")) || "";
+            const outcomeName = [selectionName, points].filter(Boolean).join(" ").trim();
             const oddsText = text(selectionNode.querySelector(".master_fe_Selections_odds"));
             const odds = Number.parseFloat(oddsText);
             if (!outcomeName || !Number.isFinite(odds)) {
@@ -175,10 +185,6 @@ async function installBtiObserver(page: import("playwright").Page, collectorId: 
         }
       };
 
-      for (const eventCard of Array.from(document.querySelectorAll(".master_fe_Event_match.featured-matches-card-prelive-no-bg"))) {
-        enqueueFromCard(eventCard);
-      }
-
       const observer = new MutationObserver((mutations) => {
         const eventCards = new Set();
         for (const mutation of mutations) {
@@ -195,11 +201,10 @@ async function installBtiObserver(page: import("playwright").Page, collectorId: 
 
       observer.observe(document.body, { subtree: true, childList: true, characterData: true });
       state.observer = observer;
-      void runtimeCollectorId;
     })
   `;
 
-  await page.evaluate(`${script}(${JSON.stringify(collectorId)})`);
+  await page.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
 }
 
 async function readBtiDeltas(page: import("playwright").Page) {
