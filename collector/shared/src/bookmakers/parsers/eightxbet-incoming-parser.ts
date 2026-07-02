@@ -125,6 +125,8 @@ function parseOddsButton(
 
   return {
     fixtureId: context.fixtureId,
+    homeTeam: context.homeTeam,
+    awayTeam: context.awayTeam,
     marketId: normalizeToken(context.marketName),
     outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(outcomeName)}`,
     outcomeName,
@@ -222,16 +224,15 @@ function normalizeHandicapLine(line: string, side: "home" | "away") {
   if (!trimmed) {
     return "";
   }
+  if (trimmed.startsWith("+") || trimmed.startsWith("-")) {
+    return trimmed;
+  }
 
   if (side === "home") {
-    return trimmed.startsWith("-") ? trimmed : `+${trimmed}`;
+    return `+${trimmed}`;
   }
 
-  if (trimmed.startsWith("+")) {
-    return `-${trimmed.slice(1)}`;
-  }
-
-  return trimmed.startsWith("-") ? trimmed.slice(1) : `-${trimmed}`;
+  return `-${trimmed}`;
 }
 
 function formatOutcome(base: string, line: string) {

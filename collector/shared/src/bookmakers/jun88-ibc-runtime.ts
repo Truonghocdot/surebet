@@ -9,7 +9,7 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88LobbyPage } from "./jun88-lobby-page.js";
 import { parseJun88IbcSnapshot } from "./parsers/jun88-ibc-parser.js";
-import { heartbeatOf } from "./streaming-utils.js";
+import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 const IBC_READY_SELECTORS = ".c-match, .c-event-card";
 
 export class Jun88IbcRuntime implements StreamingCollectorRuntime {
@@ -36,7 +36,9 @@ export class Jun88IbcRuntime implements StreamingCollectorRuntime {
     return withJun88LobbyPage(context.session, lobby, async (page) => {
       const target = await resolveContentTarget(page);
       const html = await target.content();
-      return parseJun88IbcSnapshot(html, target.url(), this.collectorId);
+      const snapshot = parseJun88IbcSnapshot(html, target.url(), this.collectorId);
+      assertSnapshotHasSelections(snapshot, this.collectorId);
+      return snapshot;
     });
   }
 
@@ -63,6 +65,7 @@ export class Jun88IbcRuntime implements StreamingCollectorRuntime {
         const target = await resolveContentTarget(page);
         const initialHTML = await target.content();
         const initialSnapshot = parseJun88IbcSnapshot(initialHTML, target.url(), this.collectorId);
+        assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
 
@@ -228,6 +231,8 @@ async function installIbcObserver(
                 },
                 collectedAt: new Date().toISOString(),
                 fixtureId,
+                homeTeam,
+                awayTeam,
                 marketId,
                 outcomeId: id,
                 outcomeName: name,

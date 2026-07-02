@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
-import { activeOpportunitiesSeed } from "@/features/dashboard/api/mock-seed";
+import { fetchBackendOpportunities } from "@/lib/server-dashboard-data";
 
 export async function GET() {
-  return NextResponse.json(activeOpportunitiesSeed);
+  try {
+    return NextResponse.json(await fetchBackendOpportunities());
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Không tải được dữ liệu cơ hội surebet."
+      },
+      { status: 502 }
+    );
+  }
 }
-

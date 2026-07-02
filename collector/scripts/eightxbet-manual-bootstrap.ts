@@ -4,6 +4,7 @@ import {
   BackendSettingsProvider,
   FileSessionStateStore,
   formatError,
+  saveEightXBetLocalStorage,
   saveEightXBetSessionStorage,
   envString
 } from "@surebet/collector-shared";
@@ -18,6 +19,7 @@ async function main() {
   const stateStore = new FileSessionStateStore(path.resolve("tmp/session"));
   const storageStatePath = path.resolve("tmp/session/8xbet-storage-state.json");
   const sessionStoragePath = path.resolve("tmp/session/8xbet-session-storage.json");
+  const localStoragePath = path.resolve("tmp/session/8xbet-local-storage.json");
   chromium.use(stealth());
   console.log("Đang mở trình duyệt Playwright cho 8xbet...");
   const browser = await chromium.launch({
@@ -62,20 +64,23 @@ async function main() {
 
   const loginAttempted = await tryAutoLogin(page, setting.username, setting.password);
   const autoLoginSucceeded = await waitForSportEvents(page, 12_000);
+  const loginStateReady = await hasEightXBetLoggedInState(page, 8_000);
 
   console.log("");
   console.log("=== 8xbet manual bootstrap ===");
   console.log(`Backend URL: ${backendURL}`);
   console.log(`Target URL: ${page.url()}`);
   console.log("");
-  if (autoLoginSucceeded) {
+  if (autoLoginSucceeded && loginStateReady) {
     console.log("Đã phát hiện redirect sang /sportEvents, coi như login thành công tự động.");
+  } else if (autoLoginSucceeded) {
+    console.log("Đã redirect sang /sportEvents nhưng chưa thấy rõ trạng thái account/widget đã hydrate xong.");
   } else if (loginAttempted) {
     console.log("Script đã thử mở flow login và điền credential tự động.");
   } else {
     console.log("Script chưa thấy đủ flow login động để tự submit.");
   }
-  if (!autoLoginSucceeded) {
+  if (!(autoLoginSucceeded && loginStateReady)) {
     console.log("Nếu Cloudflare/challenge xuất hiện, hãy hoàn tất thủ công ngay trên trình duyệt.");
     console.log("Sau khi bạn đã vào được site hoặc tới trang sau-login mong muốn, nhấn ENTER ở terminal này.");
     await waitForEnter();
@@ -120,28 +125,102 @@ async function waitForSportEvents(page: Page, timeoutMs: number) {
   return false;
 }
 
+async function hasEightXBetLoggedInState(page: Page, timeoutMs: number) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const hasSportEvents = page.url().includes("/sportEvents");
+    const state = await page.evaluate(() => {
+      const sessionKeys = Object.keys(window.sessionStorage);
+      const localKeys = Object.keys(window.localStorage);
+      const hasHeader = document.querySelector('section[data-testid="header"]') !== null;
+      const hasBalanceButton =
+        document.querySelector('[data-testid="liquid-glass-button-user-now-balance-btn"]') !==
+        null;
+      const hasBalanceText = document.querySelector('[data-testid="balance-text"]') !== null;
+      return {
+        hasHeader,
+        hasBalanceButton,
+        hasBalanceText,
+        hasAccessToken:
+          sessionKeys.includes("access-token") ||
+          localKeys.includes("access-token"),
+        hasRefreshToken:
+          sessionKeys.includes("refresh-token") ||
+          localKeys.includes("refresh-token"),
+        hasSessionId:
+          sessionKeys.includes("tt_sessionId") ||
+          localKeys.includes("tt_sessionId"),
+        hasLoginClickLog:
+          sessionKeys.includes("ux-event-log-first-click") ||
+          localKeys.includes("ux-event-log-first-click"),
+        hasChatroomMarker:
+          sessionKeys.includes("chatroom-last-read-id") ||
+          localKeys.includes("chatroom-last-read-id")
+      };
+    }).catch(() => ({
+      hasSessionId: false,
+      hasLoginClickLog: false,
+      hasChatroomMarker: false,
+      hasHeader: false,
+      hasBalanceButton: false,
+      hasBalanceText: false,
+      hasAccessToken: false,
+      hasRefreshToken: false
+    }));
+
+    if (
+      hasSportEvents &&
+      (
+        (state.hasHeader && state.hasBalanceButton && state.hasBalanceText) ||
+        (state.hasAccessToken && state.hasRefreshToken) ||
+        state.hasSessionId ||
+        state.hasChatroomMarker
+      )
+    ) {
+      return true;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  return false;
+}
+
 async function persistEightXBetSession(
   context: BrowserContext,
   page: Page,
   stateStore: FileSessionStateStore,
   storageStatePath: string,
-  sessionStoragePath: string
+  sessionStoragePath: string,
+  localStoragePath = path.resolve("tmp/session/8xbet-local-storage.json")
 ) {
   await context.storageState({ path: storageStatePath });
-  await saveEightXBetSessionStorage(
-    sessionStoragePath,
-    await page.evaluate(() => {
-      const output: Record<string, string> = {};
-      for (let index = 0; index < window.sessionStorage.length; index += 1) {
-        const key = window.sessionStorage.key(index);
-        if (!key) {
-          continue;
-        }
-        output[key] = window.sessionStorage.getItem(key) ?? "";
+  const sessionStorageValues = await page.evaluate(() => {
+    const output: Record<string, string> = {};
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (!key) {
+        continue;
       }
-      return output;
-    })
-  );
+      output[key] = window.sessionStorage.getItem(key) ?? "";
+    }
+    return output;
+  });
+  const localStorageValues = await page.evaluate(() => {
+    const output: Record<string, string> = {};
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (!key) {
+        continue;
+      }
+      output[key] = window.localStorage.getItem(key) ?? "";
+    }
+    return output;
+  });
+
+  await saveEightXBetSessionStorage(sessionStoragePath, sessionStorageValues);
+  await saveEightXBetLocalStorage(localStoragePath, localStorageValues);
   await stateStore.write({
     bookmakerCode: "8xbet",
     originURL: page.url(),
@@ -149,9 +228,21 @@ async function persistEightXBetSession(
     preparedAt: new Date().toISOString(),
     storageStatePath,
     sessionStoragePath,
+    localStoragePath,
     accessibleLobbies: ["default"],
     visitedOrigins: Array.from(new Set(context.pages().map((currentPage) => currentPage.url())))
   });
+
+  console.log("8xbet auth/session keys đã lưu:");
+  console.log(
+    `- localStorage access-token: ${Object.hasOwn(localStorageValues, "access-token") ? "yes" : "no"}`
+  );
+  console.log(
+    `- localStorage refresh-token: ${Object.hasOwn(localStorageValues, "refresh-token") ? "yes" : "no"}`
+  );
+  console.log(
+    `- sessionStorage tt_sessionId: ${Object.hasOwn(sessionStorageValues, "tt_sessionId") ? "yes" : "no"}`
+  );
 }
 
 main().catch((error) => {
@@ -165,7 +256,6 @@ async function tryAutoLogin(page: Page, username: string, password: string) {
 
     const primaryLoginButton = page
       .locator('button[data-testid="submit-btn"][type="button"]')
-      .filter({ hasText: /^Login$/i })
       .first();
 
     console.log("Đang chờ màn đầu render nút Login...");
@@ -175,7 +265,7 @@ async function tryAutoLogin(page: Page, username: string, password: string) {
       return false;
     }
 
-    console.log("Đã thấy nút Login chính, đang click...");
+    console.log("Đã thấy nút submit-btn đầu tiên của màn login, đang click...");
     await primaryLoginButton.click().catch(() => undefined);
     await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
     await page.waitForTimeout(2_000);

@@ -40,7 +40,7 @@ export function DashboardOverviewScreen() {
                           <th className="pb-2 font-medium">Trận đấu</th>
                           <th className="pb-2 font-medium">Market</th>
                           <th className="pb-2 font-medium">Lợi nhuận</th>
-                          <th className="pb-2 font-medium">Spread</th>
+                          <th className="pb-2 font-medium">Số chân</th>
                           <th className="pb-2 font-medium">Độ mới</th>
                         </tr>
                       </thead>
@@ -48,16 +48,18 @@ export function DashboardOverviewScreen() {
                         {snapshot.opportunities.map((row) => (
                           <tr
                             className="bg-[var(--surface-soft)] text-sm text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)]"
-                            key={row.fixture}
+                            key={row.id}
                           >
                             <td className="rounded-l-[20px] px-4 py-4 font-medium">
-                              {row.fixture}
+                              {row.fixture_id}
                             </td>
-                            <td className="px-4 py-4">{row.market}</td>
-                            <td className="px-4 py-4 text-teal-700">{row.profit}</td>
-                            <td className="px-4 py-4">{row.spread}</td>
+                            <td className="px-4 py-4">{row.market_name}</td>
+                            <td className="px-4 py-4 text-teal-700">
+                              {row.profit_percentage.toFixed(2)}%
+                            </td>
+                            <td className="px-4 py-4">{row.legs.length}</td>
                             <td className="rounded-r-[20px] px-4 py-4 text-slate-500">
-                              {row.freshness}
+                              {formatFreshness(row.detected_at)}
                             </td>
                           </tr>
                         ))}
@@ -104,26 +106,39 @@ export function DashboardOverviewScreen() {
                   <div className="space-y-3">
                     {snapshot.accounts.map((item) => (
                       <div
-                        className="flex items-start justify-between gap-4 rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4"
+                        className="rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4"
                         key={`${item.bookmaker}-${item.account}`}
                       >
-                        <div>
-                          <p className="font-semibold">{item.account}</p>
-                          <p className="mt-1 text-sm text-[var(--muted)]">
-                            {item.bookmaker}
-                          </p>
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="font-semibold">{item.account}</p>
+                            <p className="mt-1 text-sm text-[var(--muted)]">
+                              {item.bookmaker}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold">{item.balance}</p>
+                            <p className={accountStatusClass(item.status)}>
+                              {item.status}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{item.balance}</p>
-                          <p
-                            className={
-                              item.status === "Hoạt động"
-                                ? "mt-1 text-sm text-teal-700"
-                                : "mt-1 text-sm text-orange-700"
-                            }
-                          >
-                            {item.status}
-                          </p>
+
+                        <div className="mt-4 grid gap-3 rounded-[16px] bg-white/60 p-3 text-xs text-[var(--muted)] md:grid-cols-3">
+                          <AccountMetric
+                            label="Session"
+                            value={item.session_status ?? "Chưa có session"}
+                          />
+                          <AccountMetric
+                            label="Ready"
+                            value={item.readiness ?? "Chưa rõ"}
+                          />
+                          <AccountMetric
+                            label="Feed"
+                            value={`${item.live_odds ?? 0} odds · ${
+                              item.lobbies?.join(", ") || "no lobby"
+                            }`}
+                          />
                         </div>
                       </div>
                     ))}
@@ -168,4 +183,43 @@ export function DashboardOverviewScreen() {
       </QueryShell>
     </div>
   );
+}
+
+function AccountMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="font-semibold uppercase tracking-[0.14em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-[var(--ink)]">{value}</p>
+    </div>
+  );
+}
+
+function accountStatusClass(status: string) {
+  switch (status) {
+    case "Hoạt động":
+      return "mt-1 text-sm font-semibold text-teal-700";
+    case "Có feed":
+      return "mt-1 text-sm font-semibold text-sky-700";
+    case "Feed cũ":
+      return "mt-1 text-sm font-semibold text-orange-700";
+    case "Tắt":
+      return "mt-1 text-sm font-semibold text-slate-500";
+    default:
+      return "mt-1 text-sm font-semibold text-red-700";
+  }
+}
+
+function formatFreshness(detectedAt: string) {
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(detectedAt).getTime()) / 1000)
+  );
+
+  if (seconds < 60) {
+    return `${seconds}s trước`;
+  }
+
+  return `${Math.floor(seconds / 60)} phút trước`;
 }

@@ -104,6 +104,7 @@ export function SettingsScreen() {
 
       <DataPanel
         title="Thông tin truy cập 2 nhà cái"
+        description="Chỉnh sửa URL, username và password đang được backend cấp cho collector và worker."
       >
         <QueryShell {...settingsQuery}>
           {(items) => (

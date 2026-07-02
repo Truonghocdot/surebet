@@ -3,26 +3,39 @@ package dto
 import "time"
 
 type OddsFilter struct {
-	BookmakerID string
-	LobbyID     string
-	FixtureID   string
+	BookmakerID      string
+	LobbyID          string
+	FixtureID        string
+	IncludeSuspended bool
 }
 
 type OddsView struct {
 	BookmakerID    string    `json:"bookmaker_id"`
 	LobbyID        string    `json:"lobby_id"`
 	FixtureID      string    `json:"fixture_id"`
+	HomeTeam       string    `json:"home_team"`
+	AwayTeam       string    `json:"away_team"`
+	MatchName      string    `json:"match_name"`
+	Period         string    `json:"period"`
+	MarketType     string    `json:"market_type"`
+	Line           string    `json:"line"`
+	Side           string    `json:"side"`
 	MarketID       string    `json:"market_id"`
 	OutcomeID      string    `json:"outcome_id"`
+	OutcomeName    string    `json:"outcome_name"`
 	Odds           float64   `json:"odds"`
+	DecimalOdds    float64   `json:"decimal_odds"`
 	AvailableStake float64   `json:"available_stake"`
+	Suspended      bool      `json:"suspended"`
 	CollectedAt    time.Time `json:"collected_at"`
 }
 
 type SurebetLegView struct {
 	BookmakerID string  `json:"bookmaker_id"`
+	LobbyID     string  `json:"lobby_id"`
 	MarketID    string  `json:"market_id"`
 	OutcomeID   string  `json:"outcome_id"`
+	OutcomeName string  `json:"outcome_name"`
 	Odds        float64 `json:"odds"`
 	Stake       float64 `json:"stake"`
 }

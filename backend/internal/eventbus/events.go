@@ -45,6 +45,8 @@ type OddsQuotePayload struct {
 	BookmakerID    string    `json:"bookmaker_id"`
 	LobbyID        string    `json:"lobby_id"`
 	FixtureID      string    `json:"fixture_id"`
+	HomeTeam       string    `json:"home_team"`
+	AwayTeam       string    `json:"away_team"`
 	MarketID       string    `json:"market_id"`
 	OutcomeID      string    `json:"outcome_id"`
 	Odds           float64   `json:"odds"`

@@ -97,9 +97,10 @@ func (s *Server) handleOdds(ctx *gin.Context) {
 	}
 
 	filter := dto.OddsFilter{
-		BookmakerID: ctx.Query("bookmaker_id"),
-		LobbyID:     ctx.Query("lobby_id"),
-		FixtureID:   ctx.Query("fixture_id"),
+		BookmakerID:      ctx.Query("bookmaker_id"),
+		LobbyID:          ctx.Query("lobby_id"),
+		FixtureID:        ctx.Query("fixture_id"),
+		IncludeSuspended: ctx.Query("include_suspended") == "true",
 	}
 
 	items, err := s.deps.OddsQuery.ListCurrentOdds(ctx.Request.Context(), filter)

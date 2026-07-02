@@ -7,12 +7,14 @@ import (
 
 	"surebet/backend/internal/api"
 	"surebet/backend/internal/auth"
+	"surebet/backend/internal/calculator"
 	"surebet/backend/internal/config"
 	"surebet/backend/internal/collector"
 	"surebet/backend/internal/configuration"
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/repository/gormstore"
+	"surebet/backend/internal/surebet"
 	"surebet/backend/pkg/health"
 )
 
@@ -57,6 +59,10 @@ func main() {
 			oddsSnapshotRepository,
 			collector.NewLoggingEventPublisher(log),
 			log,
+		),
+		SurebetQuery: surebet.NewQueryService(
+			oddsSnapshotRepository,
+			calculator.NewDetector(),
 		),
 	})
 

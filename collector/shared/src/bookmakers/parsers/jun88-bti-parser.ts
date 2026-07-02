@@ -141,6 +141,8 @@ function flattenEventSelections(event: RawEvent): OddsSelection[] {
 
       selections.push({
         fixtureId: event.fixtureId,
+        homeTeam: event.homeTeam,
+        awayTeam: event.awayTeam,
         marketId,
         outcomeId: `${event.fixtureId}:${marketId}:${normalizeToken(outcomeName)}`,
         outcomeName,

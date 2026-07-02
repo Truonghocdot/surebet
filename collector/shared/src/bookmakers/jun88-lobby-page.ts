@@ -1,7 +1,7 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { collectorLaunchOptions } from "../core/browser.js";
 import type { Jun88LobbyAccess, SessionState } from "../contracts.js";
-import { formatError, writeDebugArtifacts } from "../core/debug.js";
+import { formatError, writeContextDebugArtifacts } from "../core/debug.js";
 
 export async function withJun88LobbyPage<T>(
   session: SessionState,
@@ -19,7 +19,7 @@ export async function withJun88LobbyPage<T>(
     try {
       return await run(page);
     } catch (error) {
-      await writeDebugArtifacts(page, `${lobby.lobbyId}-run-failed`);
+      await writeContextDebugArtifacts(context, `${lobby.lobbyId}-run-failed`);
       throw error;
     }
   } finally {
@@ -90,7 +90,7 @@ async function openLobby(context: BrowserContext, lobby: Jun88LobbyAccess, attem
     await delay(1_000 * attempt);
     return openLobby(context, lobby, attempt + 1);
   } catch (error) {
-    await writeDebugArtifacts(page, `${lobby.lobbyId}-open-failed-attempt-${attempt}`);
+    await writeContextDebugArtifacts(context, `${lobby.lobbyId}-open-failed-attempt-${attempt}`);
     throw new Error(
       `[${lobby.lobbyId}] open lobby failed on attempt ${attempt}: ${formatError(error)}`
     );
@@ -104,9 +104,10 @@ export async function openJun88ResolvedLobbyPage<T>(
   fallbackURL?: string
 ): Promise<T> {
   const browser = await chromium.launch(collectorLaunchOptions(true));
+  let context: BrowserContext | null = null;
 
   try {
-    const context = await browser.newContext({
+    context = await browser.newContext({
       storageState: session.storageStatePath
     });
     await warmVisitedOrigins(context, session.visitedOrigins ?? []);
@@ -120,7 +121,17 @@ export async function openJun88ResolvedLobbyPage<T>(
       throw new Error(`Lobby ${lobby.lobbyId} is in maintenance mode: ${page.url()}`);
     }
 
-    return await run(page);
+    try {
+      return await run(page);
+    } catch (error) {
+      await writeContextDebugArtifacts(context, `${lobby.lobbyId}-resolved-run-failed`);
+      throw error;
+    }
+  } catch (error) {
+    if (context) {
+      await writeContextDebugArtifacts(context, `${lobby.lobbyId}-resolved-open-failed`);
+    }
+    throw error;
   } finally {
     await browser.close();
   }

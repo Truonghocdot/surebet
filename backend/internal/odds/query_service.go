@@ -23,10 +23,24 @@ func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter
 	}
 
 	if filter.FixtureID == "" {
+		usedOptimizedLiveQuery := false
+		if !filter.IncludeSuspended {
+			repo, ok := s.repo.(interface {
+				ListCurrentLive(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
+			})
+			if ok {
+				usedOptimizedLiveQuery = true
+				items, err = repo.ListCurrentLive(ctx, filter.BookmakerID, filter.LobbyID, filter.FixtureID)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+
 		repo, ok := s.repo.(interface {
 			ListCurrent(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
 		})
-		if ok {
+		if ok && (filter.IncludeSuspended || !usedOptimizedLiveQuery) {
 			items, err = repo.ListCurrent(ctx, filter.BookmakerID, filter.LobbyID, filter.FixtureID)
 			if err != nil {
 				return nil, err
@@ -36,14 +50,29 @@ func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter
 
 	result := make([]dto.OddsView, 0, len(items))
 	for _, item := range items {
+		if !filter.IncludeSuspended && (item.Suspended || item.Odds == 0) {
+			continue
+		}
+
+		normalized := normalizeQuoteView(item)
 		result = append(result, dto.OddsView{
 			BookmakerID:    item.BookmakerID,
 			LobbyID:        item.LobbyID,
 			FixtureID:      item.FixtureID,
+			HomeTeam:       item.HomeTeam,
+			AwayTeam:       item.AwayTeam,
+			MatchName:      normalized.MatchName,
+			Period:         normalized.Period,
+			MarketType:     normalized.MarketType,
+			Line:           normalized.Line,
+			Side:           normalized.Side,
 			MarketID:       item.MarketID,
 			OutcomeID:      item.OutcomeID,
+			OutcomeName:    item.OutcomeName,
 			Odds:           item.Odds,
+			DecimalOdds:    normalized.DecimalOdds,
 			AvailableStake: item.AvailableStake,
+			Suspended:      item.Suspended,
 			CollectedAt:    item.CollectedAt,
 		})
 	}

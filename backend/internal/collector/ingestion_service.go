@@ -42,6 +42,8 @@ func IngestDelta(ctx context.Context, writer SnapshotWriter, request dto.Collect
 		if strings.EqualFold(delta.Op, "remove") {
 			quotes = append(quotes, buildQuote(delta.Source, delta.CollectedAt, dto.CollectorSelection{
 				FixtureID:      delta.FixtureID,
+				HomeTeam:       delta.HomeTeam,
+				AwayTeam:       delta.AwayTeam,
 				MarketID:       delta.MarketID,
 				OutcomeID:      delta.OutcomeID,
 				OutcomeName:    delta.OutcomeName,
@@ -54,6 +56,8 @@ func IngestDelta(ctx context.Context, writer SnapshotWriter, request dto.Collect
 
 		quotes = append(quotes, buildQuote(delta.Source, delta.CollectedAt, dto.CollectorSelection{
 			FixtureID:      delta.FixtureID,
+			HomeTeam:       delta.HomeTeam,
+			AwayTeam:       delta.AwayTeam,
 			MarketID:       delta.MarketID,
 			OutcomeID:      delta.OutcomeID,
 			OutcomeName:    delta.OutcomeName,
@@ -80,6 +84,8 @@ func buildQuote(source dto.CollectorSource, collectedAt time.Time, selection dto
 		BookmakerID:    source.BookmakerID,
 		LobbyID:        source.LobbyID,
 		FixtureID:      selection.FixtureID,
+		HomeTeam:       strings.TrimSpace(selection.HomeTeam),
+		AwayTeam:       strings.TrimSpace(selection.AwayTeam),
 		Sport:          "",
 		MarketID:       selection.MarketID,
 		MarketName:     selection.MarketID,

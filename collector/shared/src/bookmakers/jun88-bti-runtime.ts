@@ -10,6 +10,7 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88LobbyPage } from "./jun88-lobby-page.js";
 import { parseJun88BtiSnapshot } from "./parsers/jun88-bti-parser.js";
+import { assertSnapshotHasSelections } from "./streaming-utils.js";
 
 export class Jun88BtiRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
@@ -35,7 +36,9 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
     return withJun88LobbyPage(context.session, lobby, async (page) => {
       await page.waitForSelector(".master_fe_Event_match", { timeout: 20_000 });
       const html = await page.content();
-      return parseJun88BtiSnapshot(html, page.url());
+      const snapshot = parseJun88BtiSnapshot(html, page.url());
+      assertSnapshotHasSelections(snapshot, this.collectorId);
+      return snapshot;
     });
   }
 
@@ -63,6 +66,7 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
 
         const initialHTML = await page.content();
         const initialSnapshot = parseJun88BtiSnapshot(initialHTML, page.url());
+        assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
 
@@ -173,6 +177,8 @@ async function installBtiObserver(page: import("playwright").Page, snapshot: { s
             state.queue.push({
               collectedAt: new Date().toISOString(),
               fixtureId,
+              homeTeam: teams[0],
+              awayTeam: teams[1],
               marketId,
               outcomeId,
               outcomeName,

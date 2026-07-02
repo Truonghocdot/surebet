@@ -9,6 +9,8 @@ import {
 import path from "node:path";
 
 export class EightXBetCollector implements Collector {
+  private readonly settings = createBackendSettingsProvider();
+
   private readonly sessionBootstrapper = new EightXBetSessionBootstrapper({
     stateStore: new FileSessionStateStore(path.resolve("tmp/session"))
   });
@@ -16,7 +18,7 @@ export class EightXBetCollector implements Collector {
   private readonly base = new BaseCollector(
     new EightXBetRuntime("8xbet"),
     {
-      settings: createBackendSettingsProvider(),
+      settings: this.settings,
       sessionBootstrapper: this.sessionBootstrapper
     },
     "8xbet",
@@ -25,5 +27,10 @@ export class EightXBetCollector implements Collector {
 
   async collect() {
     return this.base.collect();
+  }
+
+  async refreshSession() {
+    const setting = await this.settings.getBookmakerSetting("8xbet");
+    await this.sessionBootstrapper.refresh(setting);
   }
 }

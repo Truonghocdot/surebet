@@ -10,6 +10,8 @@ type CollectorSource struct {
 
 type CollectorSelection struct {
 	FixtureID      string  `json:"fixture_id" binding:"required"`
+	HomeTeam       string  `json:"home_team"`
+	AwayTeam       string  `json:"away_team"`
 	MarketID       string  `json:"market_id" binding:"required"`
 	OutcomeID      string  `json:"outcome_id" binding:"required"`
 	OutcomeName    string  `json:"outcome_name" binding:"required"`
@@ -28,6 +30,8 @@ type CollectorDelta struct {
 	Source         CollectorSource `json:"source" binding:"required"`
 	CollectedAt    time.Time       `json:"collected_at" binding:"required"`
 	FixtureID      string          `json:"fixture_id" binding:"required"`
+	HomeTeam       string          `json:"home_team"`
+	AwayTeam       string          `json:"away_team"`
 	MarketID       string          `json:"market_id" binding:"required"`
 	OutcomeID      string          `json:"outcome_id" binding:"required"`
 	OutcomeName    string          `json:"outcome_name" binding:"required"`

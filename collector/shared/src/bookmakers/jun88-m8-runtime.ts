@@ -9,7 +9,7 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { openJun88ResolvedLobbyPage, withJun88LobbyPage } from "./jun88-lobby-page.js";
 import { parseJun88M8Snapshot } from "./parsers/jun88-m8-parser.js";
-import { heartbeatOf } from "./streaming-utils.js";
+import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 
 const M8_READY_SELECTOR = "tr[oddsid], .Span_titleleague";
 
@@ -38,7 +38,9 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
     return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
       await page.waitForSelector(M8_READY_SELECTOR, { timeout: 20_000 }).catch(() => undefined);
       const html = await page.content();
-      return parseJun88M8Snapshot(html, page.url(), this.collectorId);
+      const snapshot = parseJun88M8Snapshot(html, page.url(), this.collectorId);
+      assertSnapshotHasSelections(snapshot, this.collectorId);
+      return snapshot;
     }, fallbackURL);
   }
 
@@ -69,6 +71,7 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
           page.url(),
           this.collectorId
         );
+        assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         await installM8Observer(page, initialSnapshot);
@@ -166,7 +169,7 @@ async function installM8Observer(
           if (home) {
             const odds = parseOdds(text(home));
             if (Number.isFinite(odds)) selections.push({
-              fixtureId, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome(homeTeam, normalizeHandicapLine(lineTexts[0], "home"))),
+              fixtureId, homeTeam, awayTeam, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome(homeTeam, normalizeHandicapLine(lineTexts[0], "home"))),
               outcomeName: formatOutcome(homeTeam, normalizeHandicapLine(lineTexts[0], "home")), odds, availableStake: 0, suspended: false
             });
           }
@@ -174,7 +177,7 @@ async function installM8Observer(
             const odds = parseOdds(text(away));
             const line = lineTexts[1] || lineTexts[0];
             if (Number.isFinite(odds)) selections.push({
-              fixtureId, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome(awayTeam, normalizeHandicapLine(line, "away"))),
+              fixtureId, homeTeam, awayTeam, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome(awayTeam, normalizeHandicapLine(line, "away"))),
               outcomeName: formatOutcome(awayTeam, normalizeHandicapLine(line, "away")), odds, availableStake: 0, suspended: false
             });
           }
@@ -188,14 +191,14 @@ async function installM8Observer(
           if (over) {
             const odds = parseOdds(text(over));
             if (Number.isFinite(odds)) selections.push({
-              fixtureId, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome("Over", line)),
+              fixtureId, homeTeam, awayTeam, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome("Over", line)),
               outcomeName: formatOutcome("Over", line), odds, availableStake: 0, suspended: false
             });
           }
           if (under) {
             const odds = parseOdds(text(under));
             if (Number.isFinite(odds)) selections.push({
-              fixtureId, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome("Under", line)),
+              fixtureId, homeTeam, awayTeam, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, formatOutcome("Under", line)),
               outcomeName: formatOutcome("Under", line), odds, availableStake: 0, suspended: false
             });
           }
@@ -213,7 +216,7 @@ async function installM8Observer(
             if (!button) continue;
             const odds = parseOdds(text(button));
             if (Number.isFinite(odds)) selections.push({
-              fixtureId, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, outcomeName),
+              fixtureId, homeTeam, awayTeam, marketId: normalizeToken(marketName), outcomeId: quoteId(fixtureId, marketName, outcomeName),
               outcomeName, odds, availableStake: 0, suspended: false
             });
           }
@@ -244,6 +247,8 @@ async function installM8Observer(
                 source: { collectorId: "jun88-m8", bookmakerId: "jun88", lobbyId: "m8" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
+                homeTeam: item.homeTeam,
+                awayTeam: item.awayTeam,
                 marketId: item.marketId,
                 outcomeId: item.outcomeId,
                 outcomeName: item.outcomeName,
@@ -261,6 +266,8 @@ async function installM8Observer(
                 source: { collectorId: "jun88-m8", bookmakerId: "jun88", lobbyId: "m8" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
+                homeTeam: item.homeTeam,
+                awayTeam: item.awayTeam,
                 marketId: item.marketId,
                 outcomeId: item.outcomeId,
                 outcomeName: item.outcomeName,
@@ -285,6 +292,8 @@ async function installM8Observer(
             source: { collectorId: "jun88-m8", bookmakerId: "jun88", lobbyId: "m8" },
             collectedAt: new Date().toISOString(),
             fixtureId: item.fixtureId,
+            homeTeam: item.homeTeam,
+            awayTeam: item.awayTeam,
             marketId: item.marketId,
             outcomeId: item.outcomeId,
             outcomeName: item.outcomeName,

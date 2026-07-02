@@ -1,25 +1,9 @@
 import { NextResponse } from "next/server";
-import { fetchBackendJSON } from "@/lib/server-api";
+import { fetchDashboardAccounts } from "@/lib/server-dashboard-data";
 
 export async function GET() {
   try {
-    const payload = await fetchBackendJSON<{
-      data: Array<{
-        bookmaker_name: string;
-        label: string;
-        balance: number;
-        is_enabled: boolean;
-      }>;
-    }>("/v1/bookmaker-accounts");
-
-    return NextResponse.json(
-      payload.data.map((item) => ({
-        bookmaker: item.bookmaker_name,
-        account: item.label,
-        balance: `$${item.balance.toLocaleString()}`,
-        status: item.is_enabled ? "Hoạt động" : "Tắt"
-      }))
-    );
+    return NextResponse.json(await fetchDashboardAccounts());
   } catch (error) {
     return NextResponse.json(
       {

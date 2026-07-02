@@ -60,6 +60,8 @@ function serializeSnapshot(snapshot: OddsSnapshot) {
     collected_at: snapshot.collectedAt,
     selections: snapshot.selections.map((selection) => ({
       fixture_id: selection.fixtureId,
+      home_team: selection.homeTeam ?? "",
+      away_team: selection.awayTeam ?? "",
       market_id: selection.marketId,
       outcome_id: selection.outcomeId,
       outcome_name: selection.outcomeName,
@@ -79,6 +81,8 @@ function serializeDelta(delta: OddsDelta) {
     },
     collected_at: delta.collectedAt,
     fixture_id: delta.fixtureId,
+    home_team: delta.homeTeam ?? "",
+    away_team: delta.awayTeam ?? "",
     market_id: delta.marketId,
     outcome_id: delta.outcomeId,
     outcome_name: delta.outcomeName,

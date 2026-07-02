@@ -61,16 +61,18 @@ type OddsQuote struct {
 	ID             string    `json:"id"`
 	BookmakerID    string    `json:"bookmaker_id"`
 	LobbyID        string    `json:"lobby_id"`
-	FixtureID      string    `json:"fixture_id"`
+	FixtureID      string    `json:"fixture_id" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:1;index:idx_odds_quotes_fixture_market_outcome,priority:1"`
+	HomeTeam       string    `json:"home_team"`
+	AwayTeam       string    `json:"away_team"`
 	Sport          string    `json:"sport"`
-	MarketID       string    `json:"market_id"`
+	MarketID       string    `json:"market_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:2"`
 	MarketName     string    `json:"market_name"`
-	OutcomeID      string    `json:"outcome_id"`
+	OutcomeID      string    `json:"outcome_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:3"`
 	OutcomeName    string    `json:"outcome_name"`
 	Odds           float64   `json:"odds"`
 	AvailableStake float64   `json:"available_stake"`
 	Suspended      bool      `json:"suspended"`
-	CollectedAt    time.Time `json:"collected_at"`
+	CollectedAt    time.Time `json:"collected_at" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:2,sort:desc"`
 }
 
 type SurebetLeg struct {

@@ -213,6 +213,8 @@ function createSelection(
 
   return {
     fixtureId: context.fixtureId,
+    homeTeam: context.homeTeam,
+    awayTeam: context.awayTeam,
     marketId: normalizeToken(context.marketName),
     outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(
       context.outcomeName

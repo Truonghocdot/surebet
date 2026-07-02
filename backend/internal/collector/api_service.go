@@ -51,6 +51,8 @@ func (s apiService) IngestDelta(ctx context.Context, request dto.CollectorDeltaR
 		}
 		quotes = append(quotes, buildQuote(delta.Source, delta.CollectedAt, dto.CollectorSelection{
 			FixtureID:      delta.FixtureID,
+			HomeTeam:       delta.HomeTeam,
+			AwayTeam:       delta.AwayTeam,
 			MarketID:       delta.MarketID,
 			OutcomeID:      delta.OutcomeID,
 			OutcomeName:    delta.OutcomeName,

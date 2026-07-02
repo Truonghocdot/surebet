@@ -29,6 +29,8 @@ export function buildDeltas(
         source: snapshot.source,
         collectedAt: snapshot.collectedAt,
         fixtureId: selection.fixtureId,
+        homeTeam: selection.homeTeam,
+        awayTeam: selection.awayTeam,
         marketId: selection.marketId,
         outcomeId: selection.outcomeId,
         outcomeName: selection.outcomeName,
@@ -49,6 +51,8 @@ export function buildDeltas(
       source: snapshot.source,
       collectedAt: snapshot.collectedAt,
       fixtureId: selection.fixtureId,
+      homeTeam: selection.homeTeam,
+      awayTeam: selection.awayTeam,
       marketId: selection.marketId,
       outcomeId: selection.outcomeId,
       outcomeName: selection.outcomeName,
@@ -69,4 +73,12 @@ export function heartbeatOf(source: CollectorSource): CollectorHeartbeat {
     lobbyId: source.lobbyId,
     sentAt: new Date().toISOString()
   };
+}
+
+export function assertSnapshotHasSelections(snapshot: OddsSnapshot, label = snapshot.source.collectorId) {
+  if (snapshot.selections.length === 0) {
+    throw new Error(
+      `[${label}] parsed 0 selections. Lobby is reachable, but no odds rows were extracted.`
+    );
+  }
 }

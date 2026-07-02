@@ -8,11 +8,24 @@ export const statCardSchema = z.object({
 });
 
 export const opportunitySchema = z.object({
-  fixture: z.string(),
-  market: z.string(),
-  profit: z.string(),
-  spread: z.string(),
-  freshness: z.string()
+  id: z.string(),
+  fixture_id: z.string(),
+  market_name: z.string(),
+  profit_percentage: z.number(),
+  expected_return: z.number(),
+  detected_at: z.string(),
+  expires_at: z.string(),
+  legs: z.array(
+    z.object({
+      bookmaker_id: z.string(),
+      lobby_id: z.string(),
+      market_id: z.string(),
+      outcome_id: z.string(),
+      outcome_name: z.string(),
+      odds: z.number(),
+      stake: z.number()
+    })
+  )
 });
 
 export const orderSchema = z.object({
@@ -24,9 +37,16 @@ export const orderSchema = z.object({
 
 export const accountSchema = z.object({
   bookmaker: z.string(),
+  bookmaker_code: z.string().optional(),
   account: z.string(),
   balance: z.string(),
-  status: z.string()
+  available_stake: z.string().optional(),
+  status: z.string(),
+  session_status: z.string().optional(),
+  readiness: z.string().optional(),
+  live_odds: z.number().optional(),
+  latest_seen_at: z.string().nullable().optional(),
+  lobbies: z.array(z.string()).optional()
 });
 
 export const featureFlagSchema = z.object({

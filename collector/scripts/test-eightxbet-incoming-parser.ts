@@ -24,6 +24,18 @@ async function main() {
   if (snapshot.selections.length === 0) {
     throw new Error("8xbet incoming parser returned an empty snapshot.");
   }
+
+  const awayHandicap = snapshot.selections.find(
+    (selection) =>
+      selection.fixtureId === "4763043" &&
+      selection.marketId === "hdp-hdp" &&
+      selection.outcomeName.includes("Rot Weiss Oberhausen")
+  );
+  if (!awayHandicap?.outcomeName.includes("+0.5/1")) {
+    throw new Error(
+      `8xbet incoming parser should preserve away handicap sign, got ${awayHandicap?.outcomeName ?? "missing"}`
+    );
+  }
 }
 
 main().catch((error) => {

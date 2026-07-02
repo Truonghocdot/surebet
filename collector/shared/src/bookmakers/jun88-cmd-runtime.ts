@@ -12,7 +12,7 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { openJun88ResolvedLobbyPage, withJun88LobbyPage } from "./jun88-lobby-page.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
-import { heartbeatOf } from "./streaming-utils.js";
+import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 
 const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header";
 
@@ -40,7 +40,9 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
 
     return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
       const target = await resolveCmdContentTarget(page);
-      return parseJun88CmdSnapshot(await target.content(), target.url(), this.collectorId);
+      const snapshot = parseJun88CmdSnapshot(await target.content(), target.url(), this.collectorId);
+      assertSnapshotHasSelections(snapshot, this.collectorId);
+      return snapshot;
     }, fallbackURL);
   }
 
@@ -71,6 +73,7 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
           target.url(),
           this.collectorId
         );
+        assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         await installCmdObserver(target, initialSnapshot);
@@ -183,12 +186,14 @@ async function installCmdObserver(
       };
       const formatOutcome = (name, line) => [name, line].filter(Boolean).join(" ").trim();
 
-      const selection = (node, fixtureId, marketName, outcomeName, suspended) => {
+      const selection = (node, fixtureId, homeTeam, awayTeam, marketName, outcomeName, suspended) => {
         if (!node) return null;
         const odds = parseOdds(text(node));
         if (!Number.isFinite(odds)) return null;
         return {
           fixtureId,
+          homeTeam,
+          awayTeam,
           marketId: normalizeToken(marketName),
           outcomeId: quoteId(fixtureId, marketName, outcomeName),
           outcomeName,
@@ -218,8 +223,8 @@ async function installCmdObserver(
           if (hdpNode) {
             const line = text(hdpNode.querySelector("b"));
             const buttons = Array.from(hdpNode.querySelectorAll(".tableDiv-match-odds__detail > a"));
-            const home = selection(buttons[0], fixtureId, prefix + " Handicap", formatOutcome(homeTeam, normalizeHandicapLine(line, "home")), false);
-            const away = selection(buttons[1], fixtureId, prefix + " Handicap", formatOutcome(awayTeam, normalizeHandicapLine(line, "away")), false);
+            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, prefix + " Handicap", formatOutcome(homeTeam, normalizeHandicapLine(line, "home")), false);
+            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, prefix + " Handicap", formatOutcome(awayTeam, normalizeHandicapLine(line, "away")), false);
             if (home) selections.push(home);
             if (away) selections.push(away);
           }
@@ -228,8 +233,8 @@ async function installCmdObserver(
           if (ouNode) {
             const line = text(ouNode.querySelector("b"));
             const buttons = Array.from(ouNode.querySelectorAll(".tableDiv-match-odds__detail a"));
-            const over = selection(buttons[0], fixtureId, prefix + " Over/Under", formatOutcome("Over", line), false);
-            const under = selection(buttons[1], fixtureId, prefix + " Over/Under", formatOutcome("Under", line), false);
+            const over = selection(buttons[0], fixtureId, homeTeam, awayTeam, prefix + " Over/Under", formatOutcome("Over", line), false);
+            const under = selection(buttons[1], fixtureId, homeTeam, awayTeam, prefix + " Over/Under", formatOutcome("Under", line), false);
             if (over) selections.push(over);
             if (under) selections.push(under);
           }
@@ -237,9 +242,9 @@ async function installCmdObserver(
           const x12Node = rowNode.querySelector(".col-45 .tableDiv-match-odds__X12detail");
           if (x12Node) {
             const buttons = Array.from(x12Node.querySelectorAll("a"));
-            const home = selection(buttons[0], fixtureId, prefix + " 1X2", homeTeam, false);
-            const away = selection(buttons[1], fixtureId, prefix + " 1X2", awayTeam, false);
-            const draw = selection(buttons[2], fixtureId, prefix + " 1X2", drawLabel, false);
+            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, prefix + " 1X2", homeTeam, false);
+            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, prefix + " 1X2", awayTeam, false);
+            const draw = selection(buttons[2], fixtureId, homeTeam, awayTeam, prefix + " 1X2", drawLabel, false);
             if (home) selections.push(home);
             if (away) selections.push(away);
             if (draw) selections.push(draw);
@@ -273,6 +278,8 @@ async function installCmdObserver(
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
+                homeTeam: item.homeTeam,
+                awayTeam: item.awayTeam,
                 marketId: item.marketId,
                 outcomeId: item.outcomeId,
                 outcomeName: item.outcomeName,
@@ -291,6 +298,8 @@ async function installCmdObserver(
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
+                homeTeam: item.homeTeam,
+                awayTeam: item.awayTeam,
                 marketId: item.marketId,
                 outcomeId: item.outcomeId,
                 outcomeName: item.outcomeName,
@@ -315,6 +324,8 @@ async function installCmdObserver(
             source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
             collectedAt: new Date().toISOString(),
             fixtureId: item.fixtureId,
+            homeTeam: item.homeTeam,
+            awayTeam: item.awayTeam,
             marketId: item.marketId,
             outcomeId: item.outcomeId,
             outcomeName: item.outcomeName,

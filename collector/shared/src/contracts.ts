@@ -10,6 +10,8 @@ export type CollectorSource = {
 
 export type OddsSelection = {
   fixtureId: string;
+  homeTeam?: string;
+  awayTeam?: string;
   marketId: string;
   outcomeId: string;
   outcomeName: string;
@@ -28,6 +30,8 @@ export type OddsDelta = {
   source: CollectorSource;
   collectedAt: string;
   fixtureId: string;
+  homeTeam?: string;
+  awayTeam?: string;
   marketId: string;
   outcomeId: string;
   outcomeName: string;
@@ -54,6 +58,7 @@ export type SessionState = {
   preparedAt: string;
   storageStatePath: string;
   sessionStoragePath?: string;
+  localStoragePath?: string;
   accessibleLobbies: LobbyCode[];
   visitedOrigins?: string[];
   lobbyURLs?: Partial<Record<LobbyCode, string>>;
