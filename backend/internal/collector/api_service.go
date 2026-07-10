@@ -2,6 +2,10 @@ package collector
 
 import (
 	"context"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"surebet/backend/internal/dto"
 	"surebet/backend/internal/logger"
@@ -82,4 +86,42 @@ func (s apiService) Heartbeat(ctx context.Context, request dto.CollectorHeartbea
 		"lobby_id", request.LobbyID,
 	)
 	return nil
+}
+
+func mapSelections(source dto.CollectorSource, collectedAt time.Time, selections []dto.CollectorSelection) []models.OddsQuote {
+	quotes := make([]models.OddsQuote, 0, len(selections))
+	for _, selection := range selections {
+		quotes = append(quotes, buildQuote(source, collectedAt, selection))
+	}
+	return quotes
+}
+
+func buildQuote(source dto.CollectorSource, collectedAt time.Time, selection dto.CollectorSelection) models.OddsQuote {
+	return models.OddsQuote{
+		ID:             quoteID(source.BookmakerID, source.LobbyID, selection.FixtureID, selection.MarketID, selection.OutcomeID),
+		BookmakerID:    source.BookmakerID,
+		LobbyID:        source.LobbyID,
+		FixtureID:      selection.FixtureID,
+		HomeTeam:       strings.TrimSpace(selection.HomeTeam),
+		AwayTeam:       strings.TrimSpace(selection.AwayTeam),
+		Sport:          "",
+		MarketID:       selection.MarketID,
+		MarketName:     selection.MarketID,
+		OutcomeID:      selection.OutcomeID,
+		OutcomeName:    selection.OutcomeName,
+		Odds:           selection.Odds,
+		AvailableStake: selection.AvailableStake,
+		Suspended:      selection.Suspended,
+		CollectedAt:    collectedAt.UTC(),
+	}
+}
+
+func quoteID(bookmakerID, lobbyID, fixtureID, marketID, outcomeID string) string {
+	return uuid.NewSHA1(uuid.Nil, []byte(strings.Join([]string{
+		bookmakerID,
+		lobbyID,
+		fixtureID,
+		marketID,
+		outcomeID,
+	}, "|"))).String()
 }

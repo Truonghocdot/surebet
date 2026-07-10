@@ -2,11 +2,6 @@ import type { Route } from "next";
 import {
   Activity,
   ArrowLeftRight,
-  Building2,
-  Cog,
-  Flag,
-  ShieldCheck,
-  TriangleAlert,
   type LucideIcon
 } from "lucide-react";
 
@@ -21,43 +16,13 @@ export const navigationItems: NavItem[] = [
   {
     label: "Tổng quan",
     href: "/dashboard",
-    description: "Tổng quan thời gian thực",
+    description: "Feed scrape và cơ hội surebet",
     icon: Activity
   },
   {
     label: "Cơ hội",
     href: "/opportunities",
-    description: "Surebet đang hoạt động",
+    description: "Danh sách cơ hội phát hiện được",
     icon: ArrowLeftRight
-  },
-  {
-    label: "Lệnh cược",
-    href: "/orders",
-    description: "Vòng đời đặt cược",
-    icon: ShieldCheck
-  },
-  {
-    label: "Tài khoản",
-    href: "/accounts",
-    description: "Tài khoản",
-    icon: Building2
-  },
-  {
-    label: "Rủi ro",
-    href: "/risk",
-    description: "Kiểm soát cảnh báo",
-    icon: TriangleAlert
-  },
-  {
-    label: "Feature flags",
-    href: "/feature-flags",
-    description: "Công tắc runtime",
-    icon: Flag
-  },
-  {
-    label: "Cấu hình",
-    href: "/settings",
-    description: "Thông tin truy cập",
-    icon: Cog
   }
 ];

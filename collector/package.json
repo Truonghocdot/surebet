@@ -11,10 +11,11 @@
     "jun88-m8"
   ],
   "scripts": { 
-    "bootstrap:8xbet": "tsx scripts/eightxbet-manual-bootstrap.ts",
-    "bootstrap:jun88": "tsx scripts/jun88-manual-bootstrap.ts",
     "run:8xbet-worker": "tsx scripts/run-eightxbet-worker.ts",
-    "run:jun88-workers": "tsx scripts/run-jun88-workers.ts",
+    "run:jun88-bti-worker": "tsx scripts/run-jun88-bti-worker.ts",
+    "run:jun88-ibc-worker": "tsx scripts/run-jun88-ibc-worker.ts",
+    "run:jun88-cmd-worker": "tsx scripts/run-jun88-cmd-worker.ts",
+    "run:jun88-m8-worker": "tsx scripts/run-jun88-m8-worker.ts",
     "test:bti-parser": "tsx scripts/test-bti-parser.ts",
     "test:cmd-parser": "tsx scripts/test-cmd-parser.ts",
     "test:eightxbet-incoming-parser": "tsx scripts/test-eightxbet-incoming-parser.ts",

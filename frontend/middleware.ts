@@ -30,11 +30,6 @@ export const config = {
     "/",
     "/login",
     "/dashboard/:path*",
-    "/opportunities/:path*",
-    "/orders/:path*",
-    "/accounts/:path*",
-    "/risk/:path*",
-    "/feature-flags/:path*",
-    "/settings/:path*"
+    "/opportunities/:path*"
   ]
 };

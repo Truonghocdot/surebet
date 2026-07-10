@@ -8,9 +8,8 @@ import (
 	"surebet/backend/internal/api"
 	"surebet/backend/internal/auth"
 	"surebet/backend/internal/calculator"
-	"surebet/backend/internal/config"
 	"surebet/backend/internal/collector"
-	"surebet/backend/internal/configuration"
+	"surebet/backend/internal/config"
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/repository/gormstore"
@@ -32,9 +31,6 @@ func main() {
 	tokenManager := auth.NewHMACTokenManager(cfg.Auth.TokenSecret, cfg.Auth.TokenTTL)
 
 	userRepository := gormstore.NewUserRepository(db)
-	accountRepository := gormstore.NewAccountRepository(db)
-	bookmakerRepository := gormstore.NewBookmakerRepository(db)
-	configurationRepository := gormstore.NewConfigurationRepository(db)
 	oddsSnapshotRepository := gormstore.NewOddsSnapshotRepository(db)
 
 	server := api.NewServer(cfg.HTTP, api.Dependencies{
@@ -44,15 +40,6 @@ func main() {
 			userRepository,
 			passwordHasher,
 			tokenManager,
-		),
-		ConfigQuery: configuration.NewQueryService(
-			bookmakerRepository,
-			accountRepository,
-			configurationRepository,
-		),
-		ConfigWrite: configuration.NewSettingsService(
-			bookmakerRepository,
-			accountRepository,
 		),
 		OddsQuery: odds.NewQueryService(oddsSnapshotRepository),
 		CollectorIngest: collector.NewAPIService(

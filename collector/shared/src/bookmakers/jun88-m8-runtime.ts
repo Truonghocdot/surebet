@@ -1,3 +1,4 @@
+import type { Frame, Page } from "playwright";
 import type {
   CollectorSource,
   CollectContext,
@@ -7,7 +8,7 @@ import type {
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
-import { openJun88ResolvedLobbyPage, withJun88LobbyPage } from "./jun88-lobby-page.js";
+import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88M8Snapshot } from "./parsers/jun88-m8-parser.js";
 import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 
@@ -17,69 +18,38 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext): Promise<OddsSnapshot> {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 M8 runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
+    const lobby = requireLobbyConfig("m8");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
+      const target = await resolveM8ContentTarget(page);
+      const snapshot = parseJun88M8Snapshot(
+        await target.content(),
+        target.url(),
+        this.collectorId
       );
-    }
-
-    if (!context.session.accessibleLobbies.includes("m8")) {
-      throw new Error(
-        `Shared session does not include lobby M8. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "m8");
-    if (!lobby) {
-      throw new Error("Jun88 M8 lobby configuration is missing.");
-    }
-    const fallbackURL = new URL("/vi-vn/sports-landing/m8", context.setting.url).toString();
-
-    return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
-      await page.waitForSelector(M8_READY_SELECTOR, { timeout: 20_000 }).catch(() => undefined);
-      const html = await page.content();
-      const snapshot = parseJun88M8Snapshot(html, page.url(), this.collectorId);
       assertSnapshotHasSelections(snapshot, this.collectorId);
       return snapshot;
-    }, fallbackURL);
+    });
   }
 
   async stream(context: CollectContext, sink: CollectorSink): Promise<void> {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 M8 runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("m8")) {
-      throw new Error(
-        `Shared session does not include lobby M8. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "m8");
-    if (!lobby) {
-      throw new Error("Jun88 M8 lobby configuration is missing.");
-    }
-    const fallbackURL = new URL("/vi-vn/sports-landing/m8", context.setting.url).toString();
-
-    return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("m8");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
-        await page.waitForSelector(M8_READY_SELECTOR, { timeout: 20_000 }).catch(() => undefined);
+        const target = await resolveM8ContentTarget(page);
         const initialSnapshot = parseJun88M8Snapshot(
-          await page.content(),
-          page.url(),
+          await target.content(),
+          target.url(),
           this.collectorId
         );
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
-        await installM8Observer(page, initialSnapshot);
+        await installM8Observer(target, initialSnapshot);
         let lastHeartbeatAt = Date.now();
 
         while (!page.isClosed()) {
           await page.waitForTimeout(300);
-          const deltas = await readM8Deltas(page);
+          const deltas = await readM8Deltas(target);
           if (deltas.length > 0) {
             await sink.pushDelta(deltas);
           }
@@ -93,12 +63,68 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
         throw new Error(`[${this.collectorId}] stream failed: ${formatError(error)}`);
       }
-    }, fallbackURL);
+    });
   }
 }
 
+async function resolveM8ContentTarget(page: Page): Promise<Page | Frame> {
+  await page
+    .waitForSelector(`${M8_READY_SELECTOR}, frame[name="fraMain"], frame`, {
+      timeout: 20_000
+    })
+    .catch(() => undefined);
+
+  const directMatch = await page.locator(M8_READY_SELECTOR).count().catch(() => 0);
+  if (directMatch > 0) {
+    return page;
+  }
+
+  const namedFrame = page.frame({ name: "fraMain" });
+  if (namedFrame) {
+    const resolved = await waitForM8FrameContent(namedFrame).catch(() => null);
+    if (resolved) {
+      return namedFrame;
+    }
+  }
+
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) {
+      continue;
+    }
+
+    const resolved = await waitForM8FrameContent(frame).catch(() => null);
+    if (resolved) {
+      return frame;
+    }
+  }
+
+  throw new Error("Jun88 M8 page/frame did not render odds rows in time.");
+}
+
+async function waitForM8FrameContent(frame: Frame) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 20_000) {
+    if (await frame.locator(M8_READY_SELECTOR).count().catch(() => 0)) {
+      return true;
+    }
+
+    await frame.page().waitForTimeout(250);
+  }
+
+  throw new Error("Jun88 M8 frame did not render odds rows in time.");
+}
+
+function requireLobbyConfig(lobbyId: "m8") {
+  const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === lobbyId);
+  if (!lobby) {
+    throw new Error(`Jun88 ${lobbyId.toUpperCase()} lobby configuration is missing.`);
+  }
+  return lobby;
+}
+
 async function installM8Observer(
-  page: import("playwright").Page,
+  target: Page | Frame,
   snapshot: { source: CollectorSource; selections: Array<{ outcomeId: string; outcomeName: string; odds: number }> }
 ) {
   const seededFingerprints = Object.fromEntries(
@@ -333,11 +359,11 @@ async function installM8Observer(
     })
   `;
 
-  await page.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
+  await target.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
 }
 
-async function readM8Deltas(page: import("playwright").Page) {
-  return page.evaluate(() => {
+async function readM8Deltas(target: Page | Frame) {
+  return target.evaluate(() => {
     const win = window as Window & {
       __surebet_m8_stream__?: {
         queue: import("../contracts.js").OddsDelta[];

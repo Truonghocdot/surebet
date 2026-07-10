@@ -15,6 +15,8 @@ type OddsSnapshotRepository struct {
 	db *gorm.DB
 }
 
+const oddsUpsertBatchSize = 250
+
 func NewOddsSnapshotRepository(db *gorm.DB) *OddsSnapshotRepository {
 	return &OddsSnapshotRepository{db: db}
 }
@@ -26,27 +28,29 @@ func (r *OddsSnapshotRepository) Upsert(ctx context.Context, quotes []models.Odd
 
 	quotes = dedupeOddsQuotes(quotes)
 
-	return r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "id"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				"bookmaker_id":    clause.Column{Name: "excluded.bookmaker_id"},
-				"lobby_id":        clause.Column{Name: "excluded.lobby_id"},
-				"fixture_id":      clause.Column{Name: "excluded.fixture_id"},
-				"home_team":       clause.Column{Name: "excluded.home_team"},
-				"away_team":       clause.Column{Name: "excluded.away_team"},
-				"sport":           clause.Column{Name: "excluded.sport"},
-				"market_id":       clause.Column{Name: "excluded.market_id"},
-				"market_name":     clause.Column{Name: "excluded.market_name"},
-				"outcome_id":      clause.Column{Name: "excluded.outcome_id"},
-				"outcome_name":    clause.Column{Name: "excluded.outcome_name"},
-				"odds":            clause.Column{Name: "excluded.odds"},
-				"available_stake": clause.Column{Name: "excluded.available_stake"},
-				"suspended":       clause.Column{Name: "excluded.suspended"},
-				"collected_at":    clause.Column{Name: "excluded.collected_at"},
-			}),
-		}).
-		Create(&quotes).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return tx.
+			Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "id"}},
+				DoUpdates: clause.Assignments(map[string]any{
+					"bookmaker_id":    clause.Column{Name: "excluded.bookmaker_id"},
+					"lobby_id":        clause.Column{Name: "excluded.lobby_id"},
+					"fixture_id":      clause.Column{Name: "excluded.fixture_id"},
+					"home_team":       clause.Column{Name: "excluded.home_team"},
+					"away_team":       clause.Column{Name: "excluded.away_team"},
+					"sport":           clause.Column{Name: "excluded.sport"},
+					"market_id":       clause.Column{Name: "excluded.market_id"},
+					"market_name":     clause.Column{Name: "excluded.market_name"},
+					"outcome_id":      clause.Column{Name: "excluded.outcome_id"},
+					"outcome_name":    clause.Column{Name: "excluded.outcome_name"},
+					"odds":            clause.Column{Name: "excluded.odds"},
+					"available_stake": clause.Column{Name: "excluded.available_stake"},
+					"suspended":       clause.Column{Name: "excluded.suspended"},
+					"collected_at":    clause.Column{Name: "excluded.collected_at"},
+				}),
+			}).
+			CreateInBatches(&quotes, oddsUpsertBatchSize).Error
+	})
 }
 
 func (r *OddsSnapshotRepository) ListByFixture(ctx context.Context, fixtureID string) ([]models.OddsQuote, error) {

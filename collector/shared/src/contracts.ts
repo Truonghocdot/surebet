@@ -41,29 +41,6 @@ export type OddsDelta = {
   op: "upsert" | "remove";
 };
 
-export type BookmakerSetting = {
-  bookmakerCode: BookmakerCode;
-  bookmakerName: string;
-  url: string;
-  username: string;
-  password: string;
-};
-
-export type SessionBootstrapMode = "manual" | "headless";
-
-export type SessionState = {
-  bookmakerCode: BookmakerCode;
-  originURL: string;
-  bootstrapMode: SessionBootstrapMode;
-  preparedAt: string;
-  storageStatePath: string;
-  sessionStoragePath?: string;
-  localStoragePath?: string;
-  accessibleLobbies: LobbyCode[];
-  visitedOrigins?: string[];
-  lobbyURLs?: Partial<Record<LobbyCode, string>>;
-};
-
 export type Jun88LobbyAccess = {
   lobbyId: Exclude<LobbyCode, "default">;
   launchURL: string;
@@ -71,8 +48,7 @@ export type Jun88LobbyAccess = {
 };
 
 export type CollectContext = {
-  setting: BookmakerSetting;
-  session?: SessionState;
+  pageURL: string;
 };
 
 export type CollectorHeartbeat = {
@@ -102,17 +78,4 @@ export interface CollectorSink {
 
 export interface StreamableCollector extends Collector {
   stream(sink: CollectorSink): Promise<void>;
-}
-
-export interface BookmakerSettingsProvider {
-  getBookmakerSetting(bookmakerCode: BookmakerCode): Promise<BookmakerSetting>;
-}
-
-export interface SessionBootstrapper {
-  prepare(setting: BookmakerSetting): Promise<SessionState>;
-}
-
-export interface SessionStateStore {
-  read(bookmakerCode: BookmakerCode): Promise<SessionState | null>;
-  write(state: SessionState): Promise<void>;
 }

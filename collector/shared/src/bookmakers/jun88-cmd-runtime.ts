@@ -10,7 +10,7 @@ import type {
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
-import { openJun88ResolvedLobbyPage, withJun88LobbyPage } from "./jun88-lobby-page.js";
+import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
 import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 
@@ -20,52 +20,18 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext): Promise<OddsSnapshot> {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 CMD runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("cmd")) {
-      throw new Error(
-        `Shared session does not include lobby CMD. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "cmd");
-    if (!lobby) {
-      throw new Error("Jun88 CMD lobby configuration is missing.");
-    }
-    const fallbackURL = new URL("/vi-vn/sports-landing/cmd", context.setting.url).toString();
-
-    return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("cmd");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       const target = await resolveCmdContentTarget(page);
       const snapshot = parseJun88CmdSnapshot(await target.content(), target.url(), this.collectorId);
       assertSnapshotHasSelections(snapshot, this.collectorId);
       return snapshot;
-    }, fallbackURL);
+    });
   }
 
   async stream(context: CollectContext, sink: CollectorSink): Promise<void> {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 CMD runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("cmd")) {
-      throw new Error(
-        `Shared session does not include lobby CMD. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "cmd");
-    if (!lobby) {
-      throw new Error("Jun88 CMD lobby configuration is missing.");
-    }
-    const fallbackURL = new URL("/vi-vn/sports-landing/cmd", context.setting.url).toString();
-
-    return openJun88ResolvedLobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("cmd");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
         const target = await resolveCmdContentTarget(page);
         const initialSnapshot = parseJun88CmdSnapshot(
@@ -95,8 +61,16 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
         throw new Error(`[${this.collectorId}] stream failed: ${formatError(error)}`);
       }
-    }, fallbackURL);
+    });
   }
+}
+
+function requireLobbyConfig(lobbyId: "cmd") {
+  const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === lobbyId);
+  if (!lobby) {
+    throw new Error(`Jun88 ${lobbyId.toUpperCase()} lobby configuration is missing.`);
+  }
+  return lobby;
 }
 
 async function resolveCmdContentTarget(page: Page): Promise<Page | Frame> {

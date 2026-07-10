@@ -4,12 +4,6 @@ import { writeDebugArtifacts } from "../core/debug.js";
 import { parseEightXBetIncomingSnapshot } from "./parsers/eightxbet-incoming-parser.js";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
-import {
-  loadEightXBetLocalStorage,
-  loadEightXBetSessionStorage,
-  saveEightXBetLocalStorage,
-  saveEightXBetSessionStorage
-} from "../session/eightxbet-session-storage.js";
 
 const EIGHTXBET_INCOMING_PATH = "/sportEvents/incoming/football?hour=6";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="v4-sport-asia-simple-handicap-unit-"]';
@@ -26,25 +20,11 @@ export class EightXBetRuntime implements CollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext) {
-    if (!context.session) {
-      throw new Error(
-        `8xbet runtime requires a prepared session. Run "npm run bootstrap:8xbet" first.`
-      );
-    }
-
     const browser = await chromium.launch(collectorLaunchOptions(true));
     let page: import("playwright").Page | null = null;
 
     try {
-      const sessionValues = context.session.sessionStoragePath
-        ? await loadEightXBetSessionStorage(context.session.sessionStoragePath).catch(() => null)
-        : null;
-      const localValues = context.session.localStoragePath
-        ? await loadEightXBetLocalStorage(context.session.localStoragePath).catch(() => null)
-        : null;
-
       const contextPage = await browser.newContext({
-        storageState: context.session.storageStatePath,
         locale: "vi-VN",
         timezoneId: "Asia/Ho_Chi_Minh",
         extraHTTPHeaders: {
@@ -69,46 +49,9 @@ export class EightXBetRuntime implements CollectorRuntime {
           window.sessionStorage.setItem("lang", "vi-VN");
         } catch {}
       });
-      await installEightXBetStorageInitScript(contextPage, {
-        sessionEntries: sessionValues,
-        localEntries: localValues
-      });
       page = await contextPage.newPage();
 
-      const targetURL = new URL(EIGHTXBET_INCOMING_PATH, context.setting.url).toString();
-
-      if (sessionValues || localValues) {
-        await page.goto(new URL("/sportEvents", context.setting.url).toString(), {
-          waitUntil: "domcontentloaded"
-        });
-        await page.evaluate(
-          ({ sessionEntries, localEntries }) => {
-            if (sessionEntries) {
-              for (const [key, value] of Object.entries(sessionEntries)) {
-                window.sessionStorage.setItem(key, value);
-              }
-            }
-            if (localEntries) {
-              for (const [key, value] of Object.entries(localEntries)) {
-                window.localStorage.setItem(key, value);
-              }
-            }
-          },
-          {
-            sessionEntries: sessionValues,
-            localEntries: localValues
-          }
-        );
-        await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
-
-        const restoredState = await readEightXBetAuthState(page);
-
-        if (!restoredState.hasAccessToken || !restoredState.hasRefreshToken) {
-          throw new Error(
-            `8xbet auth tokens were not restored correctly (access-token=${restoredState.hasAccessToken}, refresh-token=${restoredState.hasRefreshToken}, tt_sessionId=${restoredState.hasSessionId}).`
-          );
-        }
-      }
+      const targetURL = resolveEightXBetTargetURL(context.pageURL);
 
       await page.goto(targetURL, { waitUntil: "domcontentloaded" });
       await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
@@ -118,10 +61,7 @@ export class EightXBetRuntime implements CollectorRuntime {
       );
 
       if (!ready) {
-        await page.goto(new URL("/sportEvents", context.setting.url).toString(), {
-          waitUntil: "domcontentloaded"
-        });
-        await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+        await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
         await page.goto(targetURL, { waitUntil: "domcontentloaded" });
         await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
         ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
@@ -131,7 +71,7 @@ export class EightXBetRuntime implements CollectorRuntime {
       }
 
       if (!ready) {
-        throw new Error("8xbet incoming list did not render after session restore.");
+        throw new Error("8xbet incoming list did not render in time.");
       }
       await autoScrollIncomingList(page);
       const renderState = await stabilizeIncomingList(page);
@@ -141,7 +81,6 @@ export class EightXBetRuntime implements CollectorRuntime {
           "8xbet incoming list rendered shell rows, but odds buttons did not hydrate in time."
         );
       }
-      await persistEightXBetRuntimeSession(contextPage, page, context.session);
 
       const html = await page.content();
       const snapshot = parseEightXBetIncomingSnapshot(html, page.url(), this.collectorId);
@@ -163,43 +102,6 @@ export class EightXBetRuntime implements CollectorRuntime {
   }
 }
 
-type EightXBetStoragePayload = {
-  sessionEntries: Record<string, string> | null;
-  localEntries: Record<string, string> | null;
-};
-
-async function installEightXBetStorageInitScript(
-  context: import("playwright").BrowserContext,
-  payload: EightXBetStoragePayload
-) {
-  if (!payload.sessionEntries && !payload.localEntries) {
-    return;
-  }
-
-  await context.addInitScript(({ sessionEntries, localEntries }: EightXBetStoragePayload) => {
-    try {
-      if (sessionEntries) {
-        for (const [key, value] of Object.entries(sessionEntries)) {
-          window.sessionStorage.setItem(key, value);
-        }
-      }
-      if (localEntries) {
-        for (const [key, value] of Object.entries(localEntries)) {
-          window.localStorage.setItem(key, value);
-        }
-      }
-
-      for (const key of ["access-token", "refresh-token"]) {
-        const value = window.localStorage.getItem(key) || window.sessionStorage.getItem(key);
-        if (value) {
-          window.localStorage.setItem(key, value);
-          window.sessionStorage.setItem(key, value);
-        }
-      }
-    } catch {}
-  }, payload);
-}
-
 function isRawFallbackSnapshot(snapshot: OddsSnapshot) {
   return (
     snapshot.selections.length > 0 &&
@@ -207,72 +109,13 @@ function isRawFallbackSnapshot(snapshot: OddsSnapshot) {
   );
 }
 
-async function readEightXBetAuthState(page: import("playwright").Page) {
-  return page.evaluate(() => {
-    const authKeys = ["access-token", "refresh-token"];
-    for (const key of authKeys) {
-      const localValue = window.localStorage.getItem(key);
-      const sessionValue = window.sessionStorage.getItem(key);
-      const value = localValue || sessionValue;
-      if (value) {
-        window.localStorage.setItem(key, value);
-        window.sessionStorage.setItem(key, value);
-      }
-    }
-
-    return {
-      hasAccessToken:
-        !!window.localStorage.getItem("access-token") ||
-        !!window.sessionStorage.getItem("access-token"),
-      hasRefreshToken:
-        !!window.localStorage.getItem("refresh-token") ||
-        !!window.sessionStorage.getItem("refresh-token"),
-      hasSessionId:
-        !!window.sessionStorage.getItem("tt_sessionId") ||
-        !!window.localStorage.getItem("tt_sessionId"),
-      currentPath: window.location.pathname
-    };
-  });
-}
-
-async function persistEightXBetRuntimeSession(
-  context: import("playwright").BrowserContext,
-  page: import("playwright").Page,
-  session: NonNullable<CollectContext["session"]>
-) {
-  await context.storageState({ path: session.storageStatePath }).catch(() => undefined);
-
-  if (session.sessionStoragePath) {
-    const sessionStorageValues = await page.evaluate(() => {
-      const output: Record<string, string> = {};
-      for (let index = 0; index < window.sessionStorage.length; index += 1) {
-        const key = window.sessionStorage.key(index);
-        if (key) {
-          output[key] = window.sessionStorage.getItem(key) ?? "";
-        }
-      }
-      return output;
-    });
-    await saveEightXBetSessionStorage(session.sessionStoragePath, sessionStorageValues).catch(
-      () => undefined
-    );
+function resolveEightXBetTargetURL(value: string) {
+  const parsed = new URL(value);
+  if (parsed.pathname.includes("/sportEvents/")) {
+    return parsed.toString();
   }
 
-  if (session.localStoragePath) {
-    const localStorageValues = await page.evaluate(() => {
-      const output: Record<string, string> = {};
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const key = window.localStorage.key(index);
-        if (key) {
-          output[key] = window.localStorage.getItem(key) ?? "";
-        }
-      }
-      return output;
-    });
-    await saveEightXBetLocalStorage(session.localStoragePath, localStorageValues).catch(
-      () => undefined
-    );
-  }
+  return new URL(EIGHTXBET_INCOMING_PATH, parsed).toString();
 }
 
 async function autoScrollIncomingList(page: import("playwright").Page) {

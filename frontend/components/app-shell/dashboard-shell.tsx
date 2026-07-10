@@ -48,9 +48,9 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
                 <Bolt className="size-5" />
               </div>
               <div>
-                <p className="font-display text-lg font-semibold">Surebet CRM</p>
+                <p className="font-display text-lg font-semibold">Surebet Monitor</p>
                 <p className="text-sm text-[var(--muted)]">
-                  Trung tâm điều phối vận hành và thực thi
+                  Theo dõi scraping, so sánh odds và hiển thị surebet
                 </p>
               </div>
             </div>
@@ -91,7 +91,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
           <div className="flex h-full flex-col gap-4">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
-                Bảng điều khiển vận hành
+                Bảng theo dõi dữ liệu scrape
               </p>
             </div>
 
@@ -133,7 +133,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
 
             <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,155,84,0.18),rgba(255,255,255,0.06))] p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
-                An toàn thời gian thực
+                So sánh và hiển thị
               </p>
             </div>
           </div>

@@ -27,25 +27,6 @@ type SurebetQueryService interface {
 	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
 
-type BetCommandService interface {
-	CreateManualBet(ctx context.Context, request dto.CreateManualBetRequest) (dto.BetOrderView, error)
-}
-
-type FeatureQueryService interface {
-	ListFeatureFlags(ctx context.Context) ([]dto.FeatureFlagView, error)
-}
-
-type ConfigQueryService interface {
-	ListBookmakers(ctx context.Context) ([]dto.BookmakerView, error)
-	ListBookmakerAccounts(ctx context.Context) ([]dto.BookmakerAccountView, error)
-	ListConfigurations(ctx context.Context, prefix string) ([]dto.ConfigurationView, error)
-}
-
-type ConfigWriteService interface {
-	ListBookmakerSettings(ctx context.Context) ([]dto.BookmakerSettingView, error)
-	UpdateBookmakerSetting(ctx context.Context, request dto.UpdateBookmakerSettingRequest) (dto.BookmakerSettingView, error)
-}
-
 func (s *Server) registerRoutes() {
 	s.engine.GET("/healthz", s.handleHealth)
 
@@ -53,13 +34,6 @@ func (s *Server) registerRoutes() {
 	v1.POST("/auth/login", s.handleLogin)
 	v1.GET("/odds", s.handleOdds)
 	v1.GET("/surebets", s.handleSurebets)
-	v1.GET("/features", s.handleFeatures)
-	v1.GET("/bookmakers", s.handleBookmakers)
-	v1.GET("/bookmaker-accounts", s.handleBookmakerAccounts)
-	v1.GET("/configurations", s.handleConfigurations)
-	v1.GET("/bookmaker-settings", s.handleBookmakerSettings)
-	v1.PUT("/bookmaker-settings", s.handleUpdateBookmakerSetting)
-	v1.POST("/bets/manual", s.handleCreateManualBet)
 	v1.POST("/collector/bootstrap", s.handleCollectorBootstrap)
 	v1.POST("/collector/delta", s.handleCollectorDelta)
 	v1.POST("/collector/heartbeat", s.handleCollectorHeartbeat)
@@ -126,124 +100,6 @@ func (s *Server) handleSurebets(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{"data": items})
 }
-
-func (s *Server) handleFeatures(ctx *gin.Context) {
-	if s.deps.FeatureQuery == nil {
-		placeholder(ctx, "feature query service is not wired yet")
-		return
-	}
-
-	items, err := s.deps.FeatureQuery.ListFeatureFlags(ctx.Request.Context())
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": items})
-}
-
-func (s *Server) handleBookmakers(ctx *gin.Context) {
-	if s.deps.ConfigQuery == nil {
-		placeholder(ctx, "configuration query service is not wired yet")
-		return
-	}
-
-	items, err := s.deps.ConfigQuery.ListBookmakers(ctx.Request.Context())
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": items})
-}
-
-func (s *Server) handleBookmakerAccounts(ctx *gin.Context) {
-	if s.deps.ConfigQuery == nil {
-		placeholder(ctx, "configuration query service is not wired yet")
-		return
-	}
-
-	items, err := s.deps.ConfigQuery.ListBookmakerAccounts(ctx.Request.Context())
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": items})
-}
-
-func (s *Server) handleConfigurations(ctx *gin.Context) {
-	if s.deps.ConfigQuery == nil {
-		placeholder(ctx, "configuration query service is not wired yet")
-		return
-	}
-
-	items, err := s.deps.ConfigQuery.ListConfigurations(ctx.Request.Context(), ctx.Query("prefix"))
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": items})
-}
-
-func (s *Server) handleCreateManualBet(ctx *gin.Context) {
-	if s.deps.BetCommand == nil {
-		placeholder(ctx, "bet command service is not wired yet")
-		return
-	}
-
-	var request dto.CreateManualBetRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	order, err := s.deps.BetCommand.CreateManualBet(ctx.Request.Context(), request)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusAccepted, gin.H{"data": order})
-}
-
-func (s *Server) handleBookmakerSettings(ctx *gin.Context) {
-	if s.deps.ConfigWrite == nil {
-		placeholder(ctx, "configuration write service is not wired yet")
-		return
-	}
-
-	items, err := s.deps.ConfigWrite.ListBookmakerSettings(ctx.Request.Context())
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": items})
-}
-
-func (s *Server) handleUpdateBookmakerSetting(ctx *gin.Context) {
-	if s.deps.ConfigWrite == nil {
-		placeholder(ctx, "configuration write service is not wired yet")
-		return
-	}
-
-	var request dto.UpdateBookmakerSettingRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	item, err := s.deps.ConfigWrite.UpdateBookmakerSetting(ctx.Request.Context(), request)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{"data": item})
-}
-
 func (s *Server) handleCollectorBootstrap(ctx *gin.Context) {
 	if s.deps.CollectorIngest == nil {
 		placeholder(ctx, "collector ingest service is not wired yet")

@@ -5,7 +5,11 @@ import { SectionHeader } from "@/components/dashboard/section-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { QueryShell } from "@/features/dashboard/components/query-shell";
 import { useDashboardSnapshotQuery } from "@/features/dashboard/queries/use-crm-queries";
-import type { DashboardSnapshot } from "@/features/dashboard/schemas/crm-schemas";
+import type {
+  DashboardSnapshot,
+  FeedSource,
+  OddsRow
+} from "@/features/dashboard/schemas/crm-schemas";
 
 export function DashboardOverviewScreen() {
   const query = useDashboardSnapshotQuery();
@@ -14,8 +18,8 @@ export function DashboardOverviewScreen() {
     <div className="dashboard-page">
       <SectionHeader
         eyebrow="Tổng quan"
-        title="Dashboard vận hành thời gian thực"
-        description="Góc nhìn tổng hợp về cơ hội surebet, trạng thái lệnh, tài khoản bookmaker và các feature flag đang ảnh hưởng tới hệ thống."
+        title="Scraping và so sánh odds"
+        description="Dashboard này chỉ tập trung vào feed scrape hiện tại, dữ liệu odds vừa thu thập và các cơ hội surebet được phát hiện từ phép so sánh đó."
       />
 
       <QueryShell<DashboardSnapshot> {...query}>
@@ -27,21 +31,34 @@ export function DashboardOverviewScreen() {
               ))}
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-12">
+            <div className="mt-4 grid gap-4 xl:grid-cols-12">
+              <div className="xl:col-span-5">
+                <DataPanel
+                  title="Nguồn feed scrape"
+                  description="Theo dõi trạng thái từng nguồn scrape theo bookmaker và lobby."
+                >
+                  <div className="space-y-3">
+                    {snapshot.feeds.map((item) => (
+                      <FeedCard key={item.source_id} item={item} />
+                    ))}
+                  </div>
+                </DataPanel>
+              </div>
+
               <div className="xl:col-span-7">
                 <DataPanel
-                  title="Surebet đang được ưu tiên"
-                  description="Những cơ hội mới nhất đang có lợi nhuận đủ ngưỡng và cần tiếp tục theo dõi."
+                  title="Surebet mới nhất"
+                  description="Các cơ hội được detector phát hiện từ dữ liệu odds hiện tại."
                 >
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] border-separate border-spacing-y-3 text-left">
                       <thead>
                         <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                          <th className="pb-2 font-medium">Trận đấu</th>
+                          <th className="pb-2 font-medium">Fixture</th>
                           <th className="pb-2 font-medium">Market</th>
-                          <th className="pb-2 font-medium">Lợi nhuận</th>
-                          <th className="pb-2 font-medium">Số chân</th>
-                          <th className="pb-2 font-medium">Độ mới</th>
+                          <th className="pb-2 font-medium">Profit</th>
+                          <th className="pb-2 font-medium">Legs</th>
+                          <th className="pb-2 font-medium">Detected</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -69,111 +86,29 @@ export function DashboardOverviewScreen() {
                 </DataPanel>
               </div>
 
-              <div className="xl:col-span-5">
+              <div className="xl:col-span-12">
                 <DataPanel
-                  title="Tiến trình lệnh cược"
-                  description="Trạng thái cập nhật của những lệnh gần đây theo state machine."
+                  title="Odds vừa scrape"
+                  description="Những bản ghi odds mới nhất đang được backend dùng để so sánh và tìm surebet."
                 >
-                  <div className="space-y-3">
-                    {snapshot.orders.map((item) => (
-                      <div
-                        className="flex items-start justify-between gap-4 rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4"
-                        key={item.id}
-                      >
-                        <div>
-                          <p className="font-semibold">{item.id}</p>
-                          <p className="mt-1 text-sm text-[var(--muted)]">
-                            {item.operator}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{item.state}</p>
-                          <p className="mt-1 text-sm text-[var(--muted)]">
-                            {item.updatedAt}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </DataPanel>
-              </div>
-
-              <div className="xl:col-span-7">
-                <DataPanel
-                  title="Tình trạng account"
-                  description="Theo dõi balance, session và độ sẵn sàng của các account bookmaker."
-                >
-                  <div className="space-y-3">
-                    {snapshot.accounts.map((item) => (
-                      <div
-                        className="rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4"
-                        key={`${item.bookmaker}-${item.account}`}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="font-semibold">{item.account}</p>
-                            <p className="mt-1 text-sm text-[var(--muted)]">
-                              {item.bookmaker}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">{item.balance}</p>
-                            <p className={accountStatusClass(item.status)}>
-                              {item.status}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 grid gap-3 rounded-[16px] bg-white/60 p-3 text-xs text-[var(--muted)] md:grid-cols-3">
-                          <AccountMetric
-                            label="Session"
-                            value={item.session_status ?? "Chưa có session"}
-                          />
-                          <AccountMetric
-                            label="Ready"
-                            value={item.readiness ?? "Chưa rõ"}
-                          />
-                          <AccountMetric
-                            label="Feed"
-                            value={`${item.live_odds ?? 0} odds · ${
-                              item.lobbies?.join(", ") || "no lobby"
-                            }`}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </DataPanel>
-              </div>
-
-              <div className="xl:col-span-5">
-                <DataPanel
-                  title="Feature flag runtime"
-                  description="Những công tắc hiện đang ảnh hưởng đến execution và validation."
-                >
-                  <div className="space-y-3">
-                    {snapshot.flags.map((item) => (
-                      <div
-                        className="flex items-start justify-between gap-4 rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4"
-                        key={item.name}
-                      >
-                        <div>
-                          <p className="font-semibold">{item.name}</p>
-                          <p className="mt-1 text-sm text-[var(--muted)]">
-                            Phạm vi: {item.scope}
-                          </p>
-                        </div>
-                        <p
-                          className={
-                            item.value === "ON"
-                              ? "font-semibold text-teal-700"
-                              : "font-semibold text-red-700"
-                          }
-                        >
-                          {item.value === "ON" ? "BẬT" : "TẮT"}
-                        </p>
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[920px] border-separate border-spacing-y-3 text-left">
+                      <thead>
+                        <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                          <th className="pb-2 font-medium">Nguồn</th>
+                          <th className="pb-2 font-medium">Fixture</th>
+                          <th className="pb-2 font-medium">Market</th>
+                          <th className="pb-2 font-medium">Selection</th>
+                          <th className="pb-2 font-medium">Odds</th>
+                          <th className="pb-2 font-medium">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {snapshot.odds.map((row, index) => (
+                          <OddsRowEntry key={`${row.bookmaker_id}-${row.outcome_name}-${index}`} row={row} />
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </DataPanel>
               </div>
@@ -185,41 +120,79 @@ export function DashboardOverviewScreen() {
   );
 }
 
-function AccountMetric({ label, value }: { label: string; value: string }) {
+function FeedCard({ item }: { item: FeedSource }) {
   return (
-    <div>
-      <p className="font-semibold uppercase tracking-[0.14em] text-slate-400">
-        {label}
+    <div className="rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-semibold uppercase">
+            {item.bookmaker_id} / {item.lobby_id}
+          </p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            {item.fixtures} fixtures · {item.live_odds} odds sống
+          </p>
+        </div>
+        <p className={feedStatusClass(item.status)}>{item.status}</p>
+      </div>
+      <p className="mt-3 text-xs text-[var(--muted)]">
+        Lần scrape gần nhất: {item.latest_seen_at ? formatDateTime(item.latest_seen_at) : "chưa có"}
       </p>
-      <p className="mt-1 text-[var(--ink)]">{value}</p>
     </div>
   );
 }
 
-function accountStatusClass(status: string) {
+function OddsRowEntry({ row }: { row: OddsRow }) {
+  return (
+    <tr className="bg-[var(--surface-soft)] text-sm text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)]">
+      <td className="rounded-l-[20px] px-4 py-4 font-medium uppercase">
+        {row.bookmaker_id} / {row.lobby_id}
+      </td>
+      <td className="px-4 py-4">
+        <p className="font-medium">{row.match_name || row.fixture_id}</p>
+        <p className="mt-1 text-xs text-[var(--muted)]">{row.period || "FT"}</p>
+      </td>
+      <td className="px-4 py-4">
+        {[row.market_type, row.line].filter(Boolean).join(" ").trim() || row.market_type}
+      </td>
+      <td className="px-4 py-4">{row.outcome_name}</td>
+      <td className="px-4 py-4">
+        <span className="font-semibold">{row.odds.toFixed(2)}</span>
+        <span className="ml-2 text-xs text-[var(--muted)]">
+          dec {row.decimal_odds.toFixed(2)}
+        </span>
+      </td>
+      <td className="rounded-r-[20px] px-4 py-4 text-slate-500">
+        {formatDateTime(row.collected_at)}
+      </td>
+    </tr>
+  );
+}
+
+function feedStatusClass(status: string) {
   switch (status) {
-    case "Hoạt động":
-      return "mt-1 text-sm font-semibold text-teal-700";
-    case "Có feed":
-      return "mt-1 text-sm font-semibold text-sky-700";
-    case "Feed cũ":
-      return "mt-1 text-sm font-semibold text-orange-700";
-    case "Tắt":
-      return "mt-1 text-sm font-semibold text-slate-500";
+    case "LIVE":
+      return "text-sm font-semibold text-teal-700";
+    case "STALE":
+      return "text-sm font-semibold text-orange-700";
     default:
-      return "mt-1 text-sm font-semibold text-red-700";
+      return "text-sm font-semibold text-slate-500";
   }
 }
 
-function formatFreshness(detectedAt: string) {
-  const seconds = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(detectedAt).getTime()) / 1000)
-  );
-
+function formatFreshness(value: string) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
   if (seconds < 60) {
     return `${seconds}s trước`;
   }
-
   return `${Math.floor(seconds / 60)} phút trước`;
+}
+
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    day: "2-digit",
+    month: "2-digit"
+  });
 }

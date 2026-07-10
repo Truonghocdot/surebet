@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 
-const debugDir = path.resolve("tmp/session/debug");
+const debugDir = path.resolve("tmp/collector/debug");
 
 type DebugArtifactOptions = {
   silent?: boolean;

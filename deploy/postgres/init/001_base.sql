@@ -35,8 +35,6 @@ CREATE TABLE IF NOT EXISTS accounts (
     bookmaker_id TEXT NOT NULL REFERENCES bookmakers(id),
     external_ref TEXT NOT NULL UNIQUE,
     label TEXT NOT NULL DEFAULT '',
-    login_username TEXT NOT NULL DEFAULT '',
-    login_password TEXT NOT NULL DEFAULT '',
     currency TEXT NOT NULL DEFAULT 'USD',
     balance NUMERIC(18, 4) NOT NULL DEFAULT 0,
     available_stake NUMERIC(18, 4) NOT NULL DEFAULT 0,

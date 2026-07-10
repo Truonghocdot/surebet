@@ -1,25 +1,15 @@
 import {
   BaseCollector,
-  createBackendSettingsProvider,
+  resolveCollectorPageURL,
   EightXBetRuntime,
-  EightXBetSessionBootstrapper,
-  FileSessionStateStore,
   type Collector
 } from "@surebet/collector-shared";
-import path from "node:path";
 
 export class EightXBetCollector implements Collector {
-  private readonly settings = createBackendSettingsProvider();
-
-  private readonly sessionBootstrapper = new EightXBetSessionBootstrapper({
-    stateStore: new FileSessionStateStore(path.resolve("tmp/session"))
-  });
-
   private readonly base = new BaseCollector(
     new EightXBetRuntime("8xbet"),
     {
-      settings: this.settings,
-      sessionBootstrapper: this.sessionBootstrapper
+      pageURL: resolveCollectorPageURL("8xbet", "default")
     },
     "8xbet",
     "default"
@@ -27,10 +17,5 @@ export class EightXBetCollector implements Collector {
 
   async collect() {
     return this.base.collect();
-  }
-
-  async refreshSession() {
-    const setting = await this.settings.getBookmakerSetting("8xbet");
-    await this.sessionBootstrapper.refresh(setting);
   }
 }

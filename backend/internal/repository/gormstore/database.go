@@ -36,16 +36,7 @@ func OpenAndMigrate(cfg config.PostgresConfig) (*gorm.DB, error) {
 func AutoMigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&models.User{},
-		&models.Bookmaker{},
-		&models.Account{},
-		&models.Session{},
 		&models.OddsQuote{},
-		&models.BetOrder{},
-		&models.BetOrderLeg{},
-		&models.BetResult{},
-		&models.AuditLog{},
-		&models.FeatureFlag{},
-		&models.Configuration{},
 	); err != nil {
 		return err
 	}

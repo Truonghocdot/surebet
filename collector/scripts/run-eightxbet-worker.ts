@@ -10,10 +10,6 @@ import { EightXBetCollector } from "../eightxbet/src/index.js";
 const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
 const intervalMs = Number.parseInt(envString("COLLECT_INTERVAL_MS", "5000"), 10);
 const heartbeatMs = Number.parseInt(envString("COLLECT_HEARTBEAT_MS", "15000"), 10);
-const sessionRefreshCooldownMs = Number.parseInt(
-  envString("EIGHTXBET_SESSION_REFRESH_COOLDOWN_MS", "60000"),
-  10
-);
 
 async function main() {
   const sink = new BackendCollectorSink(backendURL);
@@ -85,7 +81,6 @@ async function runWorker(sink: BackendCollectorSink) {
   let previous = new Map<string, OddsSelection>();
   let initialized = false;
   let lastHeartbeatAt = 0;
-  let lastSessionRefreshAttemptAt = 0;
 
   while (true) {
     const startedAt = Date.now();
@@ -122,21 +117,6 @@ async function runWorker(sink: BackendCollectorSink) {
       }
     } catch (error) {
       console.error("[8xbet-worker] collect failed:", error);
-      if (
-        isRefreshableEightXBetSessionError(error) &&
-        Date.now() - lastSessionRefreshAttemptAt >= sessionRefreshCooldownMs
-      ) {
-        lastSessionRefreshAttemptAt = Date.now();
-        console.warn("[8xbet-worker] refreshing 8xbet session...");
-        try {
-          await collector.refreshSession();
-          previous = new Map<string, OddsSelection>();
-          initialized = false;
-          console.warn("[8xbet-worker] session refreshed; next successful collect will bootstrap.");
-        } catch (refreshError) {
-          console.error("[8xbet-worker] session refresh failed:", refreshError);
-        }
-      }
     }
 
     const elapsed = Date.now() - startedAt;
@@ -158,17 +138,6 @@ async function runWorkerSafely(sink: BackendCollectorSink) {
 
 async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRefreshableEightXBetSessionError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return [
-    "8xbet auth tokens were not restored correctly",
-    "8xbet incoming list did not render after session restore",
-    "8xbet session refresh failed",
-    "8xbet runtime requires a prepared session",
-    "8xbet session is missing"
-  ].some((fragment) => message.includes(fragment));
 }
 
 main().catch((error) => {

@@ -1,34 +1,20 @@
 import { NextResponse } from "next/server";
-import { fetchBackendJSON } from "@/lib/server-api";
 import {
+  fetchBackendOdds,
   fetchBackendOpportunities,
-  fetchDashboardAccounts
+  type BackendOdds
 } from "@/lib/server-dashboard-data";
 
 export async function GET() {
   try {
-    const [accounts, bookmakers, configurations, opportunities, odds] = await Promise.all([
-      fetchDashboardAccounts(),
-      fetchBackendJSON<{ data: unknown[] }>("/v1/bookmakers"),
-      fetchBackendJSON<{ data: unknown[] }>("/v1/configurations?prefix=bookmaker."),
+    const [opportunities, odds] = await Promise.all([
       fetchBackendOpportunities(),
-      fetchBackendJSON<{
-        data: Array<{
-          bookmaker_id: string;
-          lobby_id: string;
-          fixture_id: string;
-          market_id: string;
-          outcome_id: string;
-          odds: number;
-          available_stake: number;
-          collected_at: string;
-        }>;
-      }>("/v1/odds")
+      fetchBackendOdds(true)
     ]);
 
-    const activeAccounts = accounts.filter((item) => item.status === "Hoạt động").length;
-    const pendingOrders = 0;
-    const totalOpportunities = opportunities.length;
+    const feedSummaries = summarizeFeeds(odds);
+    const liveOdds = odds.filter((item) => !item.suspended && item.odds !== 0);
+    const uniqueFixtures = new Set(liveOdds.map((item) => item.fixture_id)).size;
     const avgProfit =
       opportunities.length > 0
         ? opportunities.reduce((sum, item) => sum + item.profit_percentage, 0) /
@@ -38,40 +24,42 @@ export async function GET() {
     return NextResponse.json({
       stats: [
         {
-          title: "Surebet đang hoạt động",
-          value: String(totalOpportunities),
+          title: "Surebet hiện có",
+          value: String(opportunities.length),
           delta:
             opportunities.length > 0
               ? `TB ${avgProfit.toFixed(2)}%`
-              : "Chưa có cơ hội",
+              : "Chưa phát hiện cơ hội",
           tone: opportunities.length > 0 ? "positive" : "neutral"
         },
         {
-          title: "Lệnh cần xác nhận",
-          value: String(pendingOrders),
-          delta: "Chưa nối order engine",
-          tone: "warning"
+          title: "Odds đang sống",
+          value: String(liveOdds.length),
+          delta: `${odds.length} bản ghi scrape`,
+          tone: liveOdds.length > 0 ? "positive" : "warning"
         },
         {
-          title: "Account đang online",
-          value: `${activeAccounts}/${accounts.length}`,
-          delta: `${odds.data.length} odds hiện tại`,
-          tone: activeAccounts > 0 ? "neutral" : "warning"
+          title: "Fixtures theo dõi",
+          value: String(uniqueFixtures),
+          delta: `${feedSummaries.length} nguồn feed`,
+          tone: uniqueFixtures > 0 ? "neutral" : "warning"
         },
         {
-          title: "Collector feed",
-          value: odds.data.length > 0 ? "LIVE" : "IDLE",
-          delta: odds.data.length > 0 ? "Đang nhận dữ liệu" : "Chưa có odds",
-          tone: odds.data.length > 0 ? "positive" : "warning"
+          title: "Nguồn feed hoạt động",
+          value: String(feedSummaries.filter((item) => item.status === "LIVE").length),
+          delta: `${feedSummaries.length} nguồn đang scrape`,
+          tone:
+            feedSummaries.some((item) => item.status === "LIVE") ? "positive" : "warning"
         }
       ],
       opportunities,
-      orders: [],
-      accounts,
-      flags: [],
-      bookmakers: bookmakers.data,
-      configurations: configurations.data,
-      risk: []
+      feeds: feedSummaries,
+      odds: odds
+        .sort(
+          (left, right) =>
+            new Date(right.collected_at).getTime() - new Date(left.collected_at).getTime()
+        )
+        .slice(0, 18)
     });
   } catch (error) {
     return NextResponse.json(
@@ -84,4 +72,79 @@ export async function GET() {
       { status: 502 }
     );
   }
+}
+
+function summarizeFeeds(odds: BackendOdds[]) {
+  const grouped = new Map<
+    string,
+    {
+      source_id: string;
+      bookmaker_id: string;
+      lobby_id: string;
+      live_odds: number;
+      fixtures: Set<string>;
+      latest_seen_at: string | null;
+    }
+  >();
+
+  for (const item of odds) {
+    const sourceID = `${item.bookmaker_id}/${item.lobby_id}`;
+    const current = grouped.get(sourceID) ?? {
+      source_id: sourceID,
+      bookmaker_id: item.bookmaker_id,
+      lobby_id: item.lobby_id,
+      live_odds: 0,
+      fixtures: new Set<string>(),
+      latest_seen_at: null
+    };
+
+    if (!item.suspended && item.odds !== 0) {
+      current.live_odds += 1;
+    }
+
+    current.fixtures.add(item.fixture_id);
+    current.latest_seen_at = latestTimestamp(current.latest_seen_at, item.collected_at);
+    grouped.set(sourceID, current);
+  }
+
+  return Array.from(grouped.values())
+    .map((item) => ({
+      source_id: item.source_id,
+      bookmaker_id: item.bookmaker_id,
+      lobby_id: item.lobby_id,
+      status: feedStatus(item.latest_seen_at, item.live_odds),
+      live_odds: item.live_odds,
+      fixtures: item.fixtures.size,
+      latest_seen_at: item.latest_seen_at
+    }))
+    .sort((left, right) => left.source_id.localeCompare(right.source_id));
+}
+
+function latestTimestamp(current: string | null, candidate: string) {
+  if (!current) {
+    return candidate;
+  }
+
+  return new Date(candidate).getTime() > new Date(current).getTime() ? candidate : current;
+}
+
+function feedStatus(latestSeenAt: string | null, liveOdds: number) {
+  if (!latestSeenAt) {
+    return "IDLE";
+  }
+
+  const ageSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(latestSeenAt).getTime()) / 1000)
+  );
+
+  if (liveOdds > 0 && ageSeconds <= 60) {
+    return "LIVE";
+  }
+
+  if (ageSeconds <= 60) {
+    return "STALE";
+  }
+
+  return "OFFLINE";
 }

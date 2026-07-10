@@ -8,7 +8,7 @@ import type {
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
-import { withJun88LobbyPage } from "./jun88-lobby-page.js";
+import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88BtiSnapshot } from "./parsers/jun88-bti-parser.js";
 import { assertSnapshotHasSelections } from "./streaming-utils.js";
 
@@ -16,24 +16,8 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext) {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 BTI runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("bti")) {
-      throw new Error(
-        `Shared session does not include lobby BTI. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "bti");
-    if (!lobby) {
-      throw new Error("Jun88 BTI lobby configuration is missing.");
-    }
-
-    return withJun88LobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("bti");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       await page.waitForSelector(".master_fe_Event_match", { timeout: 20_000 });
       const html = await page.content();
       const snapshot = parseJun88BtiSnapshot(html, page.url());
@@ -43,24 +27,8 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
   }
 
   async stream(context: CollectContext, sink: CollectorSink) {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 BTI runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("bti")) {
-      throw new Error(
-        `Shared session does not include lobby BTI. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "bti");
-    if (!lobby) {
-      throw new Error("Jun88 BTI lobby configuration is missing.");
-    }
-
-    return withJun88LobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("bti");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
         await page.waitForSelector(".master_fe_Event_match", { timeout: 20_000 });
 
@@ -97,6 +65,14 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
       }
     });
   }
+}
+
+function requireLobbyConfig(lobbyId: "bti") {
+  const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === lobbyId);
+  if (!lobby) {
+    throw new Error(`Jun88 ${lobbyId.toUpperCase()} lobby configuration is missing.`);
+  }
+  return lobby;
 }
 
 async function installBtiObserver(page: import("playwright").Page, snapshot: { source: CollectorSource; selections: Array<{ fixtureId: string; marketId: string; outcomeId: string; outcomeName: string; odds: number }> }) {

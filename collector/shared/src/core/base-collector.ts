@@ -1,17 +1,14 @@
 import type {
   BookmakerCode,
-  BookmakerSettingsProvider,
   Collector,
   CollectorSink,
   CollectorRuntime,
   LobbyCode,
-  StreamingCollectorRuntime,
-  SessionBootstrapper
+  StreamingCollectorRuntime
 } from "../contracts.js";
 
 type BaseCollectorDependencies = {
-  settings: BookmakerSettingsProvider;
-  sessionBootstrapper?: SessionBootstrapper;
+  pageURL: string;
 };
 
 export class BaseCollector implements Collector {
@@ -23,14 +20,8 @@ export class BaseCollector implements Collector {
   ) {}
 
   async collect() {
-    const setting = await this.deps.settings.getBookmakerSetting(this.bookmakerCode);
-    const session = this.deps.sessionBootstrapper
-      ? await this.deps.sessionBootstrapper.prepare(setting)
-      : undefined;
-
     return this.runtime.collect({
-      setting,
-      session
+      pageURL: this.deps.pageURL
     });
   }
 
@@ -39,15 +30,9 @@ export class BaseCollector implements Collector {
       throw new Error(`collector ${this.bookmakerCode}/${this.lobbyId} does not support streaming`);
     }
 
-    const setting = await this.deps.settings.getBookmakerSetting(this.bookmakerCode);
-    const session = this.deps.sessionBootstrapper
-      ? await this.deps.sessionBootstrapper.prepare(setting)
-      : undefined;
-
     return this.runtime.stream(
       {
-        setting,
-        session
+        pageURL: this.deps.pageURL
       },
       sink
     );

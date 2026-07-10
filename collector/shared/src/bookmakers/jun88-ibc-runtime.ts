@@ -7,7 +7,7 @@ import type {
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
-import { withJun88LobbyPage } from "./jun88-lobby-page.js";
+import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88IbcSnapshot } from "./parsers/jun88-ibc-parser.js";
 import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 const IBC_READY_SELECTORS = ".c-match, .c-event-card";
@@ -16,24 +16,8 @@ export class Jun88IbcRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext) {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 IBC runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("ibc")) {
-      throw new Error(
-        `Shared session does not include lobby IBC. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "ibc");
-    if (!lobby) {
-      throw new Error("Jun88 IBC lobby configuration is missing.");
-    }
-
-    return withJun88LobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("ibc");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       const target = await resolveContentTarget(page);
       const html = await target.content();
       const snapshot = parseJun88IbcSnapshot(html, target.url(), this.collectorId);
@@ -43,24 +27,8 @@ export class Jun88IbcRuntime implements StreamingCollectorRuntime {
   }
 
   async stream(context: CollectContext, sink: CollectorSink) {
-    if (!context.session) {
-      throw new Error(
-        `Jun88 IBC runtime requires a shared session. Run "npm run bootstrap:jun88" first.`
-      );
-    }
-
-    if (!context.session.accessibleLobbies.includes("ibc")) {
-      throw new Error(
-        `Shared session does not include lobby IBC. Re-run "npm run bootstrap:jun88".`
-      );
-    }
-
-    const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === "ibc");
-    if (!lobby) {
-      throw new Error("Jun88 IBC lobby configuration is missing.");
-    }
-
-    return withJun88LobbyPage(context.session, lobby, async (page) => {
+    const lobby = requireLobbyConfig("ibc");
+    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
         const target = await resolveContentTarget(page);
         const initialHTML = await target.content();
@@ -90,6 +58,14 @@ export class Jun88IbcRuntime implements StreamingCollectorRuntime {
       }
     });
   }
+}
+
+function requireLobbyConfig(lobbyId: "ibc") {
+  const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === lobbyId);
+  if (!lobby) {
+    throw new Error(`Jun88 ${lobbyId.toUpperCase()} lobby configuration is missing.`);
+  }
+  return lobby;
 }
 
 async function resolveContentTarget(page: Page) {
