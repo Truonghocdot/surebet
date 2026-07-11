@@ -1,0 +1,250 @@
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN_FRONTEND: ${DOMAIN_FRONTEND}
+      DOMAIN_API: ${DOMAIN_API}
+      DOMAIN_ADMIN: ${DOMAIN_ADMIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+      - backend-api
+      - laravel-admin
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend-api:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile.prod
+      target: api
+    restart: unless-stopped
+    environment:
+      APP_NAME: ${BACKEND_APP_NAME}
+      APP_ENV: ${BACKEND_APP_ENV}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
+      AUTH_TOKEN_TTL: ${AUTH_TOKEN_TTL}
+      HTTP_ADDRESS: :8080
+      HTTP_READ_TIMEOUT: ${HTTP_READ_TIMEOUT}
+      HTTP_WRITE_TIMEOUT: ${HTTP_WRITE_TIMEOUT}
+      POSTGRES_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL}
+      TELEGRAM_REQUEST_TIMEOUT: ${TELEGRAM_REQUEST_TIMEOUT}
+      TELEGRAM_SUREBET_DEDUP_WINDOW: ${TELEGRAM_SUREBET_DEDUP_WINDOW}
+      TELEGRAM_SUREBET_SCAN_COOLDOWN: ${TELEGRAM_SUREBET_SCAN_COOLDOWN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../../frontend
+      args:
+        NEXT_PUBLIC_BACKEND_API_URL: ${NEXT_PUBLIC_BACKEND_API_URL}
+        NEXT_PUBLIC_BACKEND_WS_URL: ${NEXT_PUBLIC_BACKEND_WS_URL}
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: ${FRONTEND_BACKEND_API_URL}
+      NEXT_PUBLIC_BACKEND_API_URL: ${NEXT_PUBLIC_BACKEND_API_URL}
+      NEXT_PUBLIC_BACKEND_WS_URL: ${NEXT_PUBLIC_BACKEND_WS_URL}
+    depends_on:
+      - backend-api
+
+  laravel-admin:
+    build:
+      context: ../../laravel
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      APP_NAME: ${LARAVEL_APP_NAME}
+      APP_ENV: ${LARAVEL_APP_ENV}
+      APP_KEY: ${LARAVEL_APP_KEY}
+      APP_DEBUG: ${LARAVEL_APP_DEBUG}
+      APP_URL: https://${DOMAIN_ADMIN}
+      APP_TIMEZONE: ${LARAVEL_APP_TIMEZONE}
+      APP_LOCALE: ${LARAVEL_APP_LOCALE}
+      APP_FALLBACK_LOCALE: ${LARAVEL_APP_FALLBACK_LOCALE}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      SEED_FRONTEND_USER_ID: ${SEED_FRONTEND_USER_ID}
+      SEED_FRONTEND_USER_EMAIL: ${SEED_FRONTEND_USER_EMAIL}
+      SEED_FRONTEND_USER_PASSWORD: ${SEED_FRONTEND_USER_PASSWORD}
+      SEED_FRONTEND_USER_FULL_NAME: ${SEED_FRONTEND_USER_FULL_NAME}
+      SEED_FRONTEND_USER_ROLE: ${SEED_FRONTEND_USER_ROLE}
+      SEED_SUPER_ADMIN_ID: ${SEED_SUPER_ADMIN_ID}
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD}
+      SEED_SUPER_ADMIN_FULL_NAME: ${SEED_SUPER_ADMIN_FULL_NAME}
+      SEED_SUPER_ADMIN_ROLE: ${SEED_SUPER_ADMIN_ROLE}
+      ODDS_RETENTION_ACTIVE_HOURS: ${ODDS_RETENTION_ACTIVE_HOURS}
+      ODDS_RETENTION_FINISHED_MINUTES: ${ODDS_RETENTION_FINISHED_MINUTES}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  laravel-cli:
+    build:
+      context: ../../laravel
+      dockerfile: Dockerfile.prod
+    profiles:
+      - tools
+    environment:
+      APP_NAME: ${LARAVEL_APP_NAME}
+      APP_ENV: ${LARAVEL_APP_ENV}
+      APP_KEY: ${LARAVEL_APP_KEY}
+      APP_DEBUG: ${LARAVEL_APP_DEBUG}
+      APP_URL: https://${DOMAIN_ADMIN}
+      APP_TIMEZONE: ${LARAVEL_APP_TIMEZONE}
+      APP_LOCALE: ${LARAVEL_APP_LOCALE}
+      APP_FALLBACK_LOCALE: ${LARAVEL_APP_FALLBACK_LOCALE}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+      SEED_FRONTEND_USER_ID: ${SEED_FRONTEND_USER_ID}
+      SEED_FRONTEND_USER_EMAIL: ${SEED_FRONTEND_USER_EMAIL}
+      SEED_FRONTEND_USER_PASSWORD: ${SEED_FRONTEND_USER_PASSWORD}
+      SEED_FRONTEND_USER_FULL_NAME: ${SEED_FRONTEND_USER_FULL_NAME}
+      SEED_FRONTEND_USER_ROLE: ${SEED_FRONTEND_USER_ROLE}
+      SEED_SUPER_ADMIN_ID: ${SEED_SUPER_ADMIN_ID}
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD}
+      SEED_SUPER_ADMIN_FULL_NAME: ${SEED_SUPER_ADMIN_FULL_NAME}
+      SEED_SUPER_ADMIN_ROLE: ${SEED_SUPER_ADMIN_ROLE}
+      ODDS_RETENTION_ACTIVE_HOURS: ${ODDS_RETENTION_ACTIVE_HOURS}
+      ODDS_RETENTION_FINISHED_MINUTES: ${ODDS_RETENTION_FINISHED_MINUTES}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["php", "artisan", "list"]
+
+  collector-8xbet:
+    build:
+      context: ../../collector
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    environment: &collector-environment
+      BACKEND_API_URL: http://backend-api:8080
+      EIGHTXBET_PAGE_URL: ${EIGHTXBET_PAGE_URL}
+      EIGHTXBET_BASE_URL: ${EIGHTXBET_BASE_URL}
+      JUN88_BASE_URL: ${JUN88_BASE_URL}
+      JUN88_BTI_PAGE_URL: ${JUN88_BTI_PAGE_URL}
+      JUN88_IBC_PAGE_URL: ${JUN88_IBC_PAGE_URL}
+      JUN88_CMD_PAGE_URL: ${JUN88_CMD_PAGE_URL}
+      JUN88_M8_PAGE_URL: ${JUN88_M8_PAGE_URL}
+      COLLECT_INTERVAL_MS: ${COLLECT_INTERVAL_MS}
+      COLLECT_HEARTBEAT_MS: ${COLLECT_HEARTBEAT_MS}
+      COLLECTOR_HEADLESS: ${COLLECTOR_HEADLESS}
+      COLLECTOR_SLOWMO: ${COLLECTOR_SLOWMO}
+      COLLECTOR_BLOCK_HEAVY_RESOURCES: ${COLLECTOR_BLOCK_HEAVY_RESOURCES}
+      COLLECTOR_BLOCK_RESOURCE_TYPES: ${COLLECTOR_BLOCK_RESOURCE_TYPES}
+      COLLECTOR_DEBUG_ARTIFACTS: ${COLLECTOR_DEBUG_ARTIFACTS}
+      COLLECTOR_DEBUG_THROTTLE_MS: ${COLLECTOR_DEBUG_THROTTLE_MS}
+      COLLECTOR_PROXY_MODE: ${COLLECTOR_PROXY_MODE}
+      COLLECTOR_PROXY_PROTOCOL: ${COLLECTOR_PROXY_PROTOCOL}
+      COLLECTOR_PROXY_BYPASS: ${COLLECTOR_PROXY_BYPASS}
+      COLLECTOR_PROXY_CACHE_ENABLED: ${COLLECTOR_PROXY_CACHE_ENABLED}
+      COLLECTOR_PROXY_CACHE_FILE: ${COLLECTOR_PROXY_CACHE_FILE}
+      COLLECTOR_PROXY_TIMEOUT_MS: ${COLLECTOR_PROXY_TIMEOUT_MS}
+      COLLECTOR_PROXY_SERVER: ${COLLECTOR_PROXY_SERVER}
+      COLLECTOR_PROXYXOAY_KEY: ${COLLECTOR_PROXYXOAY_KEY}
+      COLLECTOR_PROXYXOAY_NHAMANG: ${COLLECTOR_PROXYXOAY_NHAMANG}
+      COLLECTOR_PROXYXOAY_TINHTHANH: ${COLLECTOR_PROXYXOAY_TINHTHANH}
+      COLLECTOR_PROXYXOAY_WHITELIST: ${COLLECTOR_PROXYXOAY_WHITELIST}
+    volumes:
+      - collector-tmp:/app/collector/tmp
+    depends_on:
+      - backend-api
+    command: ["npm", "run", "run:8xbet-worker"]
+
+  collector-jun88-bti:
+    build:
+      context: ../../collector
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    environment:
+      <<: *collector-environment
+    volumes:
+      - collector-tmp:/app/collector/tmp
+    depends_on:
+      - backend-api
+    command: ["npm", "run", "run:jun88-bti-worker"]
+
+  collector-jun88-ibc:
+    build:
+      context: ../../collector
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    environment:
+      <<: *collector-environment
+    volumes:
+      - collector-tmp:/app/collector/tmp
+    depends_on:
+      - backend-api
+    command: ["npm", "run", "run:jun88-ibc-worker"]
+
+  collector-jun88-cmd:
+    build:
+      context: ../../collector
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    environment:
+      <<: *collector-environment
+    volumes:
+      - collector-tmp:/app/collector/tmp
+    depends_on:
+      - backend-api
+    command: ["npm", "run", "run:jun88-cmd-worker"]
+
+  collector-jun88-m8:
+    build:
+      context: ../../collector
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    environment:
+      <<: *collector-environment
+    volumes:
+      - collector-tmp:/app/collector/tmp
+    depends_on:
+      - backend-api
+    command: ["npm", "run", "run:jun88-m8-worker"]
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  collector-tmp:

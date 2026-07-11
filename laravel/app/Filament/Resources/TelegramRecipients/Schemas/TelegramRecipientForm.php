@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TelegramRecipients\Schemas;
 
+use Illuminate\Support\Carbon;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -34,6 +35,35 @@ class TelegramRecipientForm
                             ->rows(4)
                             ->maxLength(5000),
                     ]),
+                Section::make('Thong tin webhook Telegram')
+                    ->schema([
+                        TextInput::make('source')
+                            ->label('Nguon tao')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('chat_type')
+                            ->label('Loai chat')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('telegram_username')
+                            ->label('Username Telegram')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('membership_status')
+                            ->label('Trang thai membership')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('last_seen_at')
+                            ->label('Lan cuoi bot duoc thay')
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->formatStateUsing(
+                                fn (mixed $state): string => filled($state)
+                                    ? Carbon::parse((string) $state)->format('d/m/Y H:i:s')
+                                    : ''
+                            ),
+                    ])
+                    ->columns(2),
             ]);
     }
 }

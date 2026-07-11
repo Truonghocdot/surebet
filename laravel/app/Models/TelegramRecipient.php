@@ -13,6 +13,7 @@ class TelegramRecipient extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'last_seen_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

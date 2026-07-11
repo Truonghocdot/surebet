@@ -61,3 +61,15 @@ Sau khi migrate va seed xong, panel quan tri co san tai:
 
 Tai day chi tai khoan `super_admin` moi vao duoc.
 Tai khoan frontend role `operator` se dang nhap duoc vao frontend/backend API, nhung se khong vao duoc Laravel Filament.
+
+## Telegram webhook
+
+Laravel co san webhook:
+
+- `POST /api/telegram/webhook`
+
+Webhook nay nhan update `my_chat_member` tu Telegram khi bot duoc them vao group, supergroup, channel hoac private chat.
+Neu `TELEGRAM_WEBHOOK_SECRET` duoc set trong `.env`, Telegram can gui dung header `X-Telegram-Bot-Api-Secret-Token`.
+
+Khi bot vao chat moi, Laravel se tu dong tao hoac cap nhat record trong danh sach `TelegramRecipients`.
+Record moi duoc tao mac dinh o trang thai tat thong bao de admin bat lai trong Filament neu can.
