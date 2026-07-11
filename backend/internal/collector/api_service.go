@@ -4,8 +4,10 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/unicode/norm"
 
 	"surebet/backend/internal/dto"
 	"surebet/backend/internal/logger"
@@ -57,6 +59,9 @@ func (s apiService) IngestDelta(ctx context.Context, request dto.CollectorDeltaR
 			FixtureID:      delta.FixtureID,
 			HomeTeam:       delta.HomeTeam,
 			AwayTeam:       delta.AwayTeam,
+			LeagueName:     delta.LeagueName,
+			MatchState:     delta.MatchState,
+			EventStartAt:   delta.EventStartAt,
 			MarketID:       delta.MarketID,
 			OutcomeID:      delta.OutcomeID,
 			OutcomeName:    delta.OutcomeName,
@@ -102,16 +107,22 @@ func buildQuote(source dto.CollectorSource, collectedAt time.Time, selection dto
 		BookmakerID:    source.BookmakerID,
 		LobbyID:        source.LobbyID,
 		FixtureID:      selection.FixtureID,
+		FixtureMarker:  buildFixtureMarker(selection),
 		HomeTeam:       strings.TrimSpace(selection.HomeTeam),
 		AwayTeam:       strings.TrimSpace(selection.AwayTeam),
+		LeagueName:     strings.TrimSpace(selection.LeagueName),
 		Sport:          "",
 		MarketID:       selection.MarketID,
+		MarketMarker:   buildMarketMarker(selection),
 		MarketName:     selection.MarketID,
 		OutcomeID:      selection.OutcomeID,
+		OutcomeMarker:  buildOutcomeMarker(selection),
 		OutcomeName:    selection.OutcomeName,
 		Odds:           selection.Odds,
 		AvailableStake: selection.AvailableStake,
 		Suspended:      selection.Suspended,
+		MatchState:     normalizeMatchState(selection.MatchState),
+		EventStartAt:   parseCollectorEventStartAt(selection.EventStartAt, collectedAt),
 		CollectedAt:    collectedAt.UTC(),
 	}
 }
@@ -124,4 +135,104 @@ func quoteID(bookmakerID, lobbyID, fixtureID, marketID, outcomeID string) string
 		marketID,
 		outcomeID,
 	}, "|"))).String()
+}
+
+func buildFixtureMarker(selection dto.CollectorSelection) string {
+	home := slugText(selection.HomeTeam)
+	away := slugText(selection.AwayTeam)
+	if home != "" && away != "" {
+		return strings.Join([]string{home, away}, "|")
+	}
+	return slugText(selection.FixtureID)
+}
+
+func buildMarketMarker(selection dto.CollectorSelection) string {
+	return slugText(selection.MarketID)
+}
+
+func buildOutcomeMarker(selection dto.CollectorSelection) string {
+	return slugText(selection.OutcomeName)
+}
+
+func normalizeMatchState(value string) string {
+	switch canonicalText(value) {
+	case "upcoming":
+		return "upcoming"
+	case "live":
+		return "live"
+	case "finished":
+		return "finished"
+	default:
+		return "unknown"
+	}
+}
+
+func parseCollectorEventStartAt(value string, collectedAt time.Time) *time.Time {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return nil
+	}
+
+	layoutsWithDate := []string{
+		"01/02/2006 15:04:05",
+		"01/02/2006 03:04PM",
+		"01/02 03:04PM",
+		"01/02 15:04",
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+	}
+	for _, layout := range layoutsWithDate {
+		if parsed, err := time.ParseInLocation(layout, raw, time.UTC); err == nil {
+			if layout == "01/02 03:04PM" || layout == "01/02 15:04" {
+				parsed = time.Date(collectedAt.Year(), parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(), 0, 0, time.UTC)
+			}
+			return &parsed
+		}
+	}
+
+	layoutsTimeOnly := []string{
+		"03:04PM",
+		"3:04PM",
+		"15:04",
+	}
+	for _, layout := range layoutsTimeOnly {
+		if parsed, err := time.ParseInLocation(layout, raw, time.UTC); err == nil {
+			resolved := time.Date(
+				collectedAt.Year(),
+				collectedAt.Month(),
+				collectedAt.Day(),
+				parsed.Hour(),
+				parsed.Minute(),
+				0,
+				0,
+				time.UTC,
+			)
+			return &resolved
+		}
+	}
+
+	return nil
+}
+
+func canonicalText(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(norm.NFKD.String(value)))
+	normalized = strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Mn, r) {
+			return -1
+		}
+		return r
+	}, normalized)
+	normalized = strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r):
+			return r
+		default:
+			return ' '
+		}
+	}, normalized)
+	return strings.Join(strings.Fields(normalized), " ")
+}
+
+func slugText(value string) string {
+	return strings.ReplaceAll(canonicalText(value), " ", "-")
 }

@@ -5,10 +5,12 @@ import type { OddsSelection, OddsSnapshot } from "../../contracts.js";
 type MarketContext = {
   fixtureId: string;
   marketName: string;
+  leagueName: string;
   line: string;
   homeTeam: string;
   awayTeam: string;
   drawLabel: string;
+  matchState: "upcoming" | "live" | "finished" | "unknown";
 };
 
 export function parseJun88CmdSnapshot(
@@ -65,17 +67,21 @@ function parseMatch(matchNode: HTMLElement) {
   return [
     ...parseMarketRow(fullTimeRow as HTMLElement | null, {
       fixtureId,
+      leagueName,
       homeTeam,
       awayTeam,
       drawLabel,
-      prefix: "FT"
+      prefix: "FT",
+      matchState: detectCmdMatchState(matchNode)
     }),
     ...parseMarketRow(halfTimeRow as HTMLElement | null, {
       fixtureId,
+      leagueName,
       homeTeam,
       awayTeam,
       drawLabel,
-      prefix: "1H"
+      prefix: "1H",
+      matchState: detectCmdMatchState(matchNode)
     })
   ];
 }
@@ -84,10 +90,12 @@ function parseMarketRow(
   rowNode: HTMLElement | null,
   options: {
     fixtureId: string;
+    leagueName: string;
     homeTeam: string;
     awayTeam: string;
     drawLabel: string;
     prefix: string;
+    matchState: "upcoming" | "live" | "finished" | "unknown";
   }
 ) {
   if (!rowNode) {
@@ -100,10 +108,12 @@ function parseMarketRow(
       {
         fixtureId: options.fixtureId,
         marketName: `${options.prefix} Handicap`,
+        leagueName: options.leagueName,
         homeTeam: options.homeTeam,
         awayTeam: options.awayTeam,
         drawLabel: options.drawLabel,
-        line: ""
+        line: "",
+        matchState: options.matchState
       }
     ),
     ...parseOuMarket(
@@ -111,10 +121,12 @@ function parseMarketRow(
       {
         fixtureId: options.fixtureId,
         marketName: `${options.prefix} Over/Under`,
+        leagueName: options.leagueName,
         homeTeam: options.homeTeam,
         awayTeam: options.awayTeam,
         drawLabel: options.drawLabel,
-        line: ""
+        line: "",
+        matchState: options.matchState
       }
     ),
     ...parseOneXTwoMarket(
@@ -122,10 +134,12 @@ function parseMarketRow(
       {
         fixtureId: options.fixtureId,
         marketName: `${options.prefix} 1X2`,
+        leagueName: options.leagueName,
         homeTeam: options.homeTeam,
         awayTeam: options.awayTeam,
         drawLabel: options.drawLabel,
-        line: ""
+        line: "",
+        matchState: options.matchState
       }
     )
   ];
@@ -215,6 +229,8 @@ function createSelection(
     fixtureId: context.fixtureId,
     homeTeam: context.homeTeam,
     awayTeam: context.awayTeam,
+    leagueName: context.leagueName,
+    matchState: context.matchState,
     marketId: normalizeToken(context.marketName),
     outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(
       context.outcomeName
@@ -224,6 +240,17 @@ function createSelection(
     availableStake: 0,
     suspended: !Number.isFinite(oddsValue),
   };
+}
+
+function detectCmdMatchState(matchNode: HTMLElement) {
+  const combined = `${matchNode.className} ${textContent(matchNode)}`;
+  if (/running|1h|2h|ht|\\d{1,2}'/i.test(combined)) {
+    return "live" as const;
+  }
+  if (/finished|ended|ft\\b/i.test(combined)) {
+    return "finished" as const;
+  }
+  return "unknown" as const;
 }
 
 function parseFallbackMatches(document: Document, pageUrl: string) {

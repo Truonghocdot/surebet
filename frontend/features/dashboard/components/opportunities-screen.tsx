@@ -17,13 +17,12 @@ export function OpportunitiesScreen() {
     <div className="dashboard-page">
       <SectionHeader
         eyebrow="Cơ hội"
-        title="Surebet đang được phát hiện"
-        description="Trang này chỉ hiển thị kết quả so sánh odds từ dữ liệu scrape hiện tại."
+        title="Cơ hội đang được phát hiện"
       />
 
       <DataPanel
+        description=""
         title="Danh sách cơ hội"
-        description="Khi detector tìm thấy chênh lệch có lợi giữa các nguồn odds, kết quả sẽ xuất hiện ở đây."
       >
         <div className="mb-5 flex items-center gap-2 rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)] w-fit">
           <span
@@ -36,10 +35,10 @@ export function OpportunitiesScreen() {
             }`}
           />
           {streamStatus === "live"
-            ? "Stream live"
+            ? "Đang nhận dữ liệu"
             : streamStatus === "connecting"
-              ? "Đang nối stream"
-              : "Polling fallback"}
+              ? "Đang kết nối"
+              : "Tự kiểm tra định kỳ"}
         </div>
 
         <QueryShell<Opportunity[]> {...query}>
@@ -48,11 +47,11 @@ export function OpportunitiesScreen() {
               {items.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
                   <p className="font-semibold text-[var(--ink)]">
-                    Chưa có surebet đang sống
+                    Chưa có cơ hội đang còn hiệu lực
                   </p>
                   <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--muted)]">
-                    Dashboard vẫn đang nghe feed scrape. Khi có cặp odds tạo ra lợi thế,
-                    hệ thống sẽ cập nhật tại đây.
+                    Màn hình vẫn đang nhận dữ liệu quét. Khi có cặp tỷ lệ tạo ra lợi thế,
+                    hệ thống sẽ cập nhật ở đây.
                   </p>
                 </div>
               ) : null}
@@ -96,13 +95,13 @@ export function OpportunitiesScreen() {
 
                           <div className="mt-4 space-y-2 text-sm">
                             <div className="flex items-center justify-between gap-3">
-                              <span className="text-[rgba(255,255,255,0.78)]">Selection</span>
+                              <span className="text-[rgba(255,255,255,0.78)]">Cửa chọn</span>
                               <span className="max-w-[65%] truncate text-right font-semibold text-white">
                                 {leg.outcome_name}
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-3">
-                              <span className="text-[rgba(255,255,255,0.78)]">Stake</span>
+                              <span className="text-[rgba(255,255,255,0.78)]">Tỷ trọng vốn</span>
                               <span className="font-semibold text-white">
                                 {(leg.stake * 100).toFixed(2)}%
                               </span>
@@ -125,7 +124,7 @@ export function OpportunitiesScreen() {
 function formatFreshness(value: string) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
   if (seconds < 60) {
-    return `${seconds}s trước`;
+    return `${seconds} giây trước`;
   }
   return `${Math.floor(seconds / 60)} phút trước`;
 }

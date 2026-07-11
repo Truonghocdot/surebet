@@ -53,7 +53,7 @@ export async function GET(request: Request) {
             message:
               error instanceof Error
                 ? error.message
-                : "Không stream được dữ liệu surebet."
+                : "Không gửi được dữ liệu cơ hội mới."
           });
         }
       };

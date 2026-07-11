@@ -34,6 +34,10 @@ func (s QueryService) ListCurrentSurebets(ctx context.Context) ([]dto.SurebetVie
 	)
 
 	if repo, ok := s.reader.(interface {
+		ListCurrentDetectorCandidatesBySource(ctx context.Context, minCollectedAt time.Time) ([]models.OddsQuote, error)
+	}); ok {
+		quotes, err = repo.ListCurrentDetectorCandidatesBySource(ctx, time.Now().UTC().Add(-detectorQuoteFreshnessWindow))
+	} else if repo, ok := s.reader.(interface {
 		ListCurrentDetectorCandidates(ctx context.Context, minCollectedAt time.Time) ([]models.OddsQuote, error)
 	}); ok {
 		quotes, err = repo.ListCurrentDetectorCandidates(ctx, time.Now().UTC().Add(-detectorQuoteFreshnessWindow))

@@ -27,13 +27,26 @@ async function main() {
 
   const awayHandicap = snapshot.selections.find(
     (selection) =>
-      selection.fixtureId === "4763043" &&
-      selection.marketId === "hdp-hdp" &&
-      selection.outcomeName.includes("Rot Weiss Oberhausen")
+      selection.fixtureId === "4658513" &&
+      selection.marketId === "cu-o-c-cha-p-cu-o-c-cha-p" &&
+      selection.outcomeName.includes("RoPS Rovaniemi")
   );
-  if (!awayHandicap?.outcomeName.includes("+0.5/1")) {
+  if (!awayHandicap?.outcomeName.includes("-1/1.5")) {
     throw new Error(
       `8xbet incoming parser should preserve away handicap sign, got ${awayHandicap?.outcomeName ?? "missing"}`
+    );
+  }
+
+  const inplaySnapshot = parseEightXBetIncomingSnapshot(
+    html,
+    "https://8x4455.com/sportEvents/inplay/football"
+  );
+  const nonLiveSelection = inplaySnapshot.selections.find(
+    (selection) => selection.matchState !== "live"
+  );
+  if (nonLiveSelection) {
+    throw new Error(
+      `8xbet inplay parser should force live match state, got ${nonLiveSelection.matchState}`
     );
   }
 }

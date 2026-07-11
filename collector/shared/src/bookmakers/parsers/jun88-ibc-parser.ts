@@ -15,9 +15,12 @@ type MatchContext = {
 type ButtonContext = {
   fixtureId: string;
   marketName: string;
+  leagueName: string;
   homeTeam: string;
   awayTeam: string;
   drawLabel: string;
+  matchState: "upcoming" | "live" | "finished" | "unknown";
+  eventStartAt?: string;
   buttons: HTMLElement[];
   button: HTMLElement;
   buttonIndex: number;
@@ -114,9 +117,11 @@ function parseMatchRow(context: MatchContext, row: HTMLElement) {
       createSelection({
         fixtureId: context.fixtureId,
         marketName,
+        leagueName: context.leagueName,
         homeTeam: rowHomeTeam,
         awayTeam: rowAwayTeam,
         drawLabel: rowDrawLabel,
+        matchState: "unknown",
         buttons,
         button,
         buttonIndex
@@ -162,9 +167,12 @@ function parseFeaturedCard(cardNode: HTMLElement, pageUrl: string): OddsSelectio
         createSelection({
           fixtureId,
           marketName,
+          leagueName,
           homeTeam,
           awayTeam,
           drawLabel: DEFAULT_DRAW_LABEL,
+          matchState: "upcoming",
+          eventStartAt: matchTime || undefined,
           buttons,
           button,
           buttonIndex
@@ -181,6 +189,9 @@ function createSelection(context: ButtonContext): OddsSelection {
     fixtureId: context.fixtureId,
     homeTeam: context.homeTeam,
     awayTeam: context.awayTeam,
+    leagueName: context.leagueName,
+    matchState: context.matchState,
+    eventStartAt: context.eventStartAt,
     marketId: normalizeToken(context.marketName),
     outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(outcomeName)}`,
     outcomeName,

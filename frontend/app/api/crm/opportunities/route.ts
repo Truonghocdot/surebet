@@ -10,7 +10,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : "Không tải được dữ liệu cơ hội surebet."
+            : "Không tải được dữ liệu cơ hội."
       },
       { status: 502 }
     );

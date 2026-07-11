@@ -12,6 +12,9 @@ export type OddsSelection = {
   fixtureId: string;
   homeTeam?: string;
   awayTeam?: string;
+  leagueName?: string;
+  matchState?: "upcoming" | "live" | "finished" | "unknown";
+  eventStartAt?: string;
   marketId: string;
   outcomeId: string;
   outcomeName: string;
@@ -32,6 +35,9 @@ export type OddsDelta = {
   fixtureId: string;
   homeTeam?: string;
   awayTeam?: string;
+  leagueName?: string;
+  matchState?: "upcoming" | "live" | "finished" | "unknown";
+  eventStartAt?: string;
   marketId: string;
   outcomeId: string;
   outcomeName: string;

@@ -3,6 +3,7 @@ import type { BookmakerCode, LobbyCode } from "../contracts.js";
 import { envString } from "./env.js";
 
 const EIGHTXBET_INCOMING_PATH = "/sportEvents/incoming/football?hour=6";
+const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 
 export function resolveCollectorPageURL(
   bookmakerCode: BookmakerCode,
@@ -31,6 +32,31 @@ function resolveEightXBetPageURL() {
       "Missing 8xbet page URL.",
       "Set EIGHTXBET_PAGE_URL to the direct scrape page,",
       `or set EIGHTXBET_BASE_URL so the collector can derive ${EIGHTXBET_INCOMING_PATH}.`
+    ].join(" ")
+  );
+}
+
+export function resolveEightXBetInplayPageURL() {
+  const directURL = envString("EIGHTXBET_INPLAY_PAGE_URL", "").trim();
+  if (directURL !== "") {
+    return directURL;
+  }
+
+  const baseURL = envString("EIGHTXBET_BASE_URL", "").trim();
+  if (baseURL !== "") {
+    return new URL(EIGHTXBET_INPLAY_PATH, ensureTrailingSlash(baseURL)).toString();
+  }
+
+  const incomingURL = envString("EIGHTXBET_PAGE_URL", "").trim();
+  if (incomingURL !== "") {
+    return new URL(EIGHTXBET_INPLAY_PATH, incomingURL).toString();
+  }
+
+  throw new Error(
+    [
+      "Missing 8xbet inplay page URL.",
+      "Set EIGHTXBET_INPLAY_PAGE_URL to the direct inplay scrape page,",
+      `or set EIGHTXBET_BASE_URL so the collector can derive ${EIGHTXBET_INPLAY_PATH}.`
     ].join(" ")
   );
 }

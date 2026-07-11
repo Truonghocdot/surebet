@@ -5,10 +5,13 @@ import type { OddsSelection, OddsSnapshot } from "../../contracts.js";
 type MarketContext = {
   fixtureId: string;
   marketName: string;
+  leagueName: string;
   line: string;
   homeTeam: string;
   awayTeam: string;
   drawLabel: string;
+  matchState: "upcoming" | "live" | "finished" | "unknown";
+  eventStartAt?: string;
 };
 
 export function parseJun88M8Snapshot(
@@ -45,6 +48,8 @@ function parseOddsRow(rowNode: HTMLElement) {
   const awayTeam = detailTeams.awayTeam || resolveAwayTeam(rowNode);
   const drawLabel = textContent(rowNode.querySelector(".Draw")) || "Hòa";
   const timeOrStatus = textContent(rowNode.querySelector(".Heading5"));
+  const matchState = detectM8MatchState(timeOrStatus);
+  const eventStartAt = matchState === "upcoming" ? timeOrStatus || undefined : undefined;
 
   if (!homeTeam || !awayTeam) {
     return [];
@@ -66,50 +71,68 @@ function parseOddsRow(rowNode: HTMLElement) {
     ...parseHdpMarket(marketCells[0], {
       fixtureId,
       marketName: "FT Handicap",
+      leagueName,
       line: "",
       homeTeam,
       awayTeam,
-      drawLabel
+      drawLabel,
+      matchState,
+      eventStartAt
     }),
     ...parseOuMarket(marketCells[1], {
       fixtureId,
       marketName: "FT Over/Under",
+      leagueName,
       line: "",
       homeTeam,
       awayTeam,
-      drawLabel
+      drawLabel,
+      matchState,
+      eventStartAt
     }),
     ...parseOneXTwoMarket(marketCells[2], {
       fixtureId,
       marketName: "FT 1X2",
+      leagueName,
       line: "",
       homeTeam,
       awayTeam,
-      drawLabel
+      drawLabel,
+      matchState,
+      eventStartAt
     }),
     ...parseHdpMarket(marketCells[3], {
       fixtureId,
       marketName: "1H Handicap",
+      leagueName,
       line: "",
       homeTeam,
       awayTeam,
-      drawLabel
+      drawLabel,
+      matchState,
+      eventStartAt
     }),
     ...parseOuMarket(marketCells[4], {
       fixtureId,
       marketName: "1H Over/Under",
+      leagueName,
       line: "",
       homeTeam,
       awayTeam,
-      drawLabel
+      drawLabel,
+      matchState,
+      eventStartAt
     }),
     ...parseOneXTwoMarket(marketCells[5], {
       fixtureId,
       marketName: "1H 1X2",
+      leagueName,
       line: "",
       homeTeam,
       awayTeam,
-      drawLabel
+      drawLabel,
+      matchState,
+      eventStartAt
     })
   ];
 }
@@ -200,6 +223,9 @@ function createSelection(
     fixtureId: context.fixtureId,
     homeTeam: context.homeTeam,
     awayTeam: context.awayTeam,
+    leagueName: context.leagueName,
+    matchState: context.matchState,
+    eventStartAt: context.eventStartAt,
     marketId: normalizeToken(context.marketName),
     outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(
       context.outcomeName
@@ -209,6 +235,22 @@ function createSelection(
     availableStake: 0,
     suspended: false
   };
+}
+
+function detectM8MatchState(value: string) {
+  if (!value) {
+    return "unknown" as const;
+  }
+  if (/1h|2h|ht|\\+\\d|\\d{1,2}'/i.test(value)) {
+    return "live" as const;
+  }
+  if (/finished|ended|ft\\b/i.test(value)) {
+    return "finished" as const;
+  }
+  if (/\\d{1,2}:\\d{2}|am|pm/i.test(value)) {
+    return "upcoming" as const;
+  }
+  return "unknown" as const;
 }
 
 function resolveAwayTeam(rowNode: HTMLElement) {

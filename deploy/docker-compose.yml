@@ -90,6 +90,32 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  laravel-data:
+    build:
+      context: ../laravel
+    container_name: surebet-laravel-data
+    profiles:
+      - tools
+    environment:
+      APP_NAME: "Surebet Data Tools"
+      APP_ENV: local
+      APP_KEY: base64:wrSe80jPSZVHw+HaX0TLgZSwtJcA+6/NXZypXD7vaq4=
+      APP_DEBUG: "true"
+      APP_TIMEZONE: Asia/Ho_Chi_Minh
+      APP_LOCALE: vi
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: surebet
+      DB_USERNAME: surebet
+      DB_PASSWORD: surebet
+      ODDS_RETENTION_ACTIVE_HOURS: "24"
+      ODDS_RETENTION_FINISHED_MINUTES: "30"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["php", "artisan", "list"]
+
 volumes:
   postgres-data:
   redis-data:

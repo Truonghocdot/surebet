@@ -17,9 +17,16 @@ func NewQueryService(repo repository.OddsSnapshotRepository) QueryService {
 }
 
 func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter) ([]dto.OddsView, error) {
-	items, err := s.repo.ListByFixture(ctx, filter.FixtureID)
-	if err != nil {
-		return nil, err
+	var (
+		items []models.OddsQuote
+		err   error
+	)
+
+	if filter.FixtureID != "" {
+		items, err = s.repo.ListByFixture(ctx, filter.FixtureID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if filter.FixtureID == "" {
@@ -59,8 +66,12 @@ func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter
 			BookmakerID:    item.BookmakerID,
 			LobbyID:        item.LobbyID,
 			FixtureID:      item.FixtureID,
+			FixtureMarker:  item.FixtureMarker,
+			LeagueName:     item.LeagueName,
 			HomeTeam:       item.HomeTeam,
 			AwayTeam:       item.AwayTeam,
+			MatchState:     item.MatchState,
+			EventStartAt:   item.EventStartAt,
 			MatchName:      normalized.MatchName,
 			Period:         normalized.Period,
 			MarketType:     normalized.MarketType,

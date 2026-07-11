@@ -28,7 +28,7 @@ export async function fetchBackendJSON<T>(
     const message =
       payload && typeof payload === "object" && "error" in payload
         ? String(payload.error)
-        : "Yêu cầu tới backend thất bại.";
+        : "Yêu cầu tới hệ thống thất bại.";
     throw new Error(message);
   }
 

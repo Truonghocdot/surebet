@@ -15,7 +15,10 @@ export function parseEightXBetIncomingSnapshot(
   const dom = new JSDOM(html);
   const document = dom.window.document;
   const cards = Array.from(document.querySelectorAll('[data-testid^="simple-handicap-layout-football-"]'));
-  const selections = cards.flatMap((card) => parseMatchCard(card as HTMLElement));
+  const forceLive = isEightXBetInplayPage(pageUrl);
+  const selections = cards.flatMap((card) =>
+    parseMatchCard(card as HTMLElement, { forceLive })
+  );
 
   return {
     source: {
@@ -29,7 +32,7 @@ export function parseEightXBetIncomingSnapshot(
   };
 }
 
-function parseMatchCard(cardNode: HTMLElement) {
+function parseMatchCard(cardNode: HTMLElement, options: { forceLive: boolean }) {
   const leagueName =
     textContent(
       cardNode
@@ -49,6 +52,8 @@ function parseMatchCard(cardNode: HTMLElement) {
   }
 
   const [homeTeam, awayTeam] = teamNames;
+  const matchState = options.forceLive ? "live" : classifyEightXBetGameStage(gameStage);
+  const eventStartAt = options.forceLive ? undefined : extractEightXBetEventStartAt(gameStage);
   const columns = Array.from(
     cardNode.querySelectorAll('[data-testid="sport-simple-asia-odds-layout"]')
   ) as HTMLElement[];
@@ -64,8 +69,11 @@ function parseMatchCard(cardNode: HTMLElement) {
       ...parseMarketColumn(column, {
         fixtureId,
         marketName,
+        leagueName,
         homeTeam,
-        awayTeam
+        awayTeam,
+        matchState,
+        eventStartAt
       })
     );
   }
@@ -79,8 +87,11 @@ function parseMarketColumn(
   context: {
     fixtureId: string;
     marketName: string;
+    leagueName: string;
     homeTeam: string;
     awayTeam: string;
+    matchState: "upcoming" | "live" | "finished" | "unknown";
+    eventStartAt?: string;
   }
 ) {
   const buttons = Array.from(columnNode.querySelectorAll('button[data-testid^="oddsBtn-"]')) as HTMLElement[];
@@ -95,8 +106,11 @@ function parseOddsButton(
   context: {
     fixtureId: string;
     marketName: string;
+    leagueName: string;
     homeTeam: string;
     awayTeam: string;
+    matchState: "upcoming" | "live" | "finished" | "unknown";
+    eventStartAt?: string;
   }
 ) {
   const testID = buttonNode.getAttribute("data-testid") || "";
@@ -127,6 +141,9 @@ function parseOddsButton(
     fixtureId: context.fixtureId,
     homeTeam: context.homeTeam,
     awayTeam: context.awayTeam,
+    leagueName: context.leagueName,
+    matchState: context.matchState,
+    eventStartAt: context.eventStartAt,
     marketId: normalizeToken(context.marketName),
     outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(outcomeName)}`,
     outcomeName,
@@ -210,9 +227,42 @@ function parseFallbackSelections(document: Document, pageUrl: string) {
     }));
 }
 
+function isEightXBetInplayPage(pageUrl: string) {
+  try {
+    return new URL(pageUrl).pathname.includes("/sportEvents/inplay/");
+  } catch {
+    return pageUrl.includes("/sportEvents/inplay/");
+  }
+}
+
 function extractFixtureId(value: string) {
   const match = value.match(/football-(\d+)/i);
   return match?.[1] || "";
+}
+
+function classifyEightXBetGameStage(value: string) {
+  const normalized = normalizeRawText(value);
+  if (!normalized) {
+    return "unknown" as const;
+  }
+  if (/(^|\\s)(1h|2h|ht|live|et|pen)(\\s|$)|\\d{1,2}'/i.test(normalized)) {
+    return "live" as const;
+  }
+  if (/(^|\\s)(ft|ended|finished|final)(\\s|$)/i.test(normalized)) {
+    return "finished" as const;
+  }
+  if (/\\d{1,2}:\\d{2}|am|pm|today|tomorrow/i.test(normalized)) {
+    return "upcoming" as const;
+  }
+  return "unknown" as const;
+}
+
+function extractEightXBetEventStartAt(value: string) {
+  const normalized = normalizeRawText(value);
+  if (/\\d{1,2}:\\d{2}|am|pm/i.test(normalized)) {
+    return normalized;
+  }
+  return undefined;
 }
 
 function normalizeHandicapLine(line: string, side: "home" | "away") {
@@ -257,4 +307,8 @@ function normalizeToken(value: string) {
 
 function textContent(node: Element | null | undefined) {
   return node?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+}
+
+function normalizeRawText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
 }

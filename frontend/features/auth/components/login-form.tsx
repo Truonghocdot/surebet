@@ -17,12 +17,12 @@ export function LoginForm() {
   return (
     <form action={formAction} className="space-y-5 w-full">
       <div>
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">Thư điện tử</Label>
         <Input
           error={state.fieldErrors?.email}
           id="email"
           name="email"
-          placeholder="operator@surebet.io"
+          placeholder="ten@mien.vn"
           required
         />
         {state.fieldErrors?.email ? (
@@ -59,4 +59,3 @@ export function LoginForm() {
     </form>
   );
 }
-

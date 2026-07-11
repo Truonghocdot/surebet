@@ -58,16 +58,48 @@ func mapError(err error) error {
 
 func ensureOddsQuoteIndexes(db *gorm.DB) error {
 	return db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_odds_quotes_live_detector_snapshot
+		CREATE INDEX IF NOT EXISTS idx_odds_quotes_active_current_snapshot
+		ON odds_quotes (
+			match_state,
+			bookmaker_id,
+			lobby_id,
+			fixture_marker,
+			market_marker,
+			outcome_marker,
+			collected_at DESC
+		)
+		WHERE suspended = false AND odds <> 0;
+
+		CREATE INDEX IF NOT EXISTS idx_odds_quotes_live_current_snapshot_key
 		ON odds_quotes (
 			bookmaker_id,
 			lobby_id,
-			(COALESCE(NULLIF(home_team, ''), fixture_id)),
-			(COALESCE(NULLIF(away_team, ''), fixture_id)),
-			(COALESCE(NULLIF(market_id, ''), market_name)),
-			outcome_name,
+			fixture_marker,
+			market_marker,
+			outcome_marker,
 			collected_at DESC
 		)
-		WHERE suspended = false AND odds <> 0
+		WHERE match_state IN ('upcoming', 'live', 'unknown')
+		  AND suspended = false
+		  AND odds <> 0;
+
+		CREATE INDEX IF NOT EXISTS idx_odds_quotes_current_snapshot_key
+		ON odds_quotes (
+			bookmaker_id,
+			lobby_id,
+			fixture_marker,
+			market_marker,
+			outcome_marker,
+			collected_at DESC
+		)
+		WHERE match_state IN ('upcoming', 'live', 'unknown');
+
+		CREATE INDEX IF NOT EXISTS idx_odds_quotes_state_start_window
+		ON odds_quotes (
+			match_state,
+			event_start_at,
+			collected_at DESC
+		)
+		WHERE suspended = false AND odds <> 0;
 	`).Error
 }

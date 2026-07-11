@@ -19,29 +19,7 @@ export type BackendOpportunity = {
   }>;
 };
 
-export type BackendOdds = {
-  bookmaker_id: string;
-  lobby_id: string;
-  fixture_id: string;
-  match_name: string;
-  period: string;
-  market_type: string;
-  line: string;
-  side: string;
-  outcome_name: string;
-  odds: number;
-  decimal_odds: number;
-  suspended: boolean;
-  collected_at: string;
-};
-
 export async function fetchBackendOpportunities() {
   const payload = await fetchBackendJSON<{ data: BackendOpportunity[] }>("/v1/surebets");
-  return payload.data;
-}
-
-export async function fetchBackendOdds(includeSuspended = false) {
-  const query = includeSuspended ? "?include_suspended=true" : "";
-  const payload = await fetchBackendJSON<{ data: BackendOdds[] }>(`/v1/odds${query}`);
   return payload.data;
 }

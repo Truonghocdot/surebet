@@ -1,7 +1,7 @@
 type SectionHeaderProps = {
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
 };
 
 export function SectionHeader({

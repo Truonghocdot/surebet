@@ -1,6 +1,6 @@
 export const statCardsSeed = [
   {
-    title: "Surebet đang hoạt động",
+    title: "Cơ hội đang hoạt động",
     value: "128",
     delta: "+12.4%",
     tone: "positive"
@@ -12,9 +12,9 @@ export const statCardsSeed = [
     tone: "warning"
   },
   {
-    title: "Account đang online",
+    title: "Tài khoản đang kết nối",
     value: "42/48",
-    delta: "3 session cần refresh",
+    delta: "3 phiên cần làm mới",
     tone: "neutral"
   },
   {
@@ -35,14 +35,14 @@ export const activeOpportunitiesSeed = [
   },
   {
     fixture: "Lakers vs Heat",
-    market: "Moneyline",
+    market: "Kèo thắng thua",
     profit: "1.84%",
     spread: "0.07",
     freshness: "11 giây trước"
   },
   {
     fixture: "PSG vs Dortmund",
-    market: "Over/Under",
+    market: "Tài xỉu",
     profit: "2.33%",
     spread: "0.09",
     freshness: "14 giây trước"
@@ -52,26 +52,26 @@ export const activeOpportunitiesSeed = [
 export const orderTimelineSeed = [
   {
     id: "SB-2419",
-    state: "VALIDATING",
+    state: "Đang kiểm tra",
     operator: "Linh Tran",
     updatedAt: "10:24:11"
   },
   {
     id: "SB-2418",
-    state: "WAITING_CONFIRMATION",
-    operator: "Auto Bet Engine",
+    state: "Chờ xác nhận",
+    operator: "Máy tự động",
     updatedAt: "10:23:58"
   },
   {
     id: "SB-2417",
-    state: "BETTING",
+    state: "Đang đặt cược",
     operator: "Minh Vo",
     updatedAt: "10:23:47"
   },
   {
     id: "SB-2416",
-    state: "SUCCESS",
-    operator: "Auto Bet Engine",
+    state: "Thành công",
+    operator: "Máy tự động",
     updatedAt: "10:22:39"
   }
 ] as const;
@@ -79,19 +79,19 @@ export const orderTimelineSeed = [
 export const accountHealthSeed = [
   {
     bookmaker: "8xbet",
-    account: "VN Prime 01",
+    account: "VN chính 01",
     balance: "$18,420",
     status: "Hoạt động"
   },
   {
     bookmaker: "jun88",
-    account: "jun88 Primary",
+    account: "jun88 chính",
     balance: "$9,210",
-    status: "Cần làm mới session"
+    status: "Cần làm mới phiên"
   },
   {
     bookmaker: "jun88",
-    account: "jun88 Reserve",
+    account: "jun88 dự phòng",
     balance: "$11,045",
     status: "Hoạt động"
   }
@@ -99,29 +99,29 @@ export const accountHealthSeed = [
 
 export const featureFlagsSeed = [
   {
-    name: "AUTO_BET",
-    scope: "global",
-    value: "OFF"
+    name: "Đặt cược tự động",
+    scope: "Toàn hệ thống",
+    value: "Tắt"
   },
   {
-    name: "RISK_VALIDATION",
-    scope: "global",
-    value: "ON"
+    name: "Kiểm tra rủi ro",
+    scope: "Toàn hệ thống",
+    value: "Bật"
   },
   {
-    name: "BALANCE_CHECK",
+    name: "Kiểm tra số dư",
     scope: "jun88",
-    value: "ON"
+    value: "Bật"
   }
 ] as const;
 
 export const riskCheckpointsSeed = [
   {
-    label: "Surebet vẫn còn tồn tại",
+    label: "Cơ hội vẫn còn tồn tại",
     status: "active"
   },
   {
-    label: "Odds mới nhất đã được fetch",
+    label: "Tỷ lệ mới nhất đã được lấy",
     status: "active"
   },
   {
@@ -129,11 +129,11 @@ export const riskCheckpointsSeed = [
     status: "active"
   },
   {
-    label: "Account đang online",
+    label: "Tài khoản đang kết nối",
     status: "watch"
   },
   {
-    label: "Risk score nằm trong ngưỡng cho phép",
+    label: "Điểm rủi ro nằm trong ngưỡng cho phép",
     status: "active"
   }
 ] as const;

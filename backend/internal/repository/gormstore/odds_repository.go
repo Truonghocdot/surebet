@@ -16,6 +16,20 @@ type OddsSnapshotRepository struct {
 }
 
 const oddsUpsertBatchSize = 250
+const defaultCurrentOddsWindow = 12 * time.Hour
+
+var defaultDetectorSources = []detectorSource{
+	{BookmakerID: "8xbet", LobbyID: "default"},
+	{BookmakerID: "jun88", LobbyID: "bti"},
+	{BookmakerID: "jun88", LobbyID: "ibc"},
+	{BookmakerID: "jun88", LobbyID: "cmd"},
+	{BookmakerID: "jun88", LobbyID: "m8"},
+}
+
+type detectorSource struct {
+	BookmakerID string
+	LobbyID     string
+}
 
 func NewOddsSnapshotRepository(db *gorm.DB) *OddsSnapshotRepository {
 	return &OddsSnapshotRepository{db: db}
@@ -36,16 +50,22 @@ func (r *OddsSnapshotRepository) Upsert(ctx context.Context, quotes []models.Odd
 					"bookmaker_id":    clause.Column{Name: "excluded.bookmaker_id"},
 					"lobby_id":        clause.Column{Name: "excluded.lobby_id"},
 					"fixture_id":      clause.Column{Name: "excluded.fixture_id"},
+					"fixture_marker":  gorm.Expr("COALESCE(NULLIF(excluded.fixture_marker, ''), odds_quotes.fixture_marker)"),
 					"home_team":       clause.Column{Name: "excluded.home_team"},
 					"away_team":       clause.Column{Name: "excluded.away_team"},
+					"league_name":     gorm.Expr("COALESCE(NULLIF(excluded.league_name, ''), odds_quotes.league_name)"),
 					"sport":           clause.Column{Name: "excluded.sport"},
 					"market_id":       clause.Column{Name: "excluded.market_id"},
+					"market_marker":   gorm.Expr("COALESCE(NULLIF(excluded.market_marker, ''), odds_quotes.market_marker)"),
 					"market_name":     clause.Column{Name: "excluded.market_name"},
 					"outcome_id":      clause.Column{Name: "excluded.outcome_id"},
+					"outcome_marker":  gorm.Expr("COALESCE(NULLIF(excluded.outcome_marker, ''), odds_quotes.outcome_marker)"),
 					"outcome_name":    clause.Column{Name: "excluded.outcome_name"},
 					"odds":            clause.Column{Name: "excluded.odds"},
 					"available_stake": clause.Column{Name: "excluded.available_stake"},
 					"suspended":       clause.Column{Name: "excluded.suspended"},
+					"match_state":     gorm.Expr("COALESCE(NULLIF(excluded.match_state, ''), odds_quotes.match_state)"),
+					"event_start_at":  gorm.Expr("COALESCE(excluded.event_start_at, odds_quotes.event_start_at)"),
 					"collected_at":    clause.Column{Name: "excluded.collected_at"},
 				}),
 			}).
@@ -64,7 +84,9 @@ func (r *OddsSnapshotRepository) ListByFixture(ctx context.Context, fixtureID st
 
 func (r *OddsSnapshotRepository) ListCurrent(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error) {
 	var quotes []models.OddsQuote
-	err := r.listCurrentQuery(r.db.WithContext(ctx), bookmakerID, lobbyID, fixtureID, currentQueryOptions{}).
+	err := r.listCurrentQuery(r.db.WithContext(ctx), bookmakerID, lobbyID, fixtureID, currentQueryOptions{
+		OnlyActiveMatches: true,
+	}).
 		Find(&quotes).Error
 	return quotes, err
 }
@@ -75,7 +97,8 @@ func (r *OddsSnapshotRepository) ListCurrentLive(
 ) ([]models.OddsQuote, error) {
 	var quotes []models.OddsQuote
 	err := r.listCurrentQuery(r.db.WithContext(ctx), bookmakerID, lobbyID, fixtureID, currentQueryOptions{
-		LiveOnly: true,
+		LiveOnly:          true,
+		OnlyActiveMatches: true,
 	}).Find(&quotes).Error
 	return quotes, err
 }
@@ -89,14 +112,36 @@ func (r *OddsSnapshotRepository) ListCurrentDetectorCandidates(
 		LiveOnly:            true,
 		DetectorMarketsOnly: true,
 		MinCollectedAt:      minCollectedAt,
+		OnlyActiveMatches:   true,
 	}).Find(&quotes).Error
 	return quotes, err
+}
+
+func (r *OddsSnapshotRepository) ListCurrentDetectorCandidatesBySource(
+	ctx context.Context,
+	minCollectedAt time.Time,
+) ([]models.OddsQuote, error) {
+	result := make([]models.OddsQuote, 0)
+	for _, source := range defaultDetectorSources {
+		var quotes []models.OddsQuote
+		err := r.listCurrentDetectorSourceQuery(
+			r.db.WithContext(ctx),
+			source,
+			minCollectedAt,
+		).Find(&quotes).Error
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, quotes...)
+	}
+	return result, nil
 }
 
 type currentQueryOptions struct {
 	LiveOnly            bool
 	DetectorMarketsOnly bool
 	MinCollectedAt      time.Time
+	OnlyActiveMatches   bool
 }
 
 func (r *OddsSnapshotRepository) listCurrentQuery(
@@ -111,6 +156,30 @@ func (r *OddsSnapshotRepository) listCurrentQuery(
 
 	return db.Table("(?) as odds_quotes", subquery).
 		Order("odds_quotes.fixture_id asc, odds_quotes.market_id asc, odds_quotes.outcome_id asc")
+}
+
+func (r *OddsSnapshotRepository) listCurrentDetectorSourceQuery(
+	db *gorm.DB,
+	source detectorSource,
+	minCollectedAt time.Time,
+) *gorm.DB {
+	subquery := buildLatestOddsSnapshotSubquery(
+		applyOddsQuoteFilters(
+			db.Table("odds_quotes"),
+			"odds_quotes",
+			source.BookmakerID,
+			source.LobbyID,
+			"",
+		),
+		currentQueryOptions{
+			LiveOnly:            true,
+			DetectorMarketsOnly: true,
+			MinCollectedAt:      minCollectedAt,
+			OnlyActiveMatches:   true,
+		},
+	)
+
+	return db.Table("(?) as odds_quotes", subquery)
 }
 
 func applyOddsQuoteFilters(db *gorm.DB, tableName, bookmakerID, lobbyID, fixtureID string) *gorm.DB {
@@ -132,32 +201,31 @@ func buildLatestOddsSnapshotSubquery(db *gorm.DB, options currentQueryOptions) *
 			Where("odds_quotes.suspended = ?", false).
 			Where("odds_quotes.odds <> 0")
 	}
+	if options.OnlyActiveMatches {
+		db = db.Where("odds_quotes.match_state IN ?", []string{"upcoming", "live", "unknown"})
+	}
 	if options.DetectorMarketsOnly {
 		db = db.Where(detectorMarketSQL("odds_quotes"))
 	}
 	if !options.MinCollectedAt.IsZero() {
 		db = db.Where("odds_quotes.collected_at >= ?", options.MinCollectedAt.UTC())
+	} else if options.OnlyActiveMatches {
+		db = db.Where("odds_quotes.collected_at >= ?", time.Now().UTC().Add(-defaultCurrentOddsWindow))
 	}
-
-	fixtureKeyExpr := semanticFixtureColumn("odds_quotes", "home_team")
-	opponentKeyExpr := semanticFixtureColumn("odds_quotes", "away_team")
-	marketKeyExpr := semanticMarketColumn("odds_quotes")
 
 	distinctOn := stringsJoinSQL(
 		"odds_quotes.bookmaker_id",
 		"odds_quotes.lobby_id",
-		fixtureKeyExpr,
-		opponentKeyExpr,
-		marketKeyExpr,
-		"odds_quotes.outcome_name",
+		"odds_quotes.fixture_marker",
+		"odds_quotes.market_marker",
+		"odds_quotes.outcome_marker",
 	)
 	orderBy := stringsJoinSQL(
 		"odds_quotes.bookmaker_id asc",
 		"odds_quotes.lobby_id asc",
-		fixtureKeyExpr+" asc",
-		opponentKeyExpr+" asc",
-		marketKeyExpr+" asc",
-		"odds_quotes.outcome_name asc",
+		"odds_quotes.fixture_marker asc",
+		"odds_quotes.market_marker asc",
+		"odds_quotes.outcome_marker asc",
 		"odds_quotes.collected_at desc",
 	)
 
@@ -166,25 +234,8 @@ func buildLatestOddsSnapshotSubquery(db *gorm.DB, options currentQueryOptions) *
 		Order(orderBy)
 }
 
-func semanticFixtureColumn(tableName, teamColumn string) string {
-	return fmt.Sprintf(
-		"COALESCE(NULLIF(%s.%s, ''), %s.fixture_id)",
-		tableName,
-		teamColumn,
-		tableName,
-	)
-}
-
-func semanticMarketColumn(tableName string) string {
-	return fmt.Sprintf(
-		"COALESCE(NULLIF(%s.market_id, ''), %s.market_name)",
-		tableName,
-		tableName,
-	)
-}
-
 func detectorMarketSQL(tableName string) string {
-	column := qualifiedColumn(tableName, "market_id")
+	column := qualifiedColumn(tableName, "market_marker")
 	return "(" +
 		column + " ILIKE '%handicap%' OR " +
 		column + " ILIKE '%cu-o-c-cha-p%' OR " +

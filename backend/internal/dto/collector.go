@@ -12,6 +12,9 @@ type CollectorSelection struct {
 	FixtureID      string  `json:"fixture_id" binding:"required"`
 	HomeTeam       string  `json:"home_team"`
 	AwayTeam       string  `json:"away_team"`
+	LeagueName     string  `json:"league_name"`
+	MatchState     string  `json:"match_state"`
+	EventStartAt   string  `json:"event_start_at"`
 	MarketID       string  `json:"market_id" binding:"required"`
 	OutcomeID      string  `json:"outcome_id" binding:"required"`
 	OutcomeName    string  `json:"outcome_name" binding:"required"`
@@ -32,6 +35,9 @@ type CollectorDelta struct {
 	FixtureID      string          `json:"fixture_id" binding:"required"`
 	HomeTeam       string          `json:"home_team"`
 	AwayTeam       string          `json:"away_team"`
+	LeagueName     string          `json:"league_name"`
+	MatchState     string          `json:"match_state"`
+	EventStartAt   string          `json:"event_start_at"`
 	MarketID       string          `json:"market_id" binding:"required"`
 	OutcomeID      string          `json:"outcome_id" binding:"required"`
 	OutcomeName    string          `json:"outcome_name" binding:"required"`

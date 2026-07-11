@@ -115,6 +115,42 @@ func TestOddsSnapshotRepositoryDetectorQueryFiltersSupportedMarkets(t *testing.T
 	}
 }
 
+func TestOddsSnapshotRepositoryDetectorSourceQueryFiltersSingleSource(t *testing.T) {
+	db, err := gorm.Open(
+		postgres.Open("host=localhost user=surebet password=surebet dbname=surebet sslmode=disable"),
+		&gorm.Config{
+			DryRun:               true,
+			DisableAutomaticPing: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("open dry-run db: %v", err)
+	}
+
+	repo := NewOddsSnapshotRepository(db)
+	sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
+		query := repo.listCurrentDetectorSourceQuery(
+			tx.WithContext(context.Background()),
+			detectorSource{BookmakerID: "8xbet", LobbyID: "default"},
+			time.Date(2026, 7, 1, 15, 0, 0, 0, time.UTC),
+		)
+		return query.Find(&[]models.OddsQuote{})
+	})
+
+	if !strings.Contains(sql, "odds_quotes.bookmaker_id = '8xbet'") {
+		t.Fatalf("expected detector source query to filter bookmaker, got SQL: %s", sql)
+	}
+	if !strings.Contains(sql, "odds_quotes.lobby_id = 'default'") {
+		t.Fatalf("expected detector source query to filter lobby, got SQL: %s", sql)
+	}
+	if !strings.Contains(sql, "ILIKE '%handicap%'") || !strings.Contains(sql, "odds_quotes.collected_at >=") {
+		t.Fatalf("expected detector source query to keep detector filters, got SQL: %s", sql)
+	}
+	if strings.Contains(sql, "ORDER BY odds_quotes.fixture_id asc") {
+		t.Fatalf("expected detector source query to avoid outer display ordering, got SQL: %s", sql)
+	}
+}
+
 func TestDedupeOddsQuotesKeepsLatestQuotePerID(t *testing.T) {
 	older := time.Date(2026, 6, 30, 11, 0, 0, 0, time.UTC)
 	newer := older.Add(5 * time.Second)

@@ -35,7 +35,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
         <div className="mx-auto flex h-20 w-full items-center justify-between gap-4 px-4 md:px-6">
           <div className="flex items-center gap-3">
             <button
-              aria-label="Toggle navigation"
+              aria-label="Mở hoặc đóng thanh điều hướng"
               className="inline-flex size-11 items-center justify-center rounded-2xl border border-[color:var(--line)] bg-white text-[var(--ink)] shadow-sm md:hidden"
               onClick={toggleMobileNav}
               type="button"
@@ -48,9 +48,9 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
                 <Bolt className="size-5" />
               </div>
               <div>
-                <p className="font-display text-lg font-semibold">Surebet Monitor</p>
+                <p className="font-display text-lg font-semibold">Bảng theo dõi tỷ lệ</p>
                 <p className="text-sm text-[var(--muted)]">
-                  Theo dõi scraping, so sánh odds và hiển thị surebet
+                  Theo dõi dữ liệu quét, so sánh tỷ lệ và hiển thị cơ hội
                 </p>
               </div>
             </div>
@@ -74,7 +74,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
       <div className="mx-auto flex w-full gap-0">
         {mobileOpened ? (
           <button
-            aria-label="Close navigation overlay"
+            aria-label="Đóng lớp điều hướng"
             className="fixed inset-0 z-30 bg-slate-950/45 md:hidden"
             onClick={closeMobileNav}
             type="button"
@@ -91,7 +91,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
           <div className="flex h-full flex-col gap-4">
             <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/60">
-                Bảng theo dõi dữ liệu scrape
+                Theo dõi dữ liệu
               </p>
             </div>
 

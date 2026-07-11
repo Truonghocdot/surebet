@@ -22,21 +22,27 @@ type User struct {
 }
 
 type OddsQuote struct {
-	ID             string    `json:"id"`
-	BookmakerID    string    `json:"bookmaker_id"`
-	LobbyID        string    `json:"lobby_id"`
-	FixtureID      string    `json:"fixture_id" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:1;index:idx_odds_quotes_fixture_market_outcome,priority:1"`
-	HomeTeam       string    `json:"home_team"`
-	AwayTeam       string    `json:"away_team"`
-	Sport          string    `json:"sport"`
-	MarketID       string    `json:"market_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:2"`
-	MarketName     string    `json:"market_name"`
-	OutcomeID      string    `json:"outcome_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:3"`
-	OutcomeName    string    `json:"outcome_name"`
-	Odds           float64   `json:"odds"`
-	AvailableStake float64   `json:"available_stake"`
-	Suspended      bool      `json:"suspended"`
-	CollectedAt    time.Time `json:"collected_at" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:2,sort:desc"`
+	ID             string     `json:"id"`
+	BookmakerID    string     `json:"bookmaker_id"`
+	LobbyID        string     `json:"lobby_id"`
+	FixtureID      string     `json:"fixture_id" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:1;index:idx_odds_quotes_fixture_market_outcome,priority:1"`
+	FixtureMarker  string     `json:"fixture_marker" gorm:"index:idx_odds_quotes_current_key,priority:1;index:idx_odds_quotes_state_start,priority:3"`
+	HomeTeam       string     `json:"home_team"`
+	AwayTeam       string     `json:"away_team"`
+	LeagueName     string     `json:"league_name" gorm:"index"`
+	Sport          string     `json:"sport"`
+	MarketID       string     `json:"market_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:2"`
+	MarketMarker   string     `json:"market_marker" gorm:"index:idx_odds_quotes_current_key,priority:2"`
+	MarketName     string     `json:"market_name"`
+	OutcomeID      string     `json:"outcome_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:3"`
+	OutcomeMarker  string     `json:"outcome_marker" gorm:"index:idx_odds_quotes_current_key,priority:3"`
+	OutcomeName    string     `json:"outcome_name"`
+	Odds           float64    `json:"odds"`
+	AvailableStake float64    `json:"available_stake"`
+	Suspended      bool       `json:"suspended"`
+	MatchState     string     `json:"match_state" gorm:"index:idx_odds_quotes_state_start,priority:1"`
+	EventStartAt   *time.Time `json:"event_start_at,omitempty" gorm:"index:idx_odds_quotes_state_start,priority:2"`
+	CollectedAt    time.Time  `json:"collected_at" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:2,sort:desc"`
 }
 
 type SurebetLeg struct {

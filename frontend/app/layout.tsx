@@ -14,8 +14,8 @@ const bodyFont = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Surebet",
-  description: "Đăng nhập và vận hành nền tảng"
+  title: "So sánh tỷ lệ cược",
+  description: "Theo dõi dữ liệu quét và cơ hội chênh lệch tỷ lệ"
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="vi"
       className={`${displayFont.variable} ${bodyFont.variable}`}
       suppressHydrationWarning
     >

@@ -8,17 +8,17 @@ const promises = [
   {
     icon: Activity,
     title: "Giám sát thời gian thực",
-    copy: "Theo dõi current odds, surebet và trạng thái tài khoản trong một màn hình."
+    copy: "Theo dõi tỷ lệ cược mới nhất, cơ hội chênh lệch và trạng thái kết nối trong một màn hình."
   },
   {
     icon: ShieldCheck,
-    title: "Thực thi ưu tiên validation",
-    copy: "Mọi lệnh đặt cược đều đi qua pipeline validation trước khi đến worker."
+    title: "Kiểm tra dữ liệu trước khi dùng",
+    copy: "Dữ liệu được rà soát trước khi hiển thị để tránh nhầm kèo hoặc tỷ lệ đã ngừng."
   },
   {
     icon: ArrowLeftRight,
-    title: "Vận hành kiểu CRM",
-    copy: "Sidebar trái, dashboard module hóa và sẵn sàng cho phân quyền theo vai trò."
+    title: "Tập trung vào phần cần theo dõi",
+    copy: "Bố cục rõ ràng, chỉ giữ dữ liệu quét được và các cơ hội so sánh đang còn hiệu lực."
   }
 ];
 

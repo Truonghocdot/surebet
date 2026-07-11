@@ -2,9 +2,9 @@ import { z } from "zod";
 
 export const loginSchema = z.object({
   email: z
-    .string({ message: "Vui lòng nhập email." })
+    .string({ message: "Vui lòng nhập địa chỉ thư điện tử." })
     .trim()
-    .email("Email không hợp lệ."),
+    .email("Địa chỉ thư điện tử không hợp lệ."),
   password: z
     .string({ message: "Vui lòng nhập mật khẩu." })
     .trim()
