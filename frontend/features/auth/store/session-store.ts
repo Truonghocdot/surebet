@@ -1,8 +1,10 @@
 import { create } from "zustand";
 
 export type SessionUser = {
+  id?: string;
   email: string;
   fullName: string;
+  role: string;
 };
 
 type SessionState = {
@@ -16,4 +18,3 @@ export const useSessionStore = create<SessionState>((set) => ({
   setUser: (user) => set({ user }),
   clearUser: () => set({ user: null })
 }));
-

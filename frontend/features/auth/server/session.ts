@@ -99,15 +99,24 @@ export async function getSessionUser() {
 
   try {
     const user = JSON.parse(raw) as {
+      id?: string;
       email: string;
       full_name: string;
+      role: string;
     };
 
     return {
+      id: user.id,
       email: user.email,
-      fullName: user.full_name || "Nhân sự vận hành"
+      fullName: user.full_name || "Nhân sự vận hành",
+      role: user.role || "operator"
     };
   } catch {
     return null;
   }
+}
+
+export async function getAccessToken() {
+  const cookieStore = await cookies();
+  return cookieStore.get(AUTH_TOKEN_COOKIE)?.value ?? null;
 }

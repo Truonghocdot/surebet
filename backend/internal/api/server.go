@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"surebet/backend/internal/auth"
 	"surebet/backend/internal/config"
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/middleware"
@@ -16,8 +17,11 @@ type Dependencies struct {
 	Health          health.Reporter
 	Logger          logger.Logger
 	AuthLogin       AuthLoginService
+	AuthTokens      auth.TokenManager
 	OddsQuery       OddsQueryService
 	CollectorIngest CollectorIngestService
+	TelegramAdmin   TelegramAdminService
+	TelegramWebhook TelegramWebhookService
 	Realtime        RealtimeService
 	SurebetQuery    SurebetQueryService
 }

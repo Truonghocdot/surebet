@@ -39,6 +39,7 @@ type HTTPConfig struct {
 
 type TelegramConfig struct {
 	BotToken          string
+	WebhookSecret     string
 	APIBaseURL        string
 	RequestTimeout    time.Duration
 	DedupWindow       time.Duration
@@ -91,6 +92,7 @@ func LoadFromEnv() Config {
 		},
 		Telegram: TelegramConfig{
 			BotToken:          envString("TELEGRAM_BOT_TOKEN", ""),
+			WebhookSecret:     envString("TELEGRAM_WEBHOOK_SECRET", ""),
 			APIBaseURL:        envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
 			RequestTimeout:    envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
 			DedupWindow:       envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),

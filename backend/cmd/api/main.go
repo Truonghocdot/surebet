@@ -49,6 +49,11 @@ func main() {
 		telegramLogRepository,
 		log,
 	)
+	telegramAdmin := telegram.NewAdminService(telegramRecipientRepository)
+	telegramWebhook := telegram.NewWebhookService(
+		cfg.Telegram,
+		telegramRecipientRepository,
+	)
 
 	server := api.NewServer(cfg.HTTP, api.Dependencies{
 		Health: health.NewStaticReporter(cfg.App.Name),
@@ -58,7 +63,8 @@ func main() {
 			passwordHasher,
 			tokenManager,
 		),
-		OddsQuery: odds.NewQueryService(oddsSnapshotRepository),
+		AuthTokens: tokenManager,
+		OddsQuery:  odds.NewQueryService(oddsSnapshotRepository),
 		CollectorIngest: collector.NewAPIService(
 			oddsSnapshotRepository,
 			collector.NewMultiEventPublisher(
@@ -68,8 +74,10 @@ func main() {
 			telegramNotifier,
 			log,
 		),
-		Realtime:     realtimeHub,
-		SurebetQuery: surebetQuery,
+		TelegramAdmin:   telegramAdmin,
+		TelegramWebhook: telegramWebhook,
+		Realtime:        realtimeHub,
+		SurebetQuery:    surebetQuery,
 	})
 
 	log.Info("api service configured", "service", cfg.App.Name, "env", cfg.App.Env, "addr", server.Addr())

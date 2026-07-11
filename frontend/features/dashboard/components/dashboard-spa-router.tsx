@@ -3,6 +3,7 @@
 import { DashboardOverviewScreen } from "@/features/dashboard/components/dashboard-overview-screen";
 import { MatchedFixturesScreen } from "@/features/dashboard/components/matched-fixtures-screen";
 import { OpportunitiesScreen } from "@/features/dashboard/components/opportunities-screen";
+import { AdminTelegramRecipientsScreen } from "@/features/admin/components/admin-telegram-recipients-screen";
 import type { DashboardHref } from "@/lib/dashboard-spa";
 
 const views: Array<{
@@ -20,6 +21,10 @@ const views: Array<{
   {
     href: "/matches",
     screen: <MatchedFixturesScreen />
+  },
+  {
+    href: "/admin",
+    screen: <AdminTelegramRecipientsScreen />
   }
 ];
 

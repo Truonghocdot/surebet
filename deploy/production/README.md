@@ -5,7 +5,7 @@ Stack production nay dung:
 - `tykfk.site` -> frontend Next.js
 - `api.tykfk.site` -> backend Go API + websocket
 - `telegram-worker` -> worker Go gui Telegram tu queue
-- `admin.tykfk.site` -> Laravel Filament admin + Telegram webhook
+- `admin.tykfk.site` -> Laravel Filament admin
 - PostgreSQL cho du lieu
 - 5 collector worker rieng cho 8xbet va Jun88
 - `Caddy` de reverse proxy va tu cap TLS
@@ -90,7 +90,7 @@ docker compose -f deploy/production/docker-compose.yml --env-file deploy/product
 
 Webhook Telegram:
 
-- URL: `https://admin.tykfk.site/api/telegram/webhook`
+- URL: `https://api.tykfk.site/api/telegram/webhook`
 - Secret header: `X-Telegram-Bot-Api-Secret-Token`
 - Gia tri secret lay tu `TELEGRAM_WEBHOOK_SECRET`
 
@@ -98,7 +98,7 @@ Set webhook:
 
 ```bash
 curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  -d "url=https://admin.tykfk.site/api/telegram/webhook" \
+  -d "url=https://api.tykfk.site/api/telegram/webhook" \
   -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
 ```
 
@@ -106,4 +106,5 @@ curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
 
 - Volume `collector-tmp` giu lai cache proxy va debug artifacts cua collector qua cac lan restart container.
 - Backend API va collector noi bo noi voi nhau qua network Docker, khong mo cong rieng ra Internet.
+- Telegram webhook production nen tro ve `backend-api`, khong can di qua `laravel-admin`.
 - Compose production co gan san DNS public `1.1.1.1` va `8.8.8.8` cho cac container can ra Internet. Viec nay tranh loi `lookup ... on 127.0.0.53:53: connection refused` khi host dung `systemd-resolved`.

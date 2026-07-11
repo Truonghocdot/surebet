@@ -64,12 +64,6 @@ Tai khoan frontend role `operator` se dang nhap duoc vao frontend/backend API, n
 
 ## Telegram webhook
 
-Laravel co san webhook:
+Webhook production nen duoc tro ve `backend-api`.
 
-- `POST /api/telegram/webhook`
-
-Webhook nay nhan update `my_chat_member` tu Telegram khi bot duoc them vao group, supergroup, channel hoac private chat.
-Neu `TELEGRAM_WEBHOOK_SECRET` duoc set trong `.env`, Telegram can gui dung header `X-Telegram-Bot-Api-Secret-Token`.
-
-Khi bot vao chat moi, Laravel se tu dong tao hoac cap nhat record trong danh sach `TelegramRecipients`.
-Record moi duoc tao mac dinh o trang thai tat thong bao de admin bat lai trong Filament neu can.
+Route Laravel `POST /api/telegram/webhook` chi nen xem nhu fallback/legacy trong giai doan chuyen doi.

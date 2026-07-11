@@ -23,8 +23,10 @@ import { Button } from "@/components/ui/button";
 type DashboardShellProps = {
   children: React.ReactNode;
   user: {
+    id?: string;
     email: string;
     fullName: string;
+    role: string;
   };
   logout: () => Promise<void>;
 };
@@ -147,7 +149,7 @@ export function DashboardShell({ user, logout }: DashboardShellProps) {
             </div>
 
             <nav className="flex-1 space-y-2 overflow-y-auto pr-1">
-              {navigationItems.map((item) => {
+              {navigationItems(displayUser).map((item) => {
                 const href = resolveDashboardHref(item.href);
                 const active = currentHref === href;
                 const Icon = item.icon;
