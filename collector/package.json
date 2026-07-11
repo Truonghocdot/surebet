@@ -29,7 +29,7 @@
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.3.0",
     "jsdom": "^26.1.0",
-    "playwright": "^1.54.2",
+    "playwright": "1.61.1",
     "tsx": "^4.20.5"
   },
   "dependencies": {
