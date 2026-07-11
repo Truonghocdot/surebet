@@ -39,6 +39,13 @@ Can doi toi thieu:
 - `TELEGRAM_BOT_TOKEN` neu bat thong bao Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
 
+Mac dinh production dang de:
+
+- `LARAVEL_SESSION_DRIVER=file`
+- `LARAVEL_CACHE_STORE=file`
+
+de Filament admin khong phu thuoc vao bang `sessions` va `cache`.
+
 Tao `LARAVEL_APP_KEY` neu chua co:
 
 ```bash
