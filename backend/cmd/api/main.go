@@ -14,6 +14,7 @@ import (
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/realtime"
 	"surebet/backend/internal/repository/gormstore"
+	"surebet/backend/internal/runtimeconfig"
 	"surebet/backend/internal/surebet"
 	"surebet/backend/internal/telegram"
 	"surebet/backend/pkg/health"
@@ -34,10 +35,15 @@ func main() {
 
 	userRepository := gormstore.NewUserRepository(db)
 	oddsSnapshotRepository := gormstore.NewOddsSnapshotRepository(db)
+	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
 	telegramRecipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	telegramLogRepository := gormstore.NewTelegramNotificationLogRepository(db)
 	realtimeHub := realtime.NewHub(log)
 	go realtimeHub.Run()
+	collectorConfigService := runtimeconfig.NewService(
+		runtimeSettingRepository,
+		cfg.Collector,
+	)
 	surebetQuery := surebet.NewQueryService(
 		oddsSnapshotRepository,
 		calculator.NewDetector(),
@@ -63,8 +69,9 @@ func main() {
 			passwordHasher,
 			tokenManager,
 		),
-		AuthTokens: tokenManager,
-		OddsQuery:  odds.NewQueryService(oddsSnapshotRepository),
+		AuthTokens:      tokenManager,
+		CollectorConfig: collectorConfigService,
+		OddsQuery:       odds.NewQueryService(oddsSnapshotRepository),
 		CollectorIngest: collector.NewAPIService(
 			oddsSnapshotRepository,
 			collector.NewMultiEventPublisher(

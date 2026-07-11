@@ -2,6 +2,7 @@ import {
   BackendCollectorSink,
   createJun88LobbyCollector,
   envString,
+  syncCollectorRuntimeConfig,
   type LobbyCode,
   type OddsDelta,
   type OddsSelection,
@@ -104,6 +105,10 @@ async function runWorker(
   collectorId: string,
   sink: BackendCollectorSink
 ) {
+  await syncCollectorRuntimeConfig(backendURL).catch((error) => {
+    console.warn(`[${collectorId}-worker] collector runtime config sync failed:`, error);
+  });
+
   const collector = createJun88LobbyCollector(collectorId, lobbyId);
 
   if ("stream" in collector && typeof collector.stream === "function") {

@@ -2,6 +2,7 @@ import type { Route } from "next";
 import {
   Activity,
   BellRing,
+  Cable,
   ArrowLeftRight,
   Network,
   type LucideIcon
@@ -40,6 +41,12 @@ export function navigationItems(user: Pick<SessionUser, "role">): NavItem[] {
       href: "/admin",
       description: "Quản lý chat nhận thông báo",
       icon: BellRing
+    });
+    items.push({
+      label: "Collector",
+      href: "/collector-config",
+      description: "Cấu hình URL scrape tập trung",
+      icon: Cable
     });
   }
 

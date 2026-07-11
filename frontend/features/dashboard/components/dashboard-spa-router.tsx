@@ -4,6 +4,7 @@ import { DashboardOverviewScreen } from "@/features/dashboard/components/dashboa
 import { MatchedFixturesScreen } from "@/features/dashboard/components/matched-fixtures-screen";
 import { OpportunitiesScreen } from "@/features/dashboard/components/opportunities-screen";
 import { AdminTelegramRecipientsScreen } from "@/features/admin/components/admin-telegram-recipients-screen";
+import { CollectorConfigScreen } from "@/features/admin/components/collector-config-screen";
 import type { DashboardHref } from "@/lib/dashboard-spa";
 
 const views: Array<{
@@ -25,6 +26,10 @@ const views: Array<{
   {
     href: "/admin",
     screen: <AdminTelegramRecipientsScreen />
+  },
+  {
+    href: "/collector-config",
+    screen: <CollectorConfigScreen />
   }
 ];
 

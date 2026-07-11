@@ -30,6 +30,11 @@ type TelegramRecipientRepository interface {
 	DeleteByID(ctx context.Context, id uint64) error
 }
 
+type RuntimeSettingRepository interface {
+	ListByPrefix(ctx context.Context, prefix string) ([]models.RuntimeSetting, error)
+	UpsertMany(ctx context.Context, settings []models.RuntimeSetting) error
+}
+
 var ErrNotFound = errNotFound("repository record not found")
 
 type errNotFound string

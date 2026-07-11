@@ -156,7 +156,7 @@ func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
 func formatSurebetMessage(item dto.SurebetView) string {
 	var builder strings.Builder
 
-	builder.WriteString("<b>Surebet mới</b>\n")
+	builder.WriteString("<b>Kèo mới</b>\n")
 	builder.WriteString("Trận: <b>")
 	builder.WriteString(html.EscapeString(item.FixtureID))
 	builder.WriteString("</b>\n")

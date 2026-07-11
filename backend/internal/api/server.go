@@ -18,6 +18,7 @@ type Dependencies struct {
 	Logger          logger.Logger
 	AuthLogin       AuthLoginService
 	AuthTokens      auth.TokenManager
+	CollectorConfig CollectorConfigService
 	OddsQuery       OddsQueryService
 	CollectorIngest CollectorIngestService
 	TelegramAdmin   TelegramAdminService

@@ -34,6 +34,11 @@ type RealtimeService interface {
 	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
+type CollectorConfigService interface {
+	GetCollectorConfig(ctx context.Context) (dto.CollectorRuntimeConfigView, error)
+	UpdateCollectorConfig(ctx context.Context, request dto.UpdateCollectorRuntimeConfigRequest) (dto.CollectorRuntimeConfigView, error)
+}
+
 type TelegramWebhookService interface {
 	ValidateSecret(provided string) bool
 	HandleUpdate(ctx context.Context, update dto.TelegramWebhookUpdate) (dto.TelegramWebhookResult, error)
@@ -58,10 +63,13 @@ func (s *Server) registerRoutes() {
 	v1.POST("/collector/bootstrap", s.handleCollectorBootstrap)
 	v1.POST("/collector/delta", s.handleCollectorDelta)
 	v1.POST("/collector/heartbeat", s.handleCollectorHeartbeat)
+	v1.GET("/collector/runtime-config", s.handleCollectorRuntimeConfig)
 	v1.GET("/admin/telegram-recipients", s.handleAdminTelegramRecipients)
 	v1.POST("/admin/telegram-recipients", s.handleAdminTelegramRecipients)
 	v1.PUT("/admin/telegram-recipients/:id", s.handleAdminTelegramRecipientByID)
 	v1.DELETE("/admin/telegram-recipients/:id", s.handleAdminTelegramRecipientByID)
+	v1.GET("/admin/collector-config", s.handleAdminCollectorConfig)
+	v1.PUT("/admin/collector-config", s.handleAdminCollectorConfig)
 }
 
 func (s *Server) handleHealth(ctx *gin.Context) {
@@ -195,6 +203,21 @@ func (s *Server) handleCollectorHeartbeat(ctx *gin.Context) {
 	ctx.JSON(http.StatusAccepted, gin.H{"status": "accepted"})
 }
 
+func (s *Server) handleCollectorRuntimeConfig(ctx *gin.Context) {
+	if s.deps.CollectorConfig == nil {
+		placeholder(ctx, "collector config service is not wired yet")
+		return
+	}
+
+	configValue, err := s.deps.CollectorConfig.GetCollectorConfig(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"data": configValue})
+}
+
 func placeholder(ctx *gin.Context, message string) {
 	ctx.JSON(http.StatusNotImplemented, gin.H{
 		"message": message,
@@ -316,6 +339,45 @@ func (s *Server) handleAdminTelegramRecipientByID(ctx *gin.Context) {
 			return
 		}
 		ctx.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	default:
+		ctx.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed"})
+	}
+}
+
+func (s *Server) handleAdminCollectorConfig(ctx *gin.Context) {
+	if !s.requireRole(ctx, "super_admin") {
+		return
+	}
+
+	if s.deps.CollectorConfig == nil {
+		placeholder(ctx, "collector config service is not wired yet")
+		return
+	}
+
+	switch ctx.Request.Method {
+	case http.MethodGet:
+		configValue, err := s.deps.CollectorConfig.GetCollectorConfig(ctx.Request.Context())
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"data": configValue})
+	case http.MethodPut:
+		var request dto.UpdateCollectorRuntimeConfigRequest
+		if err := ctx.ShouldBindJSON(&request); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		configValue, err := s.deps.CollectorConfig.UpdateCollectorConfig(
+			ctx.Request.Context(),
+			request,
+		)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"data": configValue})
 	default:
 		ctx.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed"})
 	}

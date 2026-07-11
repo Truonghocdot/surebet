@@ -11,14 +11,15 @@ import (
 )
 
 type Config struct {
-	App      AppConfig
-	Auth     AuthConfig
-	HTTP     HTTPConfig
-	Telegram TelegramConfig
-	RabbitMQ RabbitMQConfig
-	Redis    RedisConfig
-	Postgres PostgresConfig
-	Runtime  RuntimeConfig
+	App       AppConfig
+	Auth      AuthConfig
+	Collector CollectorRuntimeConfig
+	HTTP      HTTPConfig
+	Telegram  TelegramConfig
+	RabbitMQ  RabbitMQConfig
+	Redis     RedisConfig
+	Postgres  PostgresConfig
+	Runtime   RuntimeConfig
 }
 
 type AppConfig struct {
@@ -29,6 +30,16 @@ type AppConfig struct {
 type AuthConfig struct {
 	TokenSecret string
 	TokenTTL    time.Duration
+}
+
+type CollectorRuntimeConfig struct {
+	EightXBetPageURL  string
+	EightXBetBaseURL  string
+	Jun88BaseURL      string
+	Jun88BtiPageURL   string
+	Jun88SabaPageURL  string
+	Jun88CmdPageURL   string
+	Jun88M9BetPageURL string
 }
 
 type HTTPConfig struct {
@@ -84,6 +95,15 @@ func LoadFromEnv() Config {
 		Auth: AuthConfig{
 			TokenSecret: envString("AUTH_TOKEN_SECRET", "surebet-dev-secret-change-me"),
 			TokenTTL:    envDuration("AUTH_TOKEN_TTL", 12*time.Hour),
+		},
+		Collector: CollectorRuntimeConfig{
+			EightXBetPageURL:  envString("EIGHTXBET_PAGE_URL", ""),
+			EightXBetBaseURL:  envString("EIGHTXBET_BASE_URL", ""),
+			Jun88BaseURL:      envString("JUN88_BASE_URL", ""),
+			Jun88BtiPageURL:   envString("JUN88_BTI_PAGE_URL", ""),
+			Jun88SabaPageURL:  envString("JUN88_SABA_PAGE_URL", envString("JUN88_IBC_PAGE_URL", "")),
+			Jun88CmdPageURL:   envString("JUN88_CMD_PAGE_URL", ""),
+			Jun88M9BetPageURL: envString("JUN88_M9BET_PAGE_URL", envString("JUN88_M8_PAGE_URL", "")),
 		},
 		HTTP: HTTPConfig{
 			Address:      envString("HTTP_ADDRESS", ":8080"),

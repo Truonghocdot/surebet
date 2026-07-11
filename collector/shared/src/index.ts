@@ -14,6 +14,7 @@ export * from "./bookmakers/parsers/jun88-cmd-parser.js";
 export * from "./bookmakers/parsers/jun88-ibc-parser.js";
 export * from "./bookmakers/parsers/jun88-m8-parser.js";
 export * from "./core/base-collector.js";
+export * from "./core/backend-runtime-config.js";
 export * from "./core/browser.js";
 export * from "./core/debug.js";
 export * from "./core/env.js";
