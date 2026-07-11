@@ -10,7 +10,7 @@
     "jun88-cmd",
     "jun88-m8"
   ],
-  "scripts": { 
+  "scripts": {
     "run:8xbet-worker": "tsx scripts/run-eightxbet-worker.ts",
     "run:jun88-bti-worker": "tsx scripts/run-jun88-bti-worker.ts",
     "run:jun88-ibc-worker": "tsx scripts/run-jun88-ibc-worker.ts",
@@ -33,6 +33,7 @@
     "tsx": "^4.20.5"
   },
   "dependencies": {
-    "playwright-extra": "^4.3.6"
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

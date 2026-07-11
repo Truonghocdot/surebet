@@ -14,6 +14,12 @@ Stack production nay dung:
 1. Tro DNS `A` record cua `tykfk.site`, `api.tykfk.site`, `admin.tykfk.site` ve cung IP server.
 2. Cai Docker Engine va Docker Compose plugin.
 3. Clone repo len server.
+4. Tat web server mac dinh neu dang chiem cong `80/443`, vi stack nay dung `Caddy`:
+
+```bash
+systemctl disable --now nginx
+ss -ltnp | grep -E ':(80|443)\s' || true
+```
 
 ## Chuan bi env
 
@@ -91,3 +97,4 @@ curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
 
 - Volume `collector-tmp` giu lai cache proxy va debug artifacts cua collector qua cac lan restart container.
 - Backend API va collector noi bo noi voi nhau qua network Docker, khong mo cong rieng ra Internet.
+- Compose production co gan san DNS public `1.1.1.1` va `8.8.8.8` cho cac container can ra Internet. Viec nay tranh loi `lookup ... on 127.0.0.53:53: connection refused` khi host dung `systemd-resolved`.
