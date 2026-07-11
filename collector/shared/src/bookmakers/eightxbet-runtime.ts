@@ -1,7 +1,9 @@
 import type { CollectContext, CollectorRuntime, OddsSnapshot } from "../contracts.js";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { writeDebugArtifacts } from "../core/debug.js";
+import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
 import { parseEightXBetIncomingSnapshot } from "./parsers/eightxbet-incoming-parser.js";
+import type { Browser, BrowserContext, Page } from "playwright";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 
@@ -16,63 +18,22 @@ const EIGHTXBET_HUMAN_SCROLL_PAUSES_MS = [180, 260, 220, 320];
 
 chromium.use(stealth());
 
+let sharedBrowser: Browser | null = null;
+let sharedBrowserPromise: Promise<Browser> | null = null;
+
 export class EightXBetRuntime implements CollectorRuntime {
+  private context: BrowserContext | null = null;
+  private page: Page | null = null;
+  private targetURL = "";
+
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext) {
-    const browser = await chromium.launch(collectorLaunchOptions(true));
-    let page: import("playwright").Page | null = null;
+    const targetURL = resolveEightXBetTargetURL(context.pageURL);
+    const page = await this.ensurePage(targetURL);
 
     try {
-      const contextPage = await browser.newContext({
-        locale: "vi-VN",
-        timezoneId: "Asia/Ho_Chi_Minh",
-        extraHTTPHeaders: {
-          "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
-        }
-      });
-      await contextPage.addInitScript(() => {
-        Object.defineProperty(navigator, "language", {
-          configurable: true,
-          get: () => "vi-VN"
-        });
-        Object.defineProperty(navigator, "languages", {
-          configurable: true,
-          get: () => ["vi-VN", "vi", "en-US", "en"]
-        });
-        try {
-          window.localStorage.setItem("i18nextLng", "vi-VN");
-          window.localStorage.setItem("language", "vi-VN");
-          window.localStorage.setItem("lang", "vi-VN");
-          window.sessionStorage.setItem("i18nextLng", "vi-VN");
-          window.sessionStorage.setItem("language", "vi-VN");
-          window.sessionStorage.setItem("lang", "vi-VN");
-        } catch {}
-      });
-      page = await contextPage.newPage();
-
-      const targetURL = resolveEightXBetTargetURL(context.pageURL);
-
-      await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-      await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
-      let ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
-        () => true,
-        () => false
-      );
-
-      if (!ready) {
-        await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
-        await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
-        ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
-          () => true,
-          () => false
-        );
-      }
-
-      if (!ready) {
-        throw new Error("8xbet incoming list did not render in time.");
-      }
+      await waitForEightXBetReady(page, targetURL);
       await autoScrollIncomingList(page);
       const renderState = await stabilizeIncomingList(page);
       if (renderState.oddsButtonCount === 0 || renderState.teamLabelCount < 2) {
@@ -92,13 +53,119 @@ export class EightXBetRuntime implements CollectorRuntime {
       }
       return snapshot;
     } catch (error) {
-      if (page) {
-        await writeDebugArtifacts(page, `${this.collectorId}-collect-failed`);
-      }
+      await writeDebugArtifacts(page, `${this.collectorId}-collect-failed`);
+      await this.resetPage();
       throw error;
-    } finally {
-      await browser.close();
     }
+  }
+
+  private async ensurePage(targetURL: string) {
+    if (
+      this.page &&
+      !this.page.isClosed() &&
+      this.context &&
+      this.targetURL === targetURL &&
+      sharedBrowser?.isConnected()
+    ) {
+      return this.page;
+    }
+
+    await this.resetPage();
+
+    const browser = await getSharedBrowser();
+    const context = await browser.newContext({
+      locale: "vi-VN",
+      timezoneId: "Asia/Ho_Chi_Minh",
+      extraHTTPHeaders: {
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
+      }
+    });
+    await installCollectorResourceBlocking(context);
+    await installEightXBetLocale(context);
+
+    const page = await context.newPage();
+    this.context = context;
+    this.page = page;
+    this.targetURL = targetURL;
+
+    await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+    return page;
+  }
+
+  private async resetPage() {
+    const context = this.context;
+    this.context = null;
+    this.page = null;
+    this.targetURL = "";
+    await context?.close().catch(() => undefined);
+  }
+}
+
+async function getSharedBrowser() {
+  if (sharedBrowser?.isConnected()) {
+    return sharedBrowser;
+  }
+
+  if (!sharedBrowserPromise) {
+    sharedBrowserPromise = chromium
+      .launch(await collectorLaunchOptions(true))
+      .then((browser) => {
+        sharedBrowser = browser;
+        browser.on("disconnected", () => {
+          if (sharedBrowser === browser) {
+            sharedBrowser = null;
+          }
+        });
+        return browser;
+      })
+      .finally(() => {
+        sharedBrowserPromise = null;
+      });
+  }
+
+  return sharedBrowserPromise;
+}
+
+async function installEightXBetLocale(context: BrowserContext) {
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "language", {
+      configurable: true,
+      get: () => "vi-VN"
+    });
+    Object.defineProperty(navigator, "languages", {
+      configurable: true,
+      get: () => ["vi-VN", "vi", "en-US", "en"]
+    });
+    try {
+      window.localStorage.setItem("i18nextLng", "vi-VN");
+      window.localStorage.setItem("language", "vi-VN");
+      window.localStorage.setItem("lang", "vi-VN");
+      window.sessionStorage.setItem("i18nextLng", "vi-VN");
+      window.sessionStorage.setItem("language", "vi-VN");
+      window.sessionStorage.setItem("lang", "vi-VN");
+    } catch {}
+  });
+}
+
+async function waitForEightXBetReady(page: Page, targetURL: string) {
+  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+  let ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
+    () => true,
+    () => false
+  );
+
+  if (!ready) {
+    await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
+    await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+    ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
+      () => true,
+      () => false
+    );
+  }
+
+  if (!ready) {
+    throw new Error("8xbet incoming list did not render in time.");
   }
 }
 
@@ -118,7 +185,12 @@ function resolveEightXBetTargetURL(value: string) {
   return new URL(EIGHTXBET_INCOMING_PATH, parsed).toString();
 }
 
-async function autoScrollIncomingList(page: import("playwright").Page) {
+async function autoScrollIncomingList(page: Page) {
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+  }).catch(() => undefined);
+  await page.waitForTimeout(250);
+
   let previousState = await readIncomingListState(page);
 
   for (let cycle = 0; cycle < 5; cycle += 1) {
@@ -145,7 +217,7 @@ async function autoScrollIncomingList(page: import("playwright").Page) {
   }
 }
 
-async function stabilizeIncomingList(page: import("playwright").Page) {
+async function stabilizeIncomingList(page: Page) {
   let previousState = await readIncomingListState(page);
   let stableRounds = 0;
 
@@ -186,7 +258,7 @@ type EightXBetIncomingListState = {
   atEnd: boolean;
 };
 
-async function readIncomingListState(page: import("playwright").Page): Promise<EightXBetIncomingListState> {
+async function readIncomingListState(page: Page): Promise<EightXBetIncomingListState> {
   return page.evaluate(
     ({ bottomSelector, cardSelector, oddsSelector, teamSelector }) => {
       const bottomNode = document.querySelector(bottomSelector);
@@ -214,7 +286,7 @@ async function readIncomingListState(page: import("playwright").Page): Promise<E
 }
 
 async function performHumanScrollCycle(
-  page: import("playwright").Page,
+  page: Page,
   cycle: number,
   steps = EIGHTXBET_HUMAN_SCROLL_PATTERN.length
 ) {
@@ -237,7 +309,7 @@ async function performHumanScrollCycle(
 }
 
 async function waitForHydrationProgress(
-  page: import("playwright").Page,
+  page: Page,
   baseline: EightXBetIncomingListState
 ) {
   let best = baseline;

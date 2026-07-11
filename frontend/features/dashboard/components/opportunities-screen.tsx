@@ -5,13 +5,13 @@ import { SectionHeader } from "@/components/dashboard/section-header";
 import { QueryShell } from "@/features/dashboard/components/query-shell";
 import {
   useOpportunitiesQuery,
-  useOpportunitiesStream
+  useRealtimeWebSocket
 } from "@/features/dashboard/queries/use-crm-queries";
 import type { Opportunity } from "@/features/dashboard/schemas/crm-schemas";
 
 export function OpportunitiesScreen() {
   const query = useOpportunitiesQuery();
-  const streamStatus = useOpportunitiesStream();
+  const realtimeStatus = useRealtimeWebSocket();
 
   return (
     <div className="dashboard-page">
@@ -27,19 +27,18 @@ export function OpportunitiesScreen() {
         <div className="mb-5 flex items-center gap-2 rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)] w-fit">
           <span
             className={`size-2 rounded-full ${
-              streamStatus === "live"
+              realtimeStatus === "live"
                 ? "bg-emerald-500"
-                : streamStatus === "connecting"
+                : realtimeStatus === "connecting"
                   ? "bg-amber-500"
                   : "bg-slate-400"
             }`}
           />
-          {streamStatus === "live"
-            ? "Đang nhận dữ liệu"
-            : streamStatus === "connecting"
-              ? "Đang kết nối"
-              : "Tự kiểm tra định kỳ"}
-        </div>
+          {realtimeStatus === "live"
+            ? "WebSocket đang nhận dữ liệu"
+            : realtimeStatus === "connecting"
+              ? "Đang mở WebSocket"
+              : "Đang nối lại WebSocket"}        </div>
 
         <QueryShell<Opportunity[]> {...query}>
           {(items) => (

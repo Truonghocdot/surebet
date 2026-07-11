@@ -1,20 +1,27 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
+import { envBool, envInt } from "./env.js";
 
 const debugDir = path.resolve("tmp/collector/debug");
+const lastDebugArtifactAt = new Map<string, number>();
 
 type DebugArtifactOptions = {
   silent?: boolean;
 };
 
 export async function writeDebugArtifacts(page: Page, tag: string, options: DebugArtifactOptions = {}) {
-  await mkdir(debugDir, { recursive: true });
   const safeTag = tag.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
 
   if (page.isClosed()) {
     return;
   }
+
+  if (!shouldWriteDebugArtifact(safeTag)) {
+    return;
+  }
+
+  await mkdir(debugDir, { recursive: true });
 
   const screenshotPath = path.join(debugDir, `${safeTag}.png`);
   await page.screenshot({
@@ -37,13 +44,18 @@ export async function writeDebugArtifacts(page: Page, tag: string, options: Debu
 }
 
 export async function writeContextDebugArtifacts(context: BrowserContext, tag: string) {
-  await mkdir(debugDir, { recursive: true });
   const safeTag = tag.replace(/[^a-z0-9_-]+/gi, "-").toLowerCase();
 
   const pages = context.pages();
   if (pages.length === 0) {
     return;
   }
+
+  if (!shouldWriteDebugArtifact(safeTag)) {
+    return;
+  }
+
+  await mkdir(debugDir, { recursive: true });
 
   const indexPath = path.join(debugDir, `${safeTag}.json`);
   await writeFile(
@@ -88,4 +100,24 @@ function safePageURL(page: Page) {
   } catch {
     return "about:blank";
   }
+}
+
+function shouldWriteDebugArtifact(safeTag: string) {
+  if (!envBool("COLLECTOR_DEBUG_ARTIFACTS", true)) {
+    return false;
+  }
+
+  const throttleMs = envInt("COLLECTOR_DEBUG_THROTTLE_MS", 60_000);
+  if (throttleMs <= 0) {
+    return true;
+  }
+
+  const now = Date.now();
+  const previous = lastDebugArtifactAt.get(safeTag) ?? 0;
+  if (now - previous < throttleMs) {
+    return false;
+  }
+
+  lastDebugArtifactAt.set(safeTag, now);
+  return true;
 }

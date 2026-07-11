@@ -12,6 +12,7 @@ type BaseModel struct {
 type User struct {
 	BaseModel
 	Email        string     `json:"email" gorm:"uniqueIndex;not null"`
+	Password     string     `json:"-" gorm:"column:password"`
 	PasswordHash string     `json:"-" gorm:"not null"`
 	FullName     string     `json:"full_name"`
 	Role         string     `json:"role"`
@@ -66,4 +67,29 @@ type SurebetOpportunity struct {
 	DetectedAt       time.Time    `json:"detected_at"`
 	ExpiresAt        time.Time    `json:"expires_at"`
 	Legs             []SurebetLeg `json:"legs" gorm:"-"`
+}
+
+type TelegramRecipient struct {
+	ID        uint64    `json:"id" gorm:"primaryKey"`
+	Name      string    `json:"name"`
+	ChatID    string    `json:"chat_id" gorm:"column:chat_id"`
+	IsActive  bool      `json:"is_active" gorm:"column:is_active"`
+	Notes     string    `json:"notes"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type TelegramNotificationLog struct {
+	ID               string    `json:"id" gorm:"primaryKey"`
+	RecipientID      uint64    `json:"recipient_id" gorm:"column:recipient_id"`
+	OpportunityID    string    `json:"opportunity_id" gorm:"column:opportunity_id"`
+	FixtureID        string    `json:"fixture_id" gorm:"column:fixture_id"`
+	MarketName       string    `json:"market_name" gorm:"column:market_name"`
+	ProfitPercentage float64   `json:"profit_percentage" gorm:"column:profit_percentage"`
+	Status           string    `json:"status"`
+	ErrorMessage     string    `json:"error_message" gorm:"column:error_message"`
+	Message          string    `json:"message"`
+	SentAt           time.Time `json:"sent_at" gorm:"column:sent_at"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }

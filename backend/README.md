@@ -1,32 +1,27 @@
-# Backend Scaffold
+# Backend Runtime
 
-Backend được tổ chức theo ranh giới clean architecture:
+Backend Go chi con giu runtime API:
 
-- `cmd/api`: entrypoint cho REST và websocket
-- `cmd/worker`: entrypoint cho worker pipeline bất đồng bộ
-- `internal/models`: entity và enum trạng thái hướng lưu trữ
-- `internal/eventbus`: event contract và topology RabbitMQ
-- `internal/repository`: abstraction cho persistence và quy ước Redis key
-- `internal/validator`: contract cho safety pipeline theo thứ tự
-- `internal/execution`: contract thực thi bookmaker và locking
-- `internal/feature`: interface cho runtime feature switch
-- `internal/risk`: contract đánh giá rủi ro
-- `internal/api`: scaffold router Gin với placeholder endpoint
+- `cmd/api`: entrypoint cho REST, websocket va collector ingest
+- `internal/api`: router Gin va handlers runtime
+- `internal/collector`: ingest bootstrap/delta/heartbeat tu collector
+- `internal/odds`: doc odds hien tai
+- `internal/surebet`: tinh va doc surebet
+- `internal/repository`: adapter GORM doc/ghi PostgreSQL
 
-Hiện chưa có business logic. Toàn bộ package được tổ chức theo hướng interface-first và sẵn sàng để gắn adapter thực tế.
+Backend khong con quyen quan ly schema PostgreSQL va khong con seed du lieu.
 
-## Vận hành dữ liệu
+## Schema va seeding
 
-Các lệnh vận hành DB đã được tách riêng:
+Toan bo migration, index va seed account duoc quan ly boi service Laravel trong [laravel](../laravel).
 
-- `go run ./cmd/migrate`
-  - Chỉ migrate schema PostgreSQL
-- `go run ./cmd/seed`
-  - Seed dữ liệu dev mặc định
-- `go run ./cmd/cleanup`
-  - Chạy migrate/cleanup one-off cho dữ liệu bookmaker legacy
+Hay dung:
 
-API runtime không còn tự seed dữ liệu khi khởi động.
+- `cd ../laravel && php artisan migrate`
+- `cd ../laravel && php artisan db:seed`
+- hoac `cd ../laravel && php artisan migrate --seed`
+
+API runtime chi mo ket noi PostgreSQL. Neu schema chua ton tai hoac seed account chua chay, backend se khong tu tao bang nua.
 
 ## Chính sách dependency
 

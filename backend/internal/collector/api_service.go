@@ -21,16 +21,27 @@ type APIService interface {
 	Heartbeat(ctx context.Context, request dto.CollectorHeartbeatRequest) error
 }
 
+type SurebetNotifier interface {
+	Trigger()
+}
+
 type apiService struct {
 	writer    repository.OddsSnapshotRepository
 	publisher EventPublisher
+	notifier  SurebetNotifier
 	log       logger.Logger
 }
 
-func NewAPIService(writer repository.OddsSnapshotRepository, publisher EventPublisher, log logger.Logger) APIService {
+func NewAPIService(
+	writer repository.OddsSnapshotRepository,
+	publisher EventPublisher,
+	notifier SurebetNotifier,
+	log logger.Logger,
+) APIService {
 	return apiService{
 		writer:    writer,
 		publisher: publisher,
+		notifier:  notifier,
 		log:       log,
 	}
 }
@@ -41,10 +52,14 @@ func (s apiService) IngestBootstrap(ctx context.Context, request dto.CollectorBo
 	if err := s.writer.Upsert(ctx, quotes); err != nil {
 		return err
 	}
-	return s.publisher.PublishOddsUpdated(
+	if err := s.publisher.PublishOddsUpdated(
 		ctx,
 		BuildOddsUpdatedEvent(request.Source.CollectorID, request.Source.BookmakerID, request.Source.LobbyID, quotes),
-	)
+	); err != nil {
+		return err
+	}
+	s.triggerSurebetNotifier()
+	return nil
 }
 
 func (s apiService) IngestDelta(ctx context.Context, request dto.CollectorDeltaRequest) error {
@@ -77,10 +92,14 @@ func (s apiService) IngestDelta(ctx context.Context, request dto.CollectorDeltaR
 		return nil
 	}
 	first := request.Deltas[0]
-	return s.publisher.PublishOddsUpdated(
+	if err := s.publisher.PublishOddsUpdated(
 		ctx,
 		BuildOddsUpdatedEvent(first.Source.CollectorID, first.Source.BookmakerID, first.Source.LobbyID, quotes),
-	)
+	); err != nil {
+		return err
+	}
+	s.triggerSurebetNotifier()
+	return nil
 }
 
 func (s apiService) Heartbeat(ctx context.Context, request dto.CollectorHeartbeatRequest) error {
@@ -91,6 +110,12 @@ func (s apiService) Heartbeat(ctx context.Context, request dto.CollectorHeartbea
 		"lobby_id", request.LobbyID,
 	)
 	return nil
+}
+
+func (s apiService) triggerSurebetNotifier() {
+	if s.notifier != nil {
+		s.notifier.Trigger()
+	}
 }
 
 func mapSelections(source dto.CollectorSource, collectedAt time.Time, selections []dto.CollectorSelection) []models.OddsQuote {

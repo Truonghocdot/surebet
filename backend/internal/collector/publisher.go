@@ -9,10 +9,34 @@ import (
 	"surebet/backend/internal/eventbus"
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/models"
+	"surebet/backend/internal/realtime"
 )
 
 type EventPublisher interface {
 	PublishOddsUpdated(ctx context.Context, event eventbus.OddsUpdatedEvent) error
+}
+
+type MultiEventPublisher struct {
+	publishers []EventPublisher
+}
+
+func NewMultiEventPublisher(publishers ...EventPublisher) EventPublisher {
+	filtered := make([]EventPublisher, 0, len(publishers))
+	for _, publisher := range publishers {
+		if publisher != nil {
+			filtered = append(filtered, publisher)
+		}
+	}
+	return MultiEventPublisher{publishers: filtered}
+}
+
+func (p MultiEventPublisher) PublishOddsUpdated(ctx context.Context, event eventbus.OddsUpdatedEvent) error {
+	for _, publisher := range p.publishers {
+		if err := publisher.PublishOddsUpdated(ctx, event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type LoggingEventPublisher struct {
@@ -32,6 +56,31 @@ func (p LoggingEventPublisher) PublishOddsUpdated(ctx context.Context, event eve
 		"lobby_id", event.Payload.LobbyID,
 		"quotes", len(event.Payload.Quotes),
 	)
+	return nil
+}
+
+type RealtimeBroadcaster interface {
+	Broadcast(event realtime.Event)
+}
+
+type RealtimeEventPublisher struct {
+	broadcaster RealtimeBroadcaster
+}
+
+func NewRealtimeEventPublisher(broadcaster RealtimeBroadcaster) EventPublisher {
+	return RealtimeEventPublisher{broadcaster: broadcaster}
+}
+
+func (p RealtimeEventPublisher) PublishOddsUpdated(ctx context.Context, event eventbus.OddsUpdatedEvent) error {
+	if p.broadcaster == nil {
+		return nil
+	}
+
+	p.broadcaster.Broadcast(realtime.Event{
+		Type:    "odds_updated",
+		SentAt:  time.Now().UTC(),
+		Payload: event,
+	})
 	return nil
 }
 

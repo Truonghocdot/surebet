@@ -14,6 +14,7 @@ type Config struct {
 	App      AppConfig
 	Auth     AuthConfig
 	HTTP     HTTPConfig
+	Telegram TelegramConfig
 	RabbitMQ RabbitMQConfig
 	Redis    RedisConfig
 	Postgres PostgresConfig
@@ -34,6 +35,14 @@ type HTTPConfig struct {
 	Address      string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+}
+
+type TelegramConfig struct {
+	BotToken       string
+	APIBaseURL     string
+	RequestTimeout time.Duration
+	DedupWindow    time.Duration
+	ScanCooldown   time.Duration
 }
 
 type RabbitMQConfig struct {
@@ -75,6 +84,13 @@ func LoadFromEnv() Config {
 			Address:      envString("HTTP_ADDRESS", ":8080"),
 			ReadTimeout:  envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
 			WriteTimeout: envDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
+		},
+		Telegram: TelegramConfig{
+			BotToken:       envString("TELEGRAM_BOT_TOKEN", ""),
+			APIBaseURL:     envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
+			RequestTimeout: envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
+			DedupWindow:    envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),
+			ScanCooldown:   envDuration("TELEGRAM_SUREBET_SCAN_COOLDOWN", 5*time.Second),
 		},
 		RabbitMQ: RabbitMQConfig{
 			URL:          envString("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),

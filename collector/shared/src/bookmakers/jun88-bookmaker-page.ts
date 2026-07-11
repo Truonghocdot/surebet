@@ -8,7 +8,7 @@ export async function withJun88BookmakerPage<T>(
   targetURL: string,
   run: (page: Page) => Promise<T>
 ): Promise<T> {
-  const browser = await chromium.launch(collectorLaunchOptions(true));
+  const browser = await chromium.launch(await collectorLaunchOptions(true));
   let context: BrowserContext | null = null;
 
   try {

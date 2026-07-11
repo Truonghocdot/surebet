@@ -30,6 +30,7 @@ export const config = {
     "/",
     "/login",
     "/dashboard/:path*",
+    "/matches/:path*",
     "/opportunities/:path*"
   ]
 };

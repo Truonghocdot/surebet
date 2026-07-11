@@ -18,4 +18,5 @@ export * from "./core/browser.js";
 export * from "./core/debug.js";
 export * from "./core/env.js";
 export * from "./core/page-url-resolver.js";
+export * from "./core/resource-blocking.js";
 export * from "./core/with-public-page.js";

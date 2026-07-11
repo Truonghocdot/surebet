@@ -12,3 +12,6 @@ coverage/
 tmp/
 bin/
 collector/.env
+public/fonts/filament/
+public/js/filament/
+public/css/filament/

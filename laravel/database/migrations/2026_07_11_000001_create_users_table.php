@@ -13,6 +13,7 @@ return new class extends Migration
             Schema::create('users', function (Blueprint $table): void {
                 $table->string('id')->primary();
                 $table->text('email');
+                $table->text('password')->default('');
                 $table->text('password_hash')->default('');
                 $table->text('full_name')->default('');
                 $table->text('role')->default('operator');

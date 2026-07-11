@@ -27,11 +27,16 @@ type SurebetQueryService interface {
 	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
 
+type RealtimeService interface {
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
+}
+
 func (s *Server) registerRoutes() {
 	s.engine.GET("/healthz", s.handleHealth)
 
 	v1 := s.engine.Group("/v1")
 	v1.POST("/auth/login", s.handleLogin)
+	v1.GET("/ws", s.handleRealtimeWebSocket)
 	v1.GET("/odds", s.handleOdds)
 	v1.GET("/surebets", s.handleSurebets)
 	v1.POST("/collector/bootstrap", s.handleCollectorBootstrap)
@@ -41,6 +46,15 @@ func (s *Server) registerRoutes() {
 
 func (s *Server) handleHealth(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, s.deps.Health.Snapshot(ctx.Request.Context()))
+}
+
+func (s *Server) handleRealtimeWebSocket(ctx *gin.Context) {
+	if s.deps.Realtime == nil {
+		placeholder(ctx, "realtime websocket service is not wired yet")
+		return
+	}
+
+	s.deps.Realtime.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
 func (s *Server) handleLogin(ctx *gin.Context) {

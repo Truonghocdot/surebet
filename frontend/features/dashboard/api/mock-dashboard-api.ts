@@ -1,5 +1,6 @@
 import {
   dashboardSnapshotSchema,
+  matchedFixturesSnapshotSchema,
   opportunitySchema
 } from "@/features/dashboard/schemas/crm-schemas";
 import { crmHttp } from "@/lib/http";
@@ -12,4 +13,9 @@ export async function fetchDashboardSnapshot() {
 export async function fetchOpportunities() {
   const response = await crmHttp.get("/crm/opportunities");
   return response.data.map((item: unknown) => opportunitySchema.parse(item));
+}
+
+export async function fetchMatchedFixtures() {
+  const response = await crmHttp.get("/crm/matched-fixtures");
+  return matchedFixturesSnapshotSchema.parse(response.data);
 }

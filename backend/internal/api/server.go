@@ -18,6 +18,7 @@ type Dependencies struct {
 	AuthLogin       AuthLoginService
 	OddsQuery       OddsQueryService
 	CollectorIngest CollectorIngestService
+	Realtime        RealtimeService
 	SurebetQuery    SurebetQueryService
 }
 

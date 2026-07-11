@@ -1,18 +1,9 @@
 GO ?= go
 
-.PHONY: build tidy test migrate seed cleanup deps-audit deps-why-all deps-why-json deps-runtime-json
+.PHONY: build tidy test deps-audit deps-why-all deps-why-json deps-runtime-json
 
 build:
 	$(GO) build ./...
-
-migrate:
-	$(GO) run ./cmd/migrate
-
-seed:
-	$(GO) run ./cmd/seed
-
-cleanup:
-	$(GO) run ./cmd/cleanup
 
 tidy:
 	$(GO) mod tidy

@@ -1,13 +1,23 @@
 "use client";
 
-import Link from "next/link";
+import {
+  startTransition,
+  useEffect,
+  type MouseEvent
+} from "react";
 import { usePathname } from "next/navigation";
 import { Bolt, LogOut, Menu, X } from "lucide-react";
+import { DashboardSpaRouter } from "@/features/dashboard/components/dashboard-spa-router";
 import { SessionHydrator } from "@/features/auth/components/session-hydrator";
 import { useSessionStore } from "@/features/auth/store/session-store";
+import {
+  resolveDashboardHref,
+  type DashboardHref
+} from "@/lib/dashboard-spa";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useAppShellStore } from "@/store/app-shell-store";
+import { useDashboardSpaStore } from "@/store/dashboard-spa-store";
 import { Button } from "@/components/ui/button";
 
 type DashboardShellProps = {
@@ -19,13 +29,54 @@ type DashboardShellProps = {
   logout: () => Promise<void>;
 };
 
-export function DashboardShell({ children, user, logout }: DashboardShellProps) {
+export function DashboardShell({ user, logout }: DashboardShellProps) {
   const pathname = usePathname();
   const sessionUser = useSessionStore((state) => state.user);
   const mobileOpened = useAppShellStore((state) => state.mobileOpened);
   const toggleMobileNav = useAppShellStore((state) => state.toggleMobileNav);
   const closeMobileNav = useAppShellStore((state) => state.closeMobileNav);
+  const activeHref = useDashboardSpaStore((state) => state.activeHref);
+  const setActiveHref = useDashboardSpaStore((state) => state.setActiveHref);
   const displayUser = sessionUser ?? user;
+  const currentHref = activeHref ?? resolveDashboardHref(pathname);
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      setActiveHref(resolveDashboardHref(window.location.pathname));
+    };
+
+    syncFromLocation();
+    window.addEventListener("popstate", syncFromLocation);
+    return () => {
+      window.removeEventListener("popstate", syncFromLocation);
+    };
+  }, [setActiveHref]);
+
+  function handleDashboardNavigation(
+    event: MouseEvent<HTMLAnchorElement>,
+    href: DashboardHref
+  ) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    if (window.location.pathname !== href) {
+      window.history.pushState(null, "", href);
+    }
+
+    startTransition(() => {
+      setActiveHref(href);
+      closeMobileNav();
+    });
+  }
 
   return (
     <div className="min-h-screen bg-[var(--app-bg)] text-[var(--ink)]">
@@ -97,20 +148,20 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
 
             <nav className="flex-1 space-y-2 overflow-y-auto pr-1">
               {navigationItems.map((item) => {
-                const active =
-                  pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const href = resolveDashboardHref(item.href);
+                const active = currentHref === href;
                 const Icon = item.icon;
 
                 return (
-                  <Link
+                  <a
                     className={cn(
                       "grid grid-cols-[42px_1fr] gap-3 rounded-[20px] border border-transparent px-3 py-3 transition hover:translate-x-1 hover:bg-white/5",
                       active &&
                         "border-white/10 bg-[linear-gradient(135deg,rgba(11,138,119,0.78),rgba(7,56,50,0.9))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                     )}
-                    href={item.href}
+                    href={href}
                     key={item.href}
-                    onClick={closeMobileNav}
+                    onClick={(event) => handleDashboardNavigation(event, href)}
                   >
                     <span className="flex size-[42px] items-center justify-center rounded-2xl bg-white/8">
                       <Icon className="size-[18px]" strokeWidth={1.7} />
@@ -126,7 +177,7 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
                         {item.description}
                       </span>
                     </span>
-                  </Link>
+                  </a>
                 );
               })}
             </nav>
@@ -139,7 +190,9 @@ export function DashboardShell({ children, user, logout }: DashboardShellProps) 
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">
+          <DashboardSpaRouter activeHref={currentHref} />
+        </main>
       </div>
     </div>
   );

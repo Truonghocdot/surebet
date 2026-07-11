@@ -2,6 +2,7 @@ import type { Route } from "next";
 import {
   Activity,
   ArrowLeftRight,
+  Network,
   type LucideIcon
 } from "lucide-react";
 
@@ -22,5 +23,10 @@ export const navigationItems: NavItem[] = [
     label: "Cơ hội",
     href: "/opportunities",
     icon: ArrowLeftRight
+  },
+  {
+    label: "Trận khớp",
+    href: "/matches",
+    icon: Network
   }
 ];
