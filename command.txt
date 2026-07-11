@@ -1,0 +1,97 @@
+1. Co code moi tu Git
+Keo code:
+cd /var/www/html/surebet
+git pull
+
+Build lai toan bo service app:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build
+
+Up lai:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d
+
+Neu co migration:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan migrate --force
+
+2. Chi sua deploy/production/.env
+Neu chi doi env cho container hien co:
+cd /var/www/html/surebet
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate
+
+Neu env chi ap vao vai service, co the lam hep:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api telegram-worker laravel-admin frontend
+
+Neu env lien quan collector:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate collector-8xbet collector-jun88-bti collector-jun88-saba collector-jun88-cmd collector-jun88-m9bet
+
+3. Chi rebuild 1 service
+Vi du laravel-admin:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build laravel-admin
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate laravel-admin
+
+Vi du backend-api:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build backend-api
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api
+
+Vi du collector:
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build collector-8xbet collector-jun88-bti collector-jun88-saba collector-jun88-cmd collector-jun88-m9bet
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate collector-8xbet collector-jun88-bti collector-jun88-saba collector-jun88-cmd collector-jun88-m9bet
+
+4. Laravel cache clear sau deploy
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env exec laravel-admin php artisan optimize:clear
+
+5. Seed lai account
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan db:seed --class=Database\\Seeders\\SurebetAccountSeeder --force
+
+6. Xem trang thai va log
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env ps
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f caddy backend-api frontend laravel-admin telegram-worker
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-8xbet
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-jun88-bti
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-jun88-saba
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-jun88-cmd
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-jun88-m9bet
+
+7. Bo lenh "deploy chuan" minh khuyen dung
+Neu co code moi va co the co migration:
+cd /var/www/html/surebet
+git pull
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan migrate --force
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env exec laravel-admin php artisan optimize:clear
+
+8. Deploy nhanh cho doi ten lobby moi
+Neu vua doi code logic ibc -> saba va m8 -> m9bet:
+cd /var/www/html/surebet
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build --no-cache backend-api telegram-worker collector-jun88-saba collector-jun88-m9bet frontend
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api telegram-worker collector-jun88-saba collector-jun88-m9bet frontend
+
+9. SQL migrate du lieu cu ibc -> saba va m8 -> m9bet
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'"'"'SQL'"'"'
+BEGIN;
+
+UPDATE odds_quotes
+SET lobby_id = CASE
+  WHEN lobby_id = '\''ibc'\'' THEN '\''saba'\''
+  WHEN lobby_id = '\''m8'\'' THEN '\''m9bet'\''
+  ELSE lobby_id
+END
+WHERE lobby_id IN ('\''ibc'\'','\''m8'\'');
+
+UPDATE telegram_notification_logs
+SET message = replace(replace(message, '\''jun88/ibc'\'', '\''jun88/saba'\''), '\''jun88/m8'\'', '\''jun88/m9bet'\'')
+WHERE message LIKE '\''%jun88/ibc%'\'' OR message LIKE '\''%jun88/m8%'\'';
+
+COMMIT;
+SQL'
+
+10. Xoa log toan bo he thong
+Chi xoa log Docker container:
+find /var/lib/docker/containers/ -type f -name "*-json.log" -exec truncate -s 0 {} \;
+
+Neu muon xoa manh tay ca system journal:
+journalctl --rotate
+journalctl --vacuum-time=1s
+
+Neu muon lam gon lai Docker sau khi da xoa log:
+docker system prune -af

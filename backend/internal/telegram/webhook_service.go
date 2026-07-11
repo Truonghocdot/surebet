@@ -104,7 +104,7 @@ func (s WebhookService) syncRecipientFromMyChatMember(
 	if wasCreated {
 		recipient.IsActive = false
 		if strings.TrimSpace(recipient.Notes) == "" {
-			recipient.Notes = "Duoc tao tu webhook Telegram. Bat thong bao trong dashboard neu can gui surebet vao chat nay."
+			recipient.Notes = "Được tạo từ webhook Telegram. Bật thông báo trong dashboard nếu cần gửi surebet vào chat này."
 		}
 	} else if isInactiveMembershipStatus(membershipStatus) {
 		recipient.IsActive = false
