@@ -14,9 +14,9 @@ const heartbeatMs = Number.parseInt(envString("COLLECT_HEARTBEAT_MS", "15000"), 
 
 const lobbyCollectorIDs: Record<Exclude<LobbyCode, "default">, string> = {
   bti: "jun88-bti",
-  ibc: "jun88-ibc",
+  saba: "jun88-saba",
   cmd: "jun88-cmd",
-  m8: "jun88-m8"
+  m9bet: "jun88-m9bet"
 };
 
 export async function runJun88LobbyWorker(lobbyId: Exclude<LobbyCode, "default">) {

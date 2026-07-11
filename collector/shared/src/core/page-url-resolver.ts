@@ -62,10 +62,11 @@ export function resolveEightXBetInplayPageURL() {
 }
 
 function resolveJun88PageURL(lobbyId: LobbyCode) {
-  const directEnvKey = jun88DirectPageEnvKey(lobbyId);
-  const directURL = envString(directEnvKey, "").trim();
-  if (directURL !== "") {
-    return directURL;
+  for (const directEnvKey of jun88DirectPageEnvKeys(lobbyId)) {
+    const directURL = envString(directEnvKey, "").trim();
+    if (directURL !== "") {
+      return directURL;
+    }
   }
 
   const baseURL = envString("JUN88_BASE_URL", "").trim();
@@ -79,21 +80,37 @@ function resolveJun88PageURL(lobbyId: LobbyCode) {
   }
 
   throw new Error(
-    `Missing Jun88 page URL for lobby ${lobbyId}. Set ${directEnvKey} or JUN88_BASE_URL.`
+    `Missing Jun88 page URL for lobby ${lobbyId}. Set ${jun88DirectPageEnvKeys(lobbyId).join(" or ")} or JUN88_BASE_URL.`
   );
 }
 
-function jun88DirectPageEnvKey(lobbyId: LobbyCode) {
+function jun88DirectPageEnvKeys(lobbyId: LobbyCode) {
   if (lobbyId === "default") {
-    return "JUN88_PAGE_URL";
+    return ["JUN88_PAGE_URL"];
   }
 
-  return `JUN88_${lobbyId.toUpperCase()}_PAGE_URL`;
+  if (lobbyId === "saba") {
+    return ["JUN88_SABA_PAGE_URL", "JUN88_IBC_PAGE_URL"];
+  }
+
+  if (lobbyId === "m9bet") {
+    return ["JUN88_M9BET_PAGE_URL", "JUN88_M8_PAGE_URL"];
+  }
+
+  return [`JUN88_${lobbyId.toUpperCase()}_PAGE_URL`];
 }
 
 function jun88LobbyPath(lobbyId: LobbyCode) {
   if (lobbyId === "default") {
     return "/";
+  }
+
+  if (lobbyId === "saba") {
+    return "/vi-vn/sports-landing/ibc";
+  }
+
+  if (lobbyId === "m9bet") {
+    return "/vi-vn/sports-landing/m8";
   }
 
   return `/vi-vn/sports-landing/${lobbyId}`;

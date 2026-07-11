@@ -9,19 +9,19 @@ import type {
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
-import { parseJun88M8Snapshot } from "./parsers/jun88-m8-parser.js";
+import { parseJun88M9BetSnapshot } from "./parsers/jun88-m8-parser.js";
 import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
 
-const M8_READY_SELECTOR = "tr[oddsid], .Span_titleleague";
+const M9BET_READY_SELECTOR = "tr[oddsid], .Span_titleleague";
 
-export class Jun88M8Runtime implements StreamingCollectorRuntime {
+export class Jun88M9BetRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext): Promise<OddsSnapshot> {
-    const lobby = requireLobbyConfig("m8");
+    const lobby = requireLobbyConfig("m9bet");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
-      const target = await resolveM8ContentTarget(page);
-      const snapshot = parseJun88M8Snapshot(
+      const target = await resolveM9BetContentTarget(page);
+      const snapshot = parseJun88M9BetSnapshot(
         await target.content(),
         target.url(),
         this.collectorId
@@ -32,11 +32,11 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
   }
 
   async stream(context: CollectContext, sink: CollectorSink): Promise<void> {
-    const lobby = requireLobbyConfig("m8");
+    const lobby = requireLobbyConfig("m9bet");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
-        const target = await resolveM8ContentTarget(page);
-        const initialSnapshot = parseJun88M8Snapshot(
+        const target = await resolveM9BetContentTarget(page);
+        const initialSnapshot = parseJun88M9BetSnapshot(
           await target.content(),
           target.url(),
           this.collectorId
@@ -44,12 +44,12 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
-        await installM8Observer(target, initialSnapshot);
+        await installM9BetObserver(target, initialSnapshot);
         let lastHeartbeatAt = Date.now();
 
         while (!page.isClosed()) {
           await page.waitForTimeout(300);
-          const deltas = await readM8Deltas(target);
+          const deltas = await readM9BetDeltas(target);
           if (deltas.length > 0) {
             await sink.pushDelta(deltas);
           }
@@ -67,21 +67,23 @@ export class Jun88M8Runtime implements StreamingCollectorRuntime {
   }
 }
 
-async function resolveM8ContentTarget(page: Page): Promise<Page | Frame> {
+export class Jun88M8Runtime extends Jun88M9BetRuntime {}
+
+async function resolveM9BetContentTarget(page: Page): Promise<Page | Frame> {
   await page
-    .waitForSelector(`${M8_READY_SELECTOR}, frame[name="fraMain"], frame`, {
+    .waitForSelector(`${M9BET_READY_SELECTOR}, frame[name="fraMain"], frame`, {
       timeout: 20_000
     })
     .catch(() => undefined);
 
-  const directMatch = await page.locator(M8_READY_SELECTOR).count().catch(() => 0);
+  const directMatch = await page.locator(M9BET_READY_SELECTOR).count().catch(() => 0);
   if (directMatch > 0) {
     return page;
   }
 
   const namedFrame = page.frame({ name: "fraMain" });
   if (namedFrame) {
-    const resolved = await waitForM8FrameContent(namedFrame).catch(() => null);
+    const resolved = await waitForM9BetFrameContent(namedFrame).catch(() => null);
     if (resolved) {
       return namedFrame;
     }
@@ -92,30 +94,30 @@ async function resolveM8ContentTarget(page: Page): Promise<Page | Frame> {
       continue;
     }
 
-    const resolved = await waitForM8FrameContent(frame).catch(() => null);
+    const resolved = await waitForM9BetFrameContent(frame).catch(() => null);
     if (resolved) {
       return frame;
     }
   }
 
-  throw new Error("Jun88 M8 page/frame did not render odds rows in time.");
+  throw new Error("Jun88 M9Bet page/frame did not render odds rows in time.");
 }
 
-async function waitForM8FrameContent(frame: Frame) {
+async function waitForM9BetFrameContent(frame: Frame) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < 20_000) {
-    if (await frame.locator(M8_READY_SELECTOR).count().catch(() => 0)) {
+    if (await frame.locator(M9BET_READY_SELECTOR).count().catch(() => 0)) {
       return true;
     }
 
     await frame.page().waitForTimeout(250);
   }
 
-  throw new Error("Jun88 M8 frame did not render odds rows in time.");
+  throw new Error("Jun88 M9Bet frame did not render odds rows in time.");
 }
 
-function requireLobbyConfig(lobbyId: "m8") {
+function requireLobbyConfig(lobbyId: "m9bet") {
   const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === lobbyId);
   if (!lobby) {
     throw new Error(`Jun88 ${lobbyId.toUpperCase()} lobby configuration is missing.`);
@@ -123,7 +125,7 @@ function requireLobbyConfig(lobbyId: "m8") {
   return lobby;
 }
 
-async function installM8Observer(
+async function installM9BetObserver(
   target: Page | Frame,
   snapshot: { source: CollectorSource; selections: Array<{ outcomeId: string; outcomeName: string; odds: number }> }
 ) {
@@ -137,10 +139,10 @@ async function installM8Observer(
   const script = `
     ((seededFingerprints) => {
       const win = window;
-      if (!win.__surebet_m8_stream__) {
-        win.__surebet_m8_stream__ = { queue: [], seen: {}, byRow: {} };
+      if (!win.__surebet_m9bet_stream__) {
+        win.__surebet_m9bet_stream__ = { queue: [], seen: {}, byRow: {} };
       }
-      const state = win.__surebet_m8_stream__;
+      const state = win.__surebet_m9bet_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
       if (state.observer) state.observer.disconnect();
 
@@ -270,7 +272,7 @@ async function installM8Observer(
             if (state.seen[item.outcomeId] !== fingerprint) {
               state.seen[item.outcomeId] = fingerprint;
               state.queue.push({
-                source: { collectorId: "jun88-m8", bookmakerId: "jun88", lobbyId: "m8" },
+                source: { collectorId: "jun88-m9bet", bookmakerId: "jun88", lobbyId: "m9bet" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
                 homeTeam: item.homeTeam,
@@ -289,7 +291,7 @@ async function installM8Observer(
             if (!currentMap[item.outcomeId]) {
               delete state.seen[item.outcomeId];
               state.queue.push({
-                source: { collectorId: "jun88-m8", bookmakerId: "jun88", lobbyId: "m8" },
+                source: { collectorId: "jun88-m9bet", bookmakerId: "jun88", lobbyId: "m9bet" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
                 homeTeam: item.homeTeam,
@@ -315,7 +317,7 @@ async function installM8Observer(
         for (const item of state.byRow[rowKey]) {
           delete state.seen[item.outcomeId];
           state.queue.push({
-            source: { collectorId: "jun88-m8", bookmakerId: "jun88", lobbyId: "m8" },
+            source: { collectorId: "jun88-m9bet", bookmakerId: "jun88", lobbyId: "m9bet" },
             collectedAt: new Date().toISOString(),
             fixtureId: item.fixtureId,
             homeTeam: item.homeTeam,
@@ -362,17 +364,17 @@ async function installM8Observer(
   await target.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
 }
 
-async function readM8Deltas(target: Page | Frame) {
+async function readM9BetDeltas(target: Page | Frame) {
   return target.evaluate(() => {
     const win = window as Window & {
-      __surebet_m8_stream__?: {
+      __surebet_m9bet_stream__?: {
         queue: import("../contracts.js").OddsDelta[];
       };
     };
-    const queue = win.__surebet_m8_stream__?.queue || [];
+    const queue = win.__surebet_m9bet_stream__?.queue || [];
     if (queue.length === 0) return [];
-    if (win.__surebet_m8_stream__) {
-      win.__surebet_m8_stream__.queue = [];
+    if (win.__surebet_m9bet_stream__) {
+      win.__surebet_m9bet_stream__.queue = [];
     }
     return queue;
   }) as Promise<import("../contracts.js").OddsDelta[]>;

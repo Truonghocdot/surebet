@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parseJun88M8Snapshot } from "@surebet/collector-shared";
+import { parseJun88M9BetSnapshot } from "@surebet/collector-shared";
 
 async function main() {
   const htmlPath = path.resolve("../docs/lobbby/jun888/m8.html");
   const html = await readFile(htmlPath, "utf8");
-  const snapshot = parseJun88M8Snapshot(
+  const snapshot = parseJun88M9BetSnapshot(
     html,
     "https://bxhg006d.m9ongm9.com/Panel/PB.aspx?ot=t"
   );
@@ -22,11 +22,11 @@ async function main() {
   );
 
   if (snapshot.selections.length === 0) {
-    throw new Error("M8 parser returned an empty snapshot.");
+    throw new Error("M9Bet parser returned an empty snapshot.");
   }
 }
 
 main().catch((error) => {
-  console.error("M8 parser test failed:", error);
+  console.error("M9Bet parser test failed:", error);
   process.exit(1);
 });

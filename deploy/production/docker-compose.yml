@@ -201,10 +201,9 @@ services:
       EIGHTXBET_PAGE_URL: ${EIGHTXBET_PAGE_URL}
       EIGHTXBET_BASE_URL: ${EIGHTXBET_BASE_URL}
       JUN88_BASE_URL: ${JUN88_BASE_URL}
-      JUN88_BTI_PAGE_URL: ${JUN88_BTI_PAGE_URL}
-      JUN88_IBC_PAGE_URL: ${JUN88_IBC_PAGE_URL}
+      JUN88_SABA_PAGE_URL: ${JUN88_SABA_PAGE_URL}
       JUN88_CMD_PAGE_URL: ${JUN88_CMD_PAGE_URL}
-      JUN88_M8_PAGE_URL: ${JUN88_M8_PAGE_URL}
+      JUN88_M9BET_PAGE_URL: ${JUN88_M9BET_PAGE_URL}
       COLLECT_INTERVAL_MS: ${COLLECT_INTERVAL_MS}
       COLLECT_HEARTBEAT_MS: ${COLLECT_HEARTBEAT_MS}
       COLLECTOR_HEADLESS: ${COLLECTOR_HEADLESS}
@@ -245,7 +244,7 @@ services:
       - backend-api
     command: ["npm", "run", "run:jun88-bti-worker"]
 
-  collector-jun88-ibc:
+  collector-jun88-saba:
     build:
       context: ../../collector
     restart: unless-stopped
@@ -258,7 +257,7 @@ services:
       - collector-tmp:/app/collector/tmp
     depends_on:
       - backend-api
-    command: ["npm", "run", "run:jun88-ibc-worker"]
+    command: ["npm", "run", "run:jun88-saba-worker"]
 
   collector-jun88-cmd:
     build:
@@ -275,7 +274,7 @@ services:
       - backend-api
     command: ["npm", "run", "run:jun88-cmd-worker"]
 
-  collector-jun88-m8:
+  collector-jun88-m9bet:
     build:
       context: ../../collector
     restart: unless-stopped
@@ -288,7 +287,7 @@ services:
       - collector-tmp:/app/collector/tmp
     depends_on:
       - backend-api
-    command: ["npm", "run", "run:jun88-m8-worker"]
+    command: ["npm", "run", "run:jun88-m9bet-worker"]
 
 volumes:
   caddy-data:

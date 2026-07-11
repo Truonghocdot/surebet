@@ -8,41 +8,45 @@ import type {
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
-import { parseJun88IbcSnapshot } from "./parsers/jun88-ibc-parser.js";
+import { parseJun88SabaSnapshot } from "./parsers/jun88-ibc-parser.js";
 import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
-const IBC_READY_SELECTORS = ".c-match, .c-event-card";
+const SABA_READY_SELECTORS = ".c-match, .c-event-card";
 
-export class Jun88IbcRuntime implements StreamingCollectorRuntime {
+export class Jun88SabaRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
 
   async collect(context: CollectContext) {
-    const lobby = requireLobbyConfig("ibc");
+    const lobby = requireLobbyConfig("saba");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       const target = await resolveContentTarget(page);
       const html = await target.content();
-      const snapshot = parseJun88IbcSnapshot(html, target.url(), this.collectorId);
+      const snapshot = parseJun88SabaSnapshot(html, target.url(), this.collectorId);
       assertSnapshotHasSelections(snapshot, this.collectorId);
       return snapshot;
     });
   }
 
   async stream(context: CollectContext, sink: CollectorSink) {
-    const lobby = requireLobbyConfig("ibc");
+    const lobby = requireLobbyConfig("saba");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
         const target = await resolveContentTarget(page);
         const initialHTML = await target.content();
-        const initialSnapshot = parseJun88IbcSnapshot(initialHTML, target.url(), this.collectorId);
+        const initialSnapshot = parseJun88SabaSnapshot(
+          initialHTML,
+          target.url(),
+          this.collectorId
+        );
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
 
         let lastHeartbeatAt = Date.now();
-        await installIbcObserver(page, initialSnapshot);
+        await installSabaObserver(page, initialSnapshot);
 
         while (!page.isClosed()) {
           await page.waitForTimeout(300);
-          const deltas = await readIbcDeltas(page);
+          const deltas = await readSabaDeltas(page);
           if (deltas.length > 0) {
             await sink.pushDelta(deltas);
           }
@@ -60,7 +64,9 @@ export class Jun88IbcRuntime implements StreamingCollectorRuntime {
   }
 }
 
-function requireLobbyConfig(lobbyId: "ibc") {
+export class Jun88IbcRuntime extends Jun88SabaRuntime {}
+
+function requireLobbyConfig(lobbyId: "saba") {
   const lobby = JUN88_LOBBIES.find((item) => item.lobbyId === lobbyId);
   if (!lobby) {
     throw new Error(`Jun88 ${lobbyId.toUpperCase()} lobby configuration is missing.`);
@@ -69,7 +75,7 @@ function requireLobbyConfig(lobbyId: "ibc") {
 }
 
 async function resolveContentTarget(page: Page) {
-  const pageLocator = page.locator(IBC_READY_SELECTORS).first();
+  const pageLocator = page.locator(SABA_READY_SELECTORS).first();
   if (await pageLocator.count()) {
     return {
       content: () => page.content(),
@@ -77,7 +83,7 @@ async function resolveContentTarget(page: Page) {
     };
   }
 
-  await page.waitForSelector(`#sportsFrame, ${IBC_READY_SELECTORS}`, {
+  await page.waitForSelector(`#sportsFrame, ${SABA_READY_SELECTORS}`, {
     timeout: 20_000
   });
 
@@ -102,17 +108,17 @@ async function waitForFrameContent(frame: Frame) {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < 20_000) {
-    if (await frame.locator(IBC_READY_SELECTORS).count()) {
+    if (await frame.locator(SABA_READY_SELECTORS).count()) {
       return;
     }
 
     await frame.page().waitForTimeout(250);
   }
 
-  throw new Error("Jun88 IBC frame did not render match content in time.");
+  throw new Error("Jun88 SABA frame did not render match content in time.");
 }
 
-async function installIbcObserver(
+async function installSabaObserver(
   page: import("playwright").Page,
   snapshot: { source: CollectorSource; selections: Array<{ outcomeId: string; outcomeName: string; odds: number }> }
 ) {
@@ -126,10 +132,10 @@ async function installIbcObserver(
   const script = `
     ((seededFingerprints) => {
       const win = window;
-      if (!win.__surebet_ibc_stream__) {
-        win.__surebet_ibc_stream__ = { queue: [], seen: {} };
+      if (!win.__surebet_saba_stream__) {
+        win.__surebet_saba_stream__ = { queue: [], seen: {} };
       }
-      const state = win.__surebet_ibc_stream__;
+      const state = win.__surebet_saba_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
       if (state.observer) {
         state.observer.disconnect();
@@ -201,9 +207,9 @@ async function installIbcObserver(
               state.seen[id] = fingerprint;
               state.queue.push({
                 source: {
-                  collectorId: "jun88-ibc",
+                  collectorId: "jun88-saba",
                   bookmakerId: "jun88",
-                  lobbyId: "ibc"
+                  lobbyId: "saba"
                 },
                 collectedAt: new Date().toISOString(),
                 fixtureId,
@@ -242,17 +248,17 @@ async function installIbcObserver(
   await page.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
 }
 
-async function readIbcDeltas(page: import("playwright").Page) {
+async function readSabaDeltas(page: import("playwright").Page) {
   return page.evaluate(() => {
     const win = window as Window & {
-      __surebet_ibc_stream__?: {
+      __surebet_saba_stream__?: {
         queue: import("../contracts.js").OddsDelta[];
       };
     };
-    const queue = win.__surebet_ibc_stream__?.queue || [];
+    const queue = win.__surebet_saba_stream__?.queue || [];
     if (queue.length === 0) return [];
-    if (win.__surebet_ibc_stream__) {
-      win.__surebet_ibc_stream__.queue = [];
+    if (win.__surebet_saba_stream__) {
+      win.__surebet_saba_stream__.queue = [];
     }
     return queue;
   }) as Promise<import("../contracts.js").OddsDelta[]>;

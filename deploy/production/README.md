@@ -85,7 +85,7 @@ Restart rieng collector:
 
 ```bash
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-8xbet
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-jun88-bti collector-jun88-ibc collector-jun88-cmd collector-jun88-m8
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-jun88-bti collector-jun88-saba collector-jun88-cmd collector-jun88-m9bet
 ```
 
 Webhook Telegram:

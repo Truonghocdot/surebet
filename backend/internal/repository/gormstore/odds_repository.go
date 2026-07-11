@@ -21,9 +21,9 @@ const defaultCurrentOddsWindow = 12 * time.Hour
 var defaultDetectorSources = []detectorSource{
 	{BookmakerID: "8xbet", LobbyID: "default"},
 	{BookmakerID: "jun88", LobbyID: "bti"},
-	{BookmakerID: "jun88", LobbyID: "ibc"},
+	{BookmakerID: "jun88", LobbyID: "saba"},
 	{BookmakerID: "jun88", LobbyID: "cmd"},
-	{BookmakerID: "jun88", LobbyID: "m8"},
+	{BookmakerID: "jun88", LobbyID: "m9bet"},
 }
 
 type detectorSource struct {

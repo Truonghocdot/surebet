@@ -2,7 +2,7 @@ import type { Jun88LobbyAccess } from "../contracts.js";
 
 export const JUN88_LOBBIES: Jun88LobbyAccess[] = [
   {
-    lobbyId: "ibc",
+    lobbyId: "saba",
     launchURL: "https://www.jun888e.ren/vi-vn/sports-landing/ibc",
     expectedOriginPatterns: ["bpd3a3fn.com", "g768ob."]
   },
@@ -17,7 +17,7 @@ export const JUN88_LOBBIES: Jun88LobbyAccess[] = [
     expectedOriginPatterns: ["6688867.com", "ss159."]
   },
   {
-    lobbyId: "m8",
+    lobbyId: "m9bet",
     launchURL: "https://www.jun888e.ren/vi-vn/sports-landing/m8",
     expectedOriginPatterns: ["m9ongm9.com", "tdgr008d.", "mywinday.com", "odds.mywinday.com"]
   }

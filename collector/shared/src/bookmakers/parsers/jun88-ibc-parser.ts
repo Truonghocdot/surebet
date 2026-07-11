@@ -28,10 +28,10 @@ type ButtonContext = {
 
 const DEFAULT_DRAW_LABEL = "Hòa";
 
-export function parseJun88IbcSnapshot(
+export function parseJun88SabaSnapshot(
   html: string,
   pageUrl: string,
-  collectorId = "jun88-ibc"
+  collectorId = "jun88-saba"
 ): OddsSnapshot {
   const dom = new JSDOM(html);
   const document = dom.window.document;
@@ -41,13 +41,15 @@ export function parseJun88IbcSnapshot(
     source: {
       collectorId,
       bookmakerId: "jun88",
-      lobbyId: "ibc"
+      lobbyId: "saba"
     },
     collectedAt: new Date().toISOString(),
     selections:
       selections.length > 0 ? selections : parseFeaturedCardSelections(document, pageUrl)
   };
 }
+
+export const parseJun88IbcSnapshot = parseJun88SabaSnapshot;
 
 function parseMatchSelections(document: Document) {
   const matches = Array.from(document.querySelectorAll(".c-match"));

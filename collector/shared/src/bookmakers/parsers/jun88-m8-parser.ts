@@ -14,10 +14,10 @@ type MarketContext = {
   eventStartAt?: string;
 };
 
-export function parseJun88M8Snapshot(
+export function parseJun88M9BetSnapshot(
   html: string,
   pageUrl: string,
-  collectorId = "jun88-m8"
+  collectorId = "jun88-m9bet"
 ): OddsSnapshot {
   const dom = new JSDOM(html);
   const document = dom.window.document;
@@ -28,13 +28,15 @@ export function parseJun88M8Snapshot(
     source: {
       collectorId,
       bookmakerId: "jun88",
-      lobbyId: "m8"
+      lobbyId: "m9bet"
     },
     collectedAt: new Date().toISOString(),
     selections:
       selections.length > 0 ? selections : parseFallbackSelections(document, pageUrl)
   };
 }
+
+export const parseJun88M8Snapshot = parseJun88M9BetSnapshot;
 
 function parseOddsRow(rowNode: HTMLElement) {
   const oddsID = rowNode.getAttribute("oddsid") || "";
@@ -48,7 +50,7 @@ function parseOddsRow(rowNode: HTMLElement) {
   const awayTeam = detailTeams.awayTeam || resolveAwayTeam(rowNode);
   const drawLabel = textContent(rowNode.querySelector(".Draw")) || "Hòa";
   const timeOrStatus = textContent(rowNode.querySelector(".Heading5"));
-  const matchState = detectM8MatchState(timeOrStatus);
+  const matchState = detectM9BetMatchState(timeOrStatus);
   const eventStartAt = matchState === "upcoming" ? timeOrStatus || undefined : undefined;
 
   if (!homeTeam || !awayTeam) {
@@ -237,7 +239,7 @@ function createSelection(
   };
 }
 
-function detectM8MatchState(value: string) {
+function detectM9BetMatchState(value: string) {
   if (!value) {
     return "unknown" as const;
   }
