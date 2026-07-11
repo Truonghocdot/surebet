@@ -80,16 +80,19 @@ type TelegramRecipient struct {
 }
 
 type TelegramNotificationLog struct {
-	ID               string    `json:"id" gorm:"primaryKey"`
-	RecipientID      uint64    `json:"recipient_id" gorm:"column:recipient_id"`
-	OpportunityID    string    `json:"opportunity_id" gorm:"column:opportunity_id"`
-	FixtureID        string    `json:"fixture_id" gorm:"column:fixture_id"`
-	MarketName       string    `json:"market_name" gorm:"column:market_name"`
-	ProfitPercentage float64   `json:"profit_percentage" gorm:"column:profit_percentage"`
-	Status           string    `json:"status"`
-	ErrorMessage     string    `json:"error_message" gorm:"column:error_message"`
-	Message          string    `json:"message"`
-	SentAt           time.Time `json:"sent_at" gorm:"column:sent_at"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               string     `json:"id" gorm:"primaryKey"`
+	RecipientID      uint64     `json:"recipient_id" gorm:"column:recipient_id"`
+	OpportunityID    string     `json:"opportunity_id" gorm:"column:opportunity_id"`
+	FixtureID        string     `json:"fixture_id" gorm:"column:fixture_id"`
+	MarketName       string     `json:"market_name" gorm:"column:market_name"`
+	ProfitPercentage float64    `json:"profit_percentage" gorm:"column:profit_percentage"`
+	Status           string     `json:"status"`
+	AttemptCount     int        `json:"attempt_count" gorm:"column:attempt_count"`
+	ErrorMessage     string     `json:"error_message" gorm:"column:error_message"`
+	Message          string     `json:"message"`
+	AvailableAt      *time.Time `json:"available_at,omitempty" gorm:"column:available_at"`
+	ReservedAt       *time.Time `json:"reserved_at,omitempty" gorm:"column:reserved_at"`
+	SentAt           time.Time  `json:"sent_at" gorm:"column:sent_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }

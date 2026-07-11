@@ -38,11 +38,15 @@ type HTTPConfig struct {
 }
 
 type TelegramConfig struct {
-	BotToken       string
-	APIBaseURL     string
-	RequestTimeout time.Duration
-	DedupWindow    time.Duration
-	ScanCooldown   time.Duration
+	BotToken          string
+	APIBaseURL        string
+	RequestTimeout    time.Duration
+	DedupWindow       time.Duration
+	ScanCooldown      time.Duration
+	QueuePollInterval time.Duration
+	QueueBatchSize    int
+	QueueMaxAttempts  int
+	QueueRetryDelay   time.Duration
 }
 
 type RabbitMQConfig struct {
@@ -86,11 +90,15 @@ func LoadFromEnv() Config {
 			WriteTimeout: envDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
 		},
 		Telegram: TelegramConfig{
-			BotToken:       envString("TELEGRAM_BOT_TOKEN", ""),
-			APIBaseURL:     envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
-			RequestTimeout: envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
-			DedupWindow:    envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),
-			ScanCooldown:   envDuration("TELEGRAM_SUREBET_SCAN_COOLDOWN", 5*time.Second),
+			BotToken:          envString("TELEGRAM_BOT_TOKEN", ""),
+			APIBaseURL:        envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
+			RequestTimeout:    envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
+			DedupWindow:       envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),
+			ScanCooldown:      envDuration("TELEGRAM_SUREBET_SCAN_COOLDOWN", 5*time.Second),
+			QueuePollInterval: envDuration("TELEGRAM_QUEUE_POLL_INTERVAL", 2*time.Second),
+			QueueBatchSize:    envInt("TELEGRAM_QUEUE_BATCH_SIZE", 25),
+			QueueMaxAttempts:  envInt("TELEGRAM_QUEUE_MAX_ATTEMPTS", 5),
+			QueueRetryDelay:   envDuration("TELEGRAM_QUEUE_RETRY_DELAY", 30*time.Second),
 		},
 		RabbitMQ: RabbitMQConfig{
 			URL:          envString("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),

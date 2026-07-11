@@ -4,6 +4,7 @@ Stack production nay dung:
 
 - `tykfk.site` -> frontend Next.js
 - `api.tykfk.site` -> backend Go API + websocket
+- `telegram-worker` -> worker Go gui Telegram tu queue
 - `admin.tykfk.site` -> Laravel Filament admin + Telegram webhook
 - PostgreSQL cho du lieu
 - 5 collector worker rieng cho 8xbet va Jun88
@@ -70,6 +71,7 @@ Xem log:
 
 ```bash
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f caddy backend-api frontend laravel-admin
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f telegram-worker
 ```
 
 Restart rieng collector:

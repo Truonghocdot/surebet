@@ -1,12 +1,9 @@
 package telegram
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
-	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -28,7 +25,7 @@ type RecipientReader interface {
 }
 
 type NotificationLogWriter interface {
-	HasRecentSent(ctx context.Context, recipientID uint64, opportunityID string, since time.Time) (bool, error)
+	HasPendingOrRecentSent(ctx context.Context, recipientID uint64, opportunityID string, since time.Time) (bool, error)
 	Create(ctx context.Context, log models.TelegramNotificationLog) error
 }
 
@@ -38,7 +35,6 @@ type Notifier struct {
 	recipients RecipientReader
 	logs       NotificationLogWriter
 	log        logger.Logger
-	client     *http.Client
 	running    atomic.Bool
 	lastRunAt  atomic.Int64
 }
@@ -54,18 +50,12 @@ func NewNotifier(
 		return nil
 	}
 
-	timeout := cfg.RequestTimeout
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-
 	return &Notifier{
 		cfg:        cfg,
 		reader:     reader,
 		recipients: recipients,
 		logs:       logs,
 		log:        log,
-		client:     &http.Client{Timeout: timeout},
 	}
 }
 
@@ -90,16 +80,16 @@ func (n *Notifier) Trigger() {
 	go func() {
 		defer n.running.Store(false)
 
-		ctx, cancel := context.WithTimeout(context.Background(), n.client.Timeout+(5*time.Second))
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		if err := n.notifyCurrentSurebets(ctx); err != nil {
-			n.log.Warn("telegram surebet notification failed", "error", err.Error())
+		if err := n.enqueueCurrentSurebets(ctx); err != nil {
+			n.log.Warn("telegram surebet enqueue failed", "error", err.Error())
 		}
 	}()
 }
 
-func (n *Notifier) notifyCurrentSurebets(ctx context.Context) error {
+func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
 	opportunities, err := n.reader.ListCurrentSurebets(ctx)
 	if err != nil {
 		return err
@@ -117,32 +107,21 @@ func (n *Notifier) notifyCurrentSurebets(ctx context.Context) error {
 	}
 
 	since := time.Now().UTC().Add(-n.cfg.DedupWindow)
+	queuedCount := 0
+
 	for _, item := range opportunities {
 		message := formatSurebetMessage(item)
 
 		for _, recipient := range recipients {
-			sent, err := n.logs.HasRecentSent(ctx, recipient.ID, item.ID, since)
+			queuedOrSent, err := n.logs.HasPendingOrRecentSent(ctx, recipient.ID, item.ID, since)
 			if err != nil {
 				return err
 			}
-			if sent {
+			if queuedOrSent {
 				continue
 			}
 
-			status := "sent"
-			errorMessage := ""
-			if err := n.sendMessage(ctx, recipient.ChatID, message); err != nil {
-				status = "failed"
-				errorMessage = err.Error()
-				n.log.Warn(
-					"telegram send failed",
-					"recipient_id", recipient.ID,
-					"chat_id", recipient.ChatID,
-					"opportunity_id", item.ID,
-					"error", err.Error(),
-				)
-			}
-
+			now := time.Now().UTC()
 			if err := n.logs.Create(ctx, models.TelegramNotificationLog{
 				ID:               uuid.NewString(),
 				RecipientID:      recipient.ID,
@@ -150,48 +129,25 @@ func (n *Notifier) notifyCurrentSurebets(ctx context.Context) error {
 				FixtureID:        item.FixtureID,
 				MarketName:       item.MarketName,
 				ProfitPercentage: item.ProfitPercentage,
-				Status:           status,
-				ErrorMessage:     errorMessage,
+				Status:           "pending",
+				AttemptCount:     0,
+				ErrorMessage:     "",
 				Message:          message,
-				SentAt:           time.Now().UTC(),
-				CreatedAt:        time.Now().UTC(),
-				UpdatedAt:        time.Now().UTC(),
+				AvailableAt:      &now,
+				ReservedAt:       nil,
+				SentAt:           now,
+				CreatedAt:        now,
+				UpdatedAt:        now,
 			}); err != nil {
 				return err
 			}
+
+			queuedCount += 1
 		}
 	}
 
-	return nil
-}
-
-func (n *Notifier) sendMessage(ctx context.Context, chatID, message string) error {
-	endpoint := strings.TrimRight(n.cfg.APIBaseURL, "/") + "/bot" + n.cfg.BotToken + "/sendMessage"
-
-	body, err := json.Marshal(map[string]any{
-		"chat_id":                  chatID,
-		"text":                     message,
-		"parse_mode":               "HTML",
-		"disable_web_page_preview": true,
-	})
-	if err != nil {
-		return err
-	}
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := n.client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("telegram api returned %s", response.Status)
+	if queuedCount > 0 {
+		n.log.Info("telegram surebet queued", "jobs", queuedCount)
 	}
 
 	return nil

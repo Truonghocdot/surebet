@@ -17,6 +17,9 @@ class TelegramNotificationLog extends Model
 
     protected $casts = [
         'profit_percentage' => 'float',
+        'attempt_count' => 'integer',
+        'available_at' => 'datetime',
+        'reserved_at' => 'datetime',
         'sent_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
