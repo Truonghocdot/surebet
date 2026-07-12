@@ -24,7 +24,7 @@ export function OpportunitiesScreen() {
         description=""
         title="Danh sách cơ hội"
       >
-        <div className="mb-5 flex items-center gap-2 rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)] w-fit">
+        <div className="mb-5 inline-flex w-fit flex-wrap items-center gap-2 rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
           <span
             className={`size-2 rounded-full ${
               realtimeStatus === "live"
@@ -38,7 +38,8 @@ export function OpportunitiesScreen() {
             ? "Đang nhận dữ liệu"
             : realtimeStatus === "connecting"
               ? "Đang kết nối"
-              : "Đang kết nối"}        </div>
+              : "Đang kết nối lại"}
+        </div>
 
         <QueryShell<Opportunity[]> {...query}>
           {(items) => (
@@ -70,13 +71,13 @@ function OpportunityCard({ row }: { row: Opportunity }) {
   const presentation = deriveOpportunityPresentation(row);
 
   return (
-    <article className="overflow-hidden rounded-[28px] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,#23262f_0%,#1a1d24_100%)] p-5 text-white shadow-[0_20px_40px_rgba(15,31,38,0.2)]">
+    <article className="overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,#23262f_0%,#1a1d24_100%)] p-4 text-white shadow-[0_20px_40px_rgba(15,31,38,0.2)] md:rounded-[28px] md:p-5">
       <div className="flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <span className="rounded-full bg-[#f2c94c] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#5a4600]">
             {formatFreshness(row.detected_at)}
           </span>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-start gap-2 sm:items-end">
             <span className="rounded-full bg-[#3199ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
               Lệch tiền {presentation.moneyGap.toFixed(2)}
             </span>
@@ -86,8 +87,10 @@ function OpportunityCard({ row }: { row: Opportunity }) {
           </div>
         </div>
 
-        <div className="space-y-2 text-center">
-          <p className="text-lg font-semibold text-white">{row.fixture_id}</p>
+        <div className="space-y-2 text-left sm:text-center">
+          <p className="break-words text-base font-semibold text-white sm:text-lg">
+            {row.fixture_id}
+          </p>
           <p className="text-sm text-[rgba(255,255,255,0.82)]">
             {presentation.marketLabel}
           </p>
@@ -96,14 +99,14 @@ function OpportunityCard({ row }: { row: Opportunity }) {
           </p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2 md:gap-4">
           {presentation.legs.map((leg, index) => (
             <div
-              className="rounded-[22px] border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.03)] p-4"
+              className="rounded-[20px] border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.03)] p-4 md:rounded-[22px]"
               key={`${row.id}-${leg.outcome_id}-${index}`}
             >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-lg font-bold text-white">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="break-all text-base font-bold text-white sm:text-lg">
                   {leg.bookmaker_id} / {leg.lobby_id}
                 </p>
                 <span className="rounded-full bg-[#3199ff] px-2.5 py-1 text-[11px] font-bold text-white">
@@ -112,19 +115,19 @@ function OpportunityCard({ row }: { row: Opportunity }) {
               </div>
 
               <div className="mt-4 space-y-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 sm:items-center">
                   <span className="text-[rgba(255,255,255,0.78)]">Cửa đối ứng</span>
-                  <span className="max-w-[65%] truncate text-right font-semibold text-white">
+                  <span className="break-words text-right font-semibold text-white sm:max-w-[65%]">
                     {leg.displayOutcome}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 sm:items-center">
                   <span className="text-[rgba(255,255,255,0.78)]">Tỷ trọng vốn</span>
                   <span className="font-semibold text-white">
                     {(leg.stake * 100).toFixed(2)}%
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 sm:items-center">
                   <span className="text-[rgba(255,255,255,0.58)]">Odds gốc</span>
                   <span className="text-[rgba(255,255,255,0.78)]">
                     {leg.odds.toFixed(2)}

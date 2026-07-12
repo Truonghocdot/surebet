@@ -10,19 +10,20 @@ export function SectionHeader({
   description
 }: SectionHeaderProps) {
   return (
-    <div className="flex items-end justify-between gap-4">
+    <div className="flex flex-col gap-3 sm:gap-4">
       <div>
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-[var(--accent)]">
           {eyebrow}
         </p>
-        <h1 className="mt-3 font-display text-[clamp(2rem,3.7vw,3rem)] font-semibold leading-none text-[var(--ink)]">
+        <h1 className="mt-2 font-display text-[clamp(1.65rem,7vw,3rem)] font-semibold leading-[1.05] text-[var(--ink)] sm:mt-3">
           {title}
         </h1>
-        <p className="mt-3 max-w-4xl text-[15px] leading-7 text-[var(--muted)]">
-          {description}
-        </p>
+        {description ? (
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)] sm:mt-3 sm:text-[15px] sm:leading-7">
+            {description}
+          </p>
+        ) : null}
       </div>
     </div>
   );
 }
-

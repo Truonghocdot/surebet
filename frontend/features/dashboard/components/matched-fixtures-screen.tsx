@@ -25,7 +25,7 @@ export function MatchedFixturesScreen() {
       <QueryShell<MatchedFixturesSnapshot> {...query}>
         {(snapshot) => (
           <div className="mt-4 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 delta={
                   snapshot.summary.matched_fixtures > 0
@@ -65,25 +65,33 @@ export function MatchedFixturesScreen() {
               title="Danh sách trận khớp"
             >
               {snapshot.items.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] border-separate border-spacing-y-3 text-left">
-                    <thead>
-                      <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                        <th className="pb-2 font-medium">Trận đấu</th>
-                        <th className="pb-2 font-medium">Giải</th>
-                        <th className="pb-2 font-medium">Trạng thái</th>
-                        <th className="pb-2 font-medium">Sảnh khớp</th>
-                        <th className="pb-2 font-medium">Dòng kèo</th>
-                        <th className="pb-2 font-medium">Mới nhất</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {snapshot.items.map((item) => (
-                        <MatchedFixtureRow item={item} key={item.id} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="grid gap-3 md:hidden">
+                    {snapshot.items.map((item) => (
+                      <MatchedFixtureCard item={item} key={item.id} />
+                    ))}
+                  </div>
+
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[980px] border-separate border-spacing-y-3 text-left">
+                      <thead>
+                        <tr className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                          <th className="pb-2 font-medium">Trận đấu</th>
+                          <th className="pb-2 font-medium">Giải</th>
+                          <th className="pb-2 font-medium">Trạng thái</th>
+                          <th className="pb-2 font-medium">Sảnh khớp</th>
+                          <th className="pb-2 font-medium">Dòng kèo</th>
+                          <th className="pb-2 font-medium">Mới nhất</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {snapshot.items.map((item) => (
+                          <MatchedFixtureRow item={item} key={item.id} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               ) : (
                 <div className="rounded-[28px] border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
                   <p className="font-semibold text-[var(--ink)]">
@@ -100,6 +108,55 @@ export function MatchedFixturesScreen() {
         )}
       </QueryShell>
     </div>
+  );
+}
+
+function MatchedFixtureCard({ item }: { item: MatchedFixture }) {
+  return (
+    <article className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] p-4 shadow-[inset_0_0_0_1px_var(--line)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold leading-6 text-[var(--ink)]">{item.match_name}</p>
+          <p className="mt-1 break-all text-xs text-[var(--muted)]">
+            Khóa: {item.fixture_marker}
+          </p>
+        </div>
+        <Badge variant={stateBadgeVariant(item.match_state)}>
+          {stateLabel(item.match_state)}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        <MatchedFixtureField
+          label="Giải"
+          value={item.league_names.length > 0 ? item.league_names.join(", ") : "Chưa rõ"}
+        />
+
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <MatchedFixtureField label="Sảnh" value={String(item.source_count)} />
+          <MatchedFixtureField label="Dòng kèo" value={String(item.market_count)} />
+          <MatchedFixtureField label="Cửa cược" value={String(item.quote_count)} />
+          <MatchedFixtureField label="Mới nhất" value={formatFreshness(item.latest_collected_at)} />
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+            Sảnh khớp
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {item.sources.map((source) => (
+              <span
+                className="rounded-full border border-[color:var(--line)] bg-white/70 px-3 py-1 text-[11px] font-semibold text-[var(--ink)]"
+                key={source.source_id}
+                title={`${source.home_team} - ${source.away_team}`}
+              >
+                {source.bookmaker_id}/{source.lobby_id || "chung"} · {source.quote_count}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -147,6 +204,23 @@ function MatchedFixtureRow({ item }: { item: MatchedFixture }) {
         {formatFreshness(item.latest_collected_at)}
       </td>
     </tr>
+  );
+}
+
+function MatchedFixtureField({
+  label,
+  value
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">
+        {label}
+      </p>
+      <p className="mt-1 break-words leading-6 text-[var(--ink)]">{value}</p>
+    </div>
   );
 }
 

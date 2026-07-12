@@ -174,7 +174,7 @@ export function AdminTelegramRecipientsScreen() {
 
           return (
             <>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <StatCard
                   title="Tổng recipients"
                   value={String(items.length)}
@@ -201,13 +201,14 @@ export function AdminTelegramRecipientsScreen() {
                 />
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_420px]">
+              <div className="grid gap-4 md:gap-5 xl:grid-cols-[minmax(0,1.2fr)_420px]">
                 <DataPanel
                   title="Danh sách người nhận"
                   description="Chọn một dòng để chỉnh sửa hoặc tạo mới một chat nhận thông báo."
                 >
-                  <div className="flex flex-wrap items-center gap-3 pb-4">
+                  <div className="flex flex-col items-start gap-3 pb-4 sm:flex-row sm:items-center">
                     <Button
+                      className="w-full sm:w-auto"
                       onClick={() => {
                         setSelectedID(null);
                         setForm(emptyForm);
@@ -244,7 +245,9 @@ export function AdminTelegramRecipientsScreen() {
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <p className="font-semibold text-[var(--ink)]">{item.name}</p>
-                              <p className="mt-1 text-sm text-[var(--muted)]">{item.chat_id}</p>
+                              <p className="mt-1 break-all text-sm text-[var(--muted)]">
+                                {item.chat_id}
+                              </p>
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <Badge variant={item.is_active ? "teal" : "red"}>
@@ -256,7 +259,7 @@ export function AdminTelegramRecipientsScreen() {
                             </div>
                           </div>
 
-                          <div className="mt-3 flex flex-wrap gap-4 text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+                          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
                             <span>{item.chat_type || "chat?"}</span>
                             <span>{item.membership_status || "membership?"}</span>
                             <span>{formatRelative(item.updated_at)}</span>
@@ -297,7 +300,7 @@ export function AdminTelegramRecipientsScreen() {
                     </div>
 
                     <div className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4">
-                      <label className="flex items-center justify-between gap-3">
+                      <label className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-[var(--ink)]">Bật thông báo</p>
                           <p className="text-sm text-[var(--muted)]">
@@ -306,7 +309,7 @@ export function AdminTelegramRecipientsScreen() {
                         </div>
                         <input
                           checked={form.is_active}
-                          className="size-5 accent-[var(--accent)]"
+                          className="mt-1 size-5 shrink-0 accent-[var(--accent)]"
                           onChange={(event) =>
                             setForm((current) => ({
                               ...current,
@@ -321,7 +324,7 @@ export function AdminTelegramRecipientsScreen() {
                     <div>
                       <Label htmlFor="recipient-notes">Ghi chú</Label>
                       <textarea
-                        className="min-h-[128px] w-full rounded-[22px] border border-[color:var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)] shadow-sm outline-none focus:border-[var(--accent)]"
+                        className="min-h-[112px] w-full rounded-[20px] border border-[color:var(--line)] bg-white px-4 py-3 text-base text-[var(--ink)] shadow-sm outline-none focus:border-[var(--accent)] focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]/20 sm:rounded-[22px] sm:text-sm"
                         id="recipient-notes"
                         onChange={(event) =>
                           setForm((current) => ({ ...current, notes: event.target.value }))
@@ -332,7 +335,7 @@ export function AdminTelegramRecipientsScreen() {
                     </div>
 
                     {selectedRecipient ? (
-                      <div className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4 text-sm">
+                      <div className="rounded-[20px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4 text-sm sm:rounded-[22px]">
                         <p className="mb-3 font-semibold text-[var(--ink)]">Metadata webhook</p>
                         <div className="grid gap-2 text-[var(--muted)]">
                           <p>Nguồn: {selectedRecipient.source || "manual"}</p>
@@ -353,8 +356,9 @@ export function AdminTelegramRecipientsScreen() {
                       <p className="text-sm text-[var(--danger)]">{formError}</p>
                     ) : null}
 
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row">
                       <Button
+                        className="w-full sm:w-auto"
                         disabled={createMutation.isPending || updateMutation.isPending}
                         type="submit"
                       >
@@ -362,6 +366,7 @@ export function AdminTelegramRecipientsScreen() {
                       </Button>
                       {selectedRecipient ? (
                         <Button
+                          className="w-full sm:w-auto"
                           disabled={deleteMutation.isPending}
                           onClick={handleDelete}
                           type="button"

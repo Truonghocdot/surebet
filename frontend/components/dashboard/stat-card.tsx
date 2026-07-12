@@ -10,14 +10,14 @@ type StatCardProps = {
 
 export function StatCard({ title, value, delta, tone }: StatCardProps) {
   return (
-    <Card className="p-6">
+    <Card className="p-5 md:p-6">
       <p className="text-sm text-[var(--muted)]">{title}</p>
-      <p className="mt-3 font-display text-4xl font-semibold text-[var(--ink)]">
+      <p className="mt-3 font-display text-[2rem] font-semibold text-[var(--ink)] sm:text-4xl">
         {value}
       </p>
       <p
         className={cn(
-          "mt-3 text-sm font-semibold",
+          "mt-3 text-xs font-semibold sm:text-sm",
           tone === "positive" && "text-teal-700",
           tone === "warning" && "text-orange-700",
           tone === "neutral" && "text-slate-500"
@@ -28,4 +28,3 @@ export function StatCard({ title, value, delta, tone }: StatCardProps) {
     </Card>
   );
 }
-

@@ -24,8 +24,13 @@
     @apply min-h-full;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     margin: 0;
+    overflow-x: hidden;
     color: var(--ink);
     background:
       radial-gradient(circle at top left, rgba(11, 138, 119, 0.18), transparent 20%),
@@ -71,6 +76,6 @@
 
 @media (max-width: 640px) {
   .dashboard-page {
-    @apply gap-4;
+    @apply gap-3;
   }
 }
