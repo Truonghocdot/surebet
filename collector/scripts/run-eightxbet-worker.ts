@@ -1,6 +1,7 @@
 import {
   BackendCollectorSink,
   envString,
+  applyCollectorProxyProfile,
   syncCollectorRuntimeConfig,
   type OddsDelta,
   type OddsSelection,
@@ -84,9 +85,13 @@ function buildDeltas(
 }
 
 async function runWorker(sink: BackendCollectorSink) {
-  await syncCollectorRuntimeConfig(backendURL).catch((error) => {
+  const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch((error) => {
     console.warn("[8xbet-worker] collector runtime config sync failed:", error);
+    return null;
   });
+  if (runtimeConfig) {
+    applyCollectorProxyProfile(runtimeConfig, "default");
+  }
 
   const collector = new EightXBetCollector();
   let previous = new Map<string, OddsSelection>();

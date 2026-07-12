@@ -33,13 +33,21 @@ type AuthConfig struct {
 }
 
 type CollectorRuntimeConfig struct {
-	EightXBetPageURL  string
-	EightXBetBaseURL  string
-	Jun88BaseURL      string
-	Jun88BtiPageURL   string
-	Jun88SabaPageURL  string
-	Jun88CmdPageURL   string
-	Jun88M9BetPageURL string
+	EightXBetPageURL       string
+	EightXBetBaseURL       string
+	Jun88BaseURL           string
+	Jun88BtiPageURL        string
+	Jun88SabaPageURL       string
+	Jun88CmdPageURL        string
+	Jun88M9BetPageURL      string
+	CollectorProxyEnabled  bool
+	CollectorProxyProtocol string
+	CollectorProxyServer   string
+	CollectorProxyBypass   string
+	BtiProxyEnabled        bool
+	BtiProxyProtocol       string
+	BtiProxyServer         string
+	BtiProxyBypass         string
 }
 
 type HTTPConfig struct {
@@ -97,13 +105,21 @@ func LoadFromEnv() Config {
 			TokenTTL:    envDuration("AUTH_TOKEN_TTL", 12*time.Hour),
 		},
 		Collector: CollectorRuntimeConfig{
-			EightXBetPageURL:  envString("EIGHTXBET_PAGE_URL", ""),
-			EightXBetBaseURL:  envString("EIGHTXBET_BASE_URL", ""),
-			Jun88BaseURL:      envString("JUN88_BASE_URL", ""),
-			Jun88BtiPageURL:   envString("JUN88_BTI_PAGE_URL", ""),
-			Jun88SabaPageURL:  envString("JUN88_SABA_PAGE_URL", envString("JUN88_IBC_PAGE_URL", "")),
-			Jun88CmdPageURL:   envString("JUN88_CMD_PAGE_URL", ""),
-			Jun88M9BetPageURL: envString("JUN88_M9BET_PAGE_URL", envString("JUN88_M8_PAGE_URL", "")),
+			EightXBetPageURL:       envString("EIGHTXBET_PAGE_URL", ""),
+			EightXBetBaseURL:       envString("EIGHTXBET_BASE_URL", ""),
+			Jun88BaseURL:           envString("JUN88_BASE_URL", ""),
+			Jun88BtiPageURL:        envString("JUN88_BTI_PAGE_URL", ""),
+			Jun88SabaPageURL:       envString("JUN88_SABA_PAGE_URL", envString("JUN88_IBC_PAGE_URL", "")),
+			Jun88CmdPageURL:        envString("JUN88_CMD_PAGE_URL", ""),
+			Jun88M9BetPageURL:      envString("JUN88_M9BET_PAGE_URL", envString("JUN88_M8_PAGE_URL", "")),
+			CollectorProxyEnabled:  envString("COLLECTOR_PROXY_MODE", "off") == "static" && envString("COLLECTOR_PROXY_SERVER", "") != "",
+			CollectorProxyProtocol: envString("COLLECTOR_PROXY_PROTOCOL", "http"),
+			CollectorProxyServer:   envString("COLLECTOR_PROXY_SERVER", ""),
+			CollectorProxyBypass:   envString("COLLECTOR_PROXY_BYPASS", ""),
+			BtiProxyEnabled:        envString("BTI_COLLECTOR_PROXY_MODE", "off") == "static" && envString("BTI_COLLECTOR_PROXY_SERVER", "") != "",
+			BtiProxyProtocol:       envString("BTI_COLLECTOR_PROXY_PROTOCOL", "http"),
+			BtiProxyServer:         envString("BTI_COLLECTOR_PROXY_SERVER", ""),
+			BtiProxyBypass:         envString("BTI_COLLECTOR_PROXY_BYPASS", ""),
 		},
 		HTTP: HTTPConfig{
 			Address:      envString("HTTP_ADDRESS", ":8080"),

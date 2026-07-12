@@ -18,7 +18,15 @@ const emptyConfig: CollectorConfig = {
   jun88_bti_page_url: "",
   jun88_saba_page_url: "",
   jun88_cmd_page_url: "",
-  jun88_m9bet_page_url: ""
+  jun88_m9bet_page_url: "",
+  collector_proxy_enabled: false,
+  collector_proxy_protocol: "http",
+  collector_proxy_server: "",
+  collector_proxy_bypass: "",
+  bti_proxy_enabled: false,
+  bti_proxy_protocol: "http",
+  bti_proxy_server: "",
+  bti_proxy_bypass: ""
 };
 
 export function CollectorConfigScreen() {
@@ -82,14 +90,14 @@ export function CollectorConfigScreen() {
       <SectionHeader
         eyebrow="Super Admin"
         title="Cấu hình URL scrape collector"
-        description="Các collector sẽ lấy cấu hình này từ backend thay vì đọc trực tiếp từ env cục bộ."
+        description="Các collector sẽ lấy cấu hình URL và proxy từ backend cache thay vì đọc trực tiếp từ env cục bộ."
       />
 
       <QueryShell<CollectorConfig> {...query}>
         {() => (
           <DataPanel
             title="Biến cấu hình collector"
-            description="Lưu xong ở đây, worker collector sẽ dùng backend làm nguồn cấu hình tập trung. Nếu collector đang chạy lâu, hãy restart collector để nhận cấu hình mới ngay."
+            description="Lưu xong ở đây, worker collector sẽ dùng backend làm nguồn cấu hình tập trung. Nếu collector đang chạy lâu, hãy restart collector để nhận URL/proxy mới ngay."
           >
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <ConfigField
@@ -126,6 +134,54 @@ export function CollectorConfigScreen() {
                 label="JUN88_M9BET_PAGE_URL"
                 value={form.jun88_m9bet_page_url}
                 onChange={(value) => setForm((current) => ({ ...current, jun88_m9bet_page_url: value }))}
+              />
+
+              <ProxyToggleField
+                checked={form.collector_proxy_enabled}
+                description="Áp dụng cho toàn bộ collector mặc định, trừ những collector có override riêng."
+                label="Bật proxy tĩnh mặc định"
+                onChange={(checked) =>
+                  setForm((current) => ({ ...current, collector_proxy_enabled: checked }))
+                }
+              />
+              <ConfigField
+                label="COLLECTOR_PROXY_PROTOCOL"
+                value={form.collector_proxy_protocol}
+                onChange={(value) => setForm((current) => ({ ...current, collector_proxy_protocol: value }))}
+              />
+              <ConfigField
+                label="COLLECTOR_PROXY_SERVER"
+                value={form.collector_proxy_server}
+                onChange={(value) => setForm((current) => ({ ...current, collector_proxy_server: value }))}
+              />
+              <ConfigField
+                label="COLLECTOR_PROXY_BYPASS"
+                value={form.collector_proxy_bypass}
+                onChange={(value) => setForm((current) => ({ ...current, collector_proxy_bypass: value }))}
+              />
+
+              <ProxyToggleField
+                checked={form.bti_proxy_enabled}
+                description="Dùng khi BTI bị geo-block và cần ép collector BTI đi một proxy tĩnh riêng."
+                label="Bật proxy riêng cho BTI"
+                onChange={(checked) =>
+                  setForm((current) => ({ ...current, bti_proxy_enabled: checked }))
+                }
+              />
+              <ConfigField
+                label="BTI_PROXY_PROTOCOL"
+                value={form.bti_proxy_protocol}
+                onChange={(value) => setForm((current) => ({ ...current, bti_proxy_protocol: value }))}
+              />
+              <ConfigField
+                label="BTI_PROXY_SERVER"
+                value={form.bti_proxy_server}
+                onChange={(value) => setForm((current) => ({ ...current, bti_proxy_server: value }))}
+              />
+              <ConfigField
+                label="BTI_PROXY_BYPASS"
+                value={form.bti_proxy_bypass}
+                onChange={(value) => setForm((current) => ({ ...current, bti_proxy_bypass: value }))}
               />
 
               {message ? <p className="text-sm text-[var(--accent)]">{message}</p> : null}
@@ -174,6 +230,35 @@ function ConfigField({
         placeholder={`Nhập ${label}`}
         value={value}
       />
+    </div>
+  );
+}
+
+function ProxyToggleField({
+  checked,
+  label,
+  description,
+  onChange
+}: {
+  checked: boolean;
+  label: string;
+  description: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4">
+      <label className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-semibold text-[var(--ink)]">{label}</p>
+          <p className="text-sm text-[var(--muted)]">{description}</p>
+        </div>
+        <input
+          checked={checked}
+          className="size-5 accent-[var(--accent)]"
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+        />
+      </label>
     </div>
   );
 }

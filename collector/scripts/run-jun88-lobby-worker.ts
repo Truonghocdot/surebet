@@ -1,4 +1,5 @@
 import {
+  applyCollectorProxyProfile,
   BackendCollectorSink,
   collectorProxyDebugInfo,
   createJun88LobbyCollector,
@@ -106,9 +107,14 @@ async function runWorker(
   collectorId: string,
   sink: BackendCollectorSink
 ) {
-  await syncCollectorRuntimeConfig(backendURL).catch((error) => {
+  const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch((error) => {
     console.warn(`[${collectorId}-worker] collector runtime config sync failed:`, error);
+    return null;
   });
+
+  if (runtimeConfig) {
+    applyCollectorProxyProfile(runtimeConfig, lobbyId === "bti" ? "bti" : "default");
+  }
 
   const collector = createJun88LobbyCollector(collectorId, lobbyId);
 
