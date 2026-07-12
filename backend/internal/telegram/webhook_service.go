@@ -69,7 +69,7 @@ func (s *WebhookService) HandleUpdate(
 		if err != nil {
 			return dto.TelegramWebhookResult{}, err
 		}
-		if shouldReplyToMembership(update.MyChatMember.NewChatMember.Status) {
+		if result.Status == "created" && shouldReplyToMembership(update.MyChatMember.NewChatMember.Status) {
 			if err := s.send(ctx, result.ChatID, "Chờ em Trường tí"); err != nil {
 				return dto.TelegramWebhookResult{}, err
 			}
@@ -82,7 +82,7 @@ func (s *WebhookService) HandleUpdate(
 		if err != nil {
 			return dto.TelegramWebhookResult{}, err
 		}
-		if shouldReplyToMessage(update.Message.Text) {
+		if result.Status == "created" && shouldReplyToMessage(update.Message.Text) {
 			if err := s.send(ctx, result.ChatID, "Chờ em Trường tí"); err != nil {
 				return dto.TelegramWebhookResult{}, err
 			}

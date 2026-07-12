@@ -131,6 +131,47 @@ func TestWebhookServiceCreatesInactiveRecipientFromMessageStart(t *testing.T) {
 	}
 }
 
+func TestWebhookServiceDoesNotReplyAgainForExistingRecipient(t *testing.T) {
+	repo := &stubWebhookRecipientRepo{
+		byChatID: map[string]models.TelegramRecipient{
+			"123456789": {
+				ChatID:   "123456789",
+				Name:     "@truonghocdot",
+				Source:   "telegram_webhook",
+				IsActive: false,
+			},
+		},
+	}
+	service := NewWebhookService(config.TelegramConfig{}, repo)
+	called := false
+	service.send = func(_ context.Context, _ string, _ string) error {
+		called = true
+		return nil
+	}
+
+	result, err := service.HandleUpdate(context.Background(), dto.TelegramWebhookUpdate{
+		Message: &dto.TelegramMessageUpdate{
+			Chat: dto.TelegramChat{
+				ID:        123456789,
+				Type:      "private",
+				FirstName: "Truong",
+				LastName:  "Hoc",
+				Username:  "truonghocdot",
+			},
+			Text: "/start",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handle update returned error: %v", err)
+	}
+	if result.Status != "updated" {
+		t.Fatalf("expected updated result, got %q", result.Status)
+	}
+	if called {
+		t.Fatalf("expected existing recipient to not trigger duplicate reply")
+	}
+}
+
 func TestWebhookServiceValidateSecret(t *testing.T) {
 	service := NewWebhookService(config.TelegramConfig{
 		WebhookSecret: "top-secret",
