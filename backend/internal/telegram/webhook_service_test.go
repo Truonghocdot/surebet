@@ -79,6 +79,44 @@ func TestWebhookServiceCreatesInactiveRecipientFromMyChatMember(t *testing.T) {
 	}
 }
 
+func TestWebhookServiceCreatesInactiveRecipientFromMessageStart(t *testing.T) {
+	repo := &stubWebhookRecipientRepo{}
+	service := NewWebhookService(config.TelegramConfig{}, repo)
+
+	result, err := service.HandleUpdate(context.Background(), dto.TelegramWebhookUpdate{
+		Message: &dto.TelegramMessageUpdate{
+			Chat: dto.TelegramChat{
+				ID:        123456789,
+				Type:      "private",
+				FirstName: "Truong",
+				LastName:  "Hoc",
+				Username:  "truonghocdot",
+			},
+			Text: "/start",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handle update returned error: %v", err)
+	}
+	if result.Status != "created" {
+		t.Fatalf("expected created result, got %q", result.Status)
+	}
+
+	recipient, ok := repo.byChatID["123456789"]
+	if !ok {
+		t.Fatalf("expected recipient to be persisted")
+	}
+	if recipient.IsActive {
+		t.Fatalf("expected newly created recipient to remain inactive until approved")
+	}
+	if recipient.Name != "@truonghocdot" {
+		t.Fatalf("expected username to be preferred as display name, got %q", recipient.Name)
+	}
+	if recipient.ChatType != "private" {
+		t.Fatalf("expected chat type private, got %q", recipient.ChatType)
+	}
+}
+
 func TestWebhookServiceValidateSecret(t *testing.T) {
 	service := NewWebhookService(config.TelegramConfig{
 		WebhookSecret: "top-secret",

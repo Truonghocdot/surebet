@@ -2,6 +2,7 @@ package dto
 
 type TelegramWebhookUpdate struct {
 	MyChatMember *TelegramMyChatMemberUpdate `json:"my_chat_member"`
+	Message      *TelegramMessageUpdate      `json:"message"`
 }
 
 type TelegramMyChatMemberUpdate struct {
@@ -20,6 +21,11 @@ type TelegramChat struct {
 
 type TelegramChatMember struct {
 	Status string `json:"status"`
+}
+
+type TelegramMessageUpdate struct {
+	Chat TelegramChat `json:"chat"`
+	Text string       `json:"text"`
 }
 
 type TelegramWebhookResult struct {

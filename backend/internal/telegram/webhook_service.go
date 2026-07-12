@@ -51,21 +51,44 @@ func (s WebhookService) HandleUpdate(
 	ctx context.Context,
 	update dto.TelegramWebhookUpdate,
 ) (dto.TelegramWebhookResult, error) {
-	if update.MyChatMember == nil {
-		return dto.TelegramWebhookResult{
-			Status: "ignored",
-			Reason: "unsupported_update",
-		}, nil
+	if update.MyChatMember != nil {
+		return s.syncRecipientFromMyChatMember(ctx, *update.MyChatMember)
 	}
 
-	return s.syncRecipientFromMyChatMember(ctx, *update.MyChatMember)
+	if update.Message != nil {
+		return s.syncRecipientFromMessage(ctx, *update.Message)
+	}
+
+	return dto.TelegramWebhookResult{
+		Status: "ignored",
+		Reason: "unsupported_update",
+	}, nil
 }
 
 func (s WebhookService) syncRecipientFromMyChatMember(
 	ctx context.Context,
 	payload dto.TelegramMyChatMemberUpdate,
 ) (dto.TelegramWebhookResult, error) {
-	chatID := fmt.Sprint(payload.Chat.ID)
+	return s.upsertRecipientFromChat(
+		ctx,
+		payload.Chat,
+		strings.TrimSpace(payload.NewChatMember.Status),
+	)
+}
+
+func (s WebhookService) syncRecipientFromMessage(
+	ctx context.Context,
+	payload dto.TelegramMessageUpdate,
+) (dto.TelegramWebhookResult, error) {
+	return s.upsertRecipientFromChat(ctx, payload.Chat, "")
+}
+
+func (s WebhookService) upsertRecipientFromChat(
+	ctx context.Context,
+	chat dto.TelegramChat,
+	membershipStatus string,
+) (dto.TelegramWebhookResult, error) {
+	chatID := fmt.Sprint(chat.ID)
 	if strings.TrimSpace(chatID) == "" || chatID == "0" {
 		return dto.TelegramWebhookResult{
 			Status: "ignored",
@@ -74,10 +97,9 @@ func (s WebhookService) syncRecipientFromMyChatMember(
 	}
 
 	now := time.Now().UTC()
-	membershipStatus := strings.TrimSpace(payload.NewChatMember.Status)
-	chatType := strings.TrimSpace(payload.Chat.Type)
-	chatName := resolveChatName(payload.Chat)
-	username := normalizeUsername(payload.Chat.Username)
+	chatType := strings.TrimSpace(chat.Type)
+	chatName := resolveChatName(chat)
+	username := normalizeUsername(chat.Username)
 
 	recipient, err := s.recipients.GetByChatID(ctx, chatID)
 	wasCreated := false
@@ -98,7 +120,9 @@ func (s WebhookService) syncRecipientFromMyChatMember(
 	if strings.TrimSpace(recipient.Source) == "" {
 		recipient.Source = "telegram_webhook"
 	}
-	recipient.MembershipStatus = membershipStatus
+	if membershipStatus != "" {
+		recipient.MembershipStatus = membershipStatus
+	}
 	recipient.LastSeenAt = &now
 
 	if wasCreated {
@@ -106,7 +130,7 @@ func (s WebhookService) syncRecipientFromMyChatMember(
 		if strings.TrimSpace(recipient.Notes) == "" {
 			recipient.Notes = "Được tạo từ webhook Telegram. Bật thông báo trong dashboard nếu cần gửi surebet vào chat này."
 		}
-	} else if isInactiveMembershipStatus(membershipStatus) {
+	} else if membershipStatus != "" && isInactiveMembershipStatus(membershipStatus) {
 		recipient.IsActive = false
 	}
 
