@@ -1,9 +1,12 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -21,19 +24,29 @@ type WebhookRecipientWriter interface {
 type WebhookService struct {
 	cfg        config.TelegramConfig
 	recipients WebhookRecipientWriter
+	client     *http.Client
+	send       func(ctx context.Context, chatID, text string) error
 }
 
 func NewWebhookService(
 	cfg config.TelegramConfig,
 	recipients WebhookRecipientWriter,
-) WebhookService {
-	return WebhookService{
+) *WebhookService {
+	timeout := cfg.RequestTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+
+	service := &WebhookService{
 		cfg:        cfg,
 		recipients: recipients,
+		client:     &http.Client{Timeout: timeout},
 	}
+	service.send = service.sendTelegramMessage
+	return service
 }
 
-func (s WebhookService) ValidateSecret(provided string) bool {
+func (s *WebhookService) ValidateSecret(provided string) bool {
 	expected := strings.TrimSpace(s.cfg.WebhookSecret)
 	if expected == "" {
 		return true
@@ -47,16 +60,34 @@ func (s WebhookService) ValidateSecret(provided string) bool {
 	return subtle.ConstantTimeCompare([]byte(expected), []byte(normalized)) == 1
 }
 
-func (s WebhookService) HandleUpdate(
+func (s *WebhookService) HandleUpdate(
 	ctx context.Context,
 	update dto.TelegramWebhookUpdate,
 ) (dto.TelegramWebhookResult, error) {
 	if update.MyChatMember != nil {
-		return s.syncRecipientFromMyChatMember(ctx, *update.MyChatMember)
+		result, err := s.syncRecipientFromMyChatMember(ctx, *update.MyChatMember)
+		if err != nil {
+			return dto.TelegramWebhookResult{}, err
+		}
+		if shouldReplyToMembership(update.MyChatMember.NewChatMember.Status) {
+			if err := s.send(ctx, result.ChatID, "Chờ em Trường tí"); err != nil {
+				return dto.TelegramWebhookResult{}, err
+			}
+		}
+		return result, nil
 	}
 
 	if update.Message != nil {
-		return s.syncRecipientFromMessage(ctx, *update.Message)
+		result, err := s.syncRecipientFromMessage(ctx, *update.Message)
+		if err != nil {
+			return dto.TelegramWebhookResult{}, err
+		}
+		if shouldReplyToMessage(update.Message.Text) {
+			if err := s.send(ctx, result.ChatID, "Chờ em Trường tí"); err != nil {
+				return dto.TelegramWebhookResult{}, err
+			}
+		}
+		return result, nil
 	}
 
 	return dto.TelegramWebhookResult{
@@ -65,7 +96,7 @@ func (s WebhookService) HandleUpdate(
 	}, nil
 }
 
-func (s WebhookService) syncRecipientFromMyChatMember(
+func (s *WebhookService) syncRecipientFromMyChatMember(
 	ctx context.Context,
 	payload dto.TelegramMyChatMemberUpdate,
 ) (dto.TelegramWebhookResult, error) {
@@ -76,14 +107,14 @@ func (s WebhookService) syncRecipientFromMyChatMember(
 	)
 }
 
-func (s WebhookService) syncRecipientFromMessage(
+func (s *WebhookService) syncRecipientFromMessage(
 	ctx context.Context,
 	payload dto.TelegramMessageUpdate,
 ) (dto.TelegramWebhookResult, error) {
 	return s.upsertRecipientFromChat(ctx, payload.Chat, "")
 }
 
-func (s WebhookService) upsertRecipientFromChat(
+func (s *WebhookService) upsertRecipientFromChat(
 	ctx context.Context,
 	chat dto.TelegramChat,
 	membershipStatus string,
@@ -193,4 +224,58 @@ func ternary[T any](condition bool, whenTrue, whenFalse T) T {
 		return whenTrue
 	}
 	return whenFalse
+}
+
+func shouldReplyToMembership(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "member", "administrator":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldReplyToMessage(text string) bool {
+	normalized := strings.TrimSpace(text)
+	return normalized == "/start" || strings.HasPrefix(normalized, "/start@")
+}
+
+func (s *WebhookService) sendTelegramMessage(
+	ctx context.Context,
+	chatID string,
+	text string,
+) error {
+	if strings.TrimSpace(chatID) == "" || strings.TrimSpace(text) == "" {
+		return nil
+	}
+	if strings.TrimSpace(s.cfg.BotToken) == "" {
+		return nil
+	}
+
+	endpoint := strings.TrimRight(s.cfg.APIBaseURL, "/") + "/bot" + s.cfg.BotToken + "/sendMessage"
+	body, err := json.Marshal(map[string]any{
+		"chat_id": chatID,
+		"text":    text,
+	})
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := s.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("telegram api returned %s", response.Status)
+	}
+
+	return nil
 }

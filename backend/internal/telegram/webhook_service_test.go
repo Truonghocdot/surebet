@@ -82,6 +82,17 @@ func TestWebhookServiceCreatesInactiveRecipientFromMyChatMember(t *testing.T) {
 func TestWebhookServiceCreatesInactiveRecipientFromMessageStart(t *testing.T) {
 	repo := &stubWebhookRecipientRepo{}
 	service := NewWebhookService(config.TelegramConfig{}, repo)
+	called := false
+	service.send = func(_ context.Context, chatID, text string) error {
+		called = true
+		if chatID != "123456789" {
+			t.Fatalf("expected reply to same chat id, got %q", chatID)
+		}
+		if text != "Chờ em Trường tí" {
+			t.Fatalf("unexpected reply text: %q", text)
+		}
+		return nil
+	}
 
 	result, err := service.HandleUpdate(context.Background(), dto.TelegramWebhookUpdate{
 		Message: &dto.TelegramMessageUpdate{
@@ -114,6 +125,9 @@ func TestWebhookServiceCreatesInactiveRecipientFromMessageStart(t *testing.T) {
 	}
 	if recipient.ChatType != "private" {
 		t.Fatalf("expected chat type private, got %q", recipient.ChatType)
+	}
+	if !called {
+		t.Fatalf("expected /start to trigger reply message")
 	}
 }
 
