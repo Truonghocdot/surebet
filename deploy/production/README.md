@@ -38,6 +38,7 @@ Can doi toi thieu:
 - `SEED_SUPER_ADMIN_PASSWORD`
 - `TELEGRAM_BOT_TOKEN` neu bat thong bao Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
+- `BTI_COLLECTOR_PROXY_SERVER` neu BTI bi geo-block va can ep dung proxy tinh rieng
 
 Mac dinh production dang de:
 
