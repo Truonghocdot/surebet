@@ -2,8 +2,6 @@ package telegram
 
 import (
 	"context"
-	"fmt"
-	"html"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -151,35 +149,4 @@ func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func formatSurebetMessage(item dto.SurebetView) string {
-	var builder strings.Builder
-
-	builder.WriteString("<b>Kèo mới</b>\n")
-	builder.WriteString("Trận: <b>")
-	builder.WriteString(html.EscapeString(item.FixtureID))
-	builder.WriteString("</b>\n")
-	builder.WriteString("Thị trường: ")
-	builder.WriteString(html.EscapeString(item.MarketName))
-	builder.WriteString("\n")
-	builder.WriteString(fmt.Sprintf("Lợi nhuận: <b>%.2f%%</b>\n", item.ProfitPercentage))
-	builder.WriteString(fmt.Sprintf("Tỷ suất kỳ vọng: %.2f%%\n", item.ExpectedReturn*100))
-
-	for index, leg := range item.Legs {
-		builder.WriteString(fmt.Sprintf(
-			"Cửa %d: %s/%s - %s @ %.2f (%.2f%%)\n",
-			index+1,
-			html.EscapeString(leg.BookmakerID),
-			html.EscapeString(leg.LobbyID),
-			html.EscapeString(leg.OutcomeName),
-			leg.Odds,
-			leg.Stake*100,
-		))
-	}
-
-	builder.WriteString("Phát hiện: ")
-	builder.WriteString(item.DetectedAt.Format(time.RFC3339))
-
-	return builder.String()
 }
