@@ -38,6 +38,15 @@ type ProxyXoayCache = {
   providerTokenExpirationDate?: string;
 };
 
+export type CollectorProxyDebugInfo = {
+  mode: "off" | "static" | "proxyxoay" | string;
+  protocol?: "http" | "socks5";
+  server?: string;
+  hasCredentials?: boolean;
+  bypass?: string;
+  proxyXoayKeyConfigured?: boolean;
+};
+
 export async function resolveCollectorProxy(): Promise<CollectorProxySettings | undefined> {
   const mode = resolveProxyMode();
   if (mode === "off") {
@@ -53,6 +62,48 @@ export async function resolveCollectorProxy(): Promise<CollectorProxySettings | 
   }
 
   throw new Error(`Unsupported collector proxy mode: ${mode}`);
+}
+
+export function collectorProxyDebugInfo(): CollectorProxyDebugInfo {
+  const mode = resolveProxyMode();
+  if (mode === "off") {
+    return { mode };
+  }
+
+  if (mode === "static") {
+    const rawServer = envString("COLLECTOR_PROXY_SERVER", "").trim();
+    if (!rawServer) {
+      return { mode, server: "" };
+    }
+
+    const protocol = normalizeProxyProtocol(
+      envString("COLLECTOR_PROXY_PROTOCOL", inferProtocolFromServer(rawServer)).trim()
+    );
+    const parsed = parseProxyValue(rawServer, protocol);
+
+    return {
+      mode,
+      protocol,
+      server: parsed.server,
+      hasCredentials: Boolean(parsed.username || parsed.password),
+      bypass: normalizeBypass(envString("COLLECTOR_PROXY_BYPASS", "").trim())
+    };
+  }
+
+  if (mode === "proxyxoay") {
+    const protocol = normalizeProxyProtocol(
+      envString("COLLECTOR_PROXY_PROTOCOL", "http").trim()
+    );
+
+    return {
+      mode,
+      protocol,
+      proxyXoayKeyConfigured: envString("COLLECTOR_PROXYXOAY_KEY", "").trim() !== "",
+      bypass: normalizeBypass(envString("COLLECTOR_PROXY_BYPASS", "").trim())
+    };
+  }
+
+  return { mode };
 }
 
 function resolveProxyMode() {
