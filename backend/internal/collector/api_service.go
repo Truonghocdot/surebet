@@ -49,6 +49,7 @@ func NewAPIService(
 func (s apiService) IngestBootstrap(ctx context.Context, request dto.CollectorBootstrapRequest) error {
 	s.log.Info("collector bootstrap ingested", "collector_id", request.Source.CollectorID, "selections", len(request.Selections))
 	quotes := mapSelections(request.Source, request.CollectedAt, request.Selections)
+	s.logDetectorIdentityGaps(quotes)
 	if err := s.writer.Upsert(ctx, quotes); err != nil {
 		return err
 	}
@@ -72,6 +73,7 @@ func (s apiService) IngestDelta(ctx context.Context, request dto.CollectorDeltaR
 		}
 		quotes = append(quotes, buildQuote(delta.Source, delta.CollectedAt, dto.CollectorSelection{
 			FixtureID:      delta.FixtureID,
+			Sport:          delta.Sport,
 			HomeTeam:       delta.HomeTeam,
 			AwayTeam:       delta.AwayTeam,
 			LeagueName:     delta.LeagueName,
@@ -85,6 +87,7 @@ func (s apiService) IngestDelta(ctx context.Context, request dto.CollectorDeltaR
 			Suspended:      suspended,
 		}))
 	}
+	s.logDetectorIdentityGaps(quotes)
 	if err := s.writer.Upsert(ctx, quotes); err != nil {
 		return err
 	}
@@ -136,7 +139,7 @@ func buildQuote(source dto.CollectorSource, collectedAt time.Time, selection dto
 		HomeTeam:       strings.TrimSpace(selection.HomeTeam),
 		AwayTeam:       strings.TrimSpace(selection.AwayTeam),
 		LeagueName:     strings.TrimSpace(selection.LeagueName),
-		Sport:          "",
+		Sport:          normalizeCollectorSport(source, selection.Sport),
 		MarketID:       selection.MarketID,
 		MarketMarker:   buildMarketMarker(selection),
 		MarketName:     selection.MarketID,
@@ -149,6 +152,50 @@ func buildQuote(source dto.CollectorSource, collectedAt time.Time, selection dto
 		MatchState:     normalizeMatchState(selection.MatchState),
 		EventStartAt:   parseCollectorEventStartAt(selection.EventStartAt, collectedAt),
 		CollectedAt:    collectedAt.UTC(),
+	}
+}
+
+func normalizeCollectorSport(source dto.CollectorSource, value string) string {
+	sport := canonicalText(value)
+	if sport != "" {
+		return sport
+	}
+
+	switch source.BookmakerID + "|" + source.LobbyID {
+	case "8xbet|default", "jun88|bti", "jun88|saba", "jun88|cmd", "jun88|m9bet":
+		return "football"
+	default:
+		return ""
+	}
+}
+
+func (s apiService) logDetectorIdentityGaps(quotes []models.OddsQuote) {
+	counts := make(map[string]int)
+	for _, quote := range quotes {
+		reason := ""
+		switch {
+		case strings.TrimSpace(quote.Sport) == "":
+			reason = "missing_sport"
+		case strings.TrimSpace(quote.HomeTeam) == "":
+			reason = "missing_home_team"
+		case strings.TrimSpace(quote.AwayTeam) == "":
+			reason = "missing_away_team"
+		}
+		if reason == "" {
+			continue
+		}
+		counts[quote.BookmakerID+"|"+quote.LobbyID+"|"+reason]++
+	}
+
+	for key, count := range counts {
+		parts := strings.SplitN(key, "|", 3)
+		s.log.Warn(
+			"collector quotes excluded from surebet detection",
+			"bookmaker_id", parts[0],
+			"lobby_id", parts[1],
+			"reason", parts[2],
+			"count", count,
+		)
 	}
 }
 

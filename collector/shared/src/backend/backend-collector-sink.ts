@@ -60,6 +60,7 @@ function serializeSnapshot(snapshot: OddsSnapshot) {
     collected_at: snapshot.collectedAt,
     selections: snapshot.selections.map((selection) => ({
       fixture_id: selection.fixtureId,
+      sport: selection.sport ?? "football",
       home_team: selection.homeTeam ?? "",
       away_team: selection.awayTeam ?? "",
       league_name: selection.leagueName ?? "",
@@ -84,6 +85,7 @@ function serializeDelta(delta: OddsDelta) {
     },
     collected_at: delta.collectedAt,
     fixture_id: delta.fixtureId,
+    sport: delta.sport ?? "football",
     home_team: delta.homeTeam ?? "",
     away_team: delta.awayTeam ?? "",
     league_name: delta.leagueName ?? "",

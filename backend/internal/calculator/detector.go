@@ -7,6 +7,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -15,22 +16,34 @@ import (
 	"surebet/backend/internal/models"
 )
 
-var (
-	linePattern          = regexp.MustCompile(`([+-]?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?)$`)
-	outcomeSuffixPattern = regexp.MustCompile(`(?i)\s+(over|under|home|away|đội nhà|đội khách)\s+[+-]?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?\s*$`)
-	shortTagPattern      = regexp.MustCompile(`(?i)\s+\((h|a)\)\s*$`)
-	whitespacePattern    = regexp.MustCompile(`\s+`)
-	separatorNormalizer  = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+const (
+	detectorMaxQuoteAge  = 60 * time.Second
+	detectorMaxQuoteSkew = 5 * time.Minute
+	arbitrageTolerance   = 1e-9
 )
 
-type detector struct{}
+var (
+	linePattern         = regexp.MustCompile(`([+-]?\d+(?:\.\d+)?(?:/[+-]?\d+(?:\.\d+)?)?)\s*$`)
+	shortTagPattern     = regexp.MustCompile(`(?i)\s+\((h|a)\)\s*$`)
+	whitespacePattern   = regexp.MustCompile(`\s+`)
+	separatorNormalizer = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+)
 
-func NewDetector() Detector {
-	return detector{}
+type detector struct {
+	now func() time.Time
 }
 
-func (detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models.SurebetOpportunity, error) {
-	normalized := normalizeQuotes(quotes)
+func NewDetector() Detector {
+	return detector{now: time.Now}
+}
+
+func newDetector(now func() time.Time) detector {
+	return detector{now: now}
+}
+
+func (d detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models.SurebetOpportunity, error) {
+	now := d.now().UTC()
+	normalized := normalizeQuotes(now, quotes)
 	if len(normalized) == 0 {
 		return nil, nil
 	}
@@ -45,9 +58,9 @@ func (detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models.S
 
 		switch bucket.marketKind {
 		case marketKindOverUnder:
-			opportunities = append(opportunities, detectTwoWaySurebets(bucket, sideOver, sideUnder)...)
+			opportunities = append(opportunities, detectOverUnderSurebets(bucket, now)...)
 		case marketKindHandicap:
-			opportunities = append(opportunities, detectTwoWaySurebets(bucket, sideHome, sideAway)...)
+			opportunities = append(opportunities, detectHandicapSurebets(bucket, now)...)
 		}
 	}
 
@@ -75,25 +88,33 @@ const (
 	sideUnknown outcomeSide = ""
 	sideOver    outcomeSide = "over"
 	sideUnder   outcomeSide = "under"
-	sideHome    outcomeSide = "home"
-	sideAway    outcomeSide = "away"
 )
 
+type eventIdentity struct {
+	fixtureKey   string
+	sport        string
+	participants [2]string
+}
+
+type normalizedLine struct {
+	values []float64
+	key    string
+}
+
 type normalizedQuote struct {
-	quote                 models.OddsQuote
-	sourceKey             string
-	marketKind            marketKind
-	periodKey             string
-	lineKey               string
-	side                  outcomeSide
-	fixtureKey            string
-	malayRisk             float64
-	displayOdds           float64
-	canonicalParticipants [2]string
+	quote              models.OddsQuote
+	sourceKey          string
+	marketKind         marketKind
+	periodKey          string
+	line               normalizedLine
+	side               outcomeSide
+	participant        string
+	event              eventIdentity
+	decimalOdds        float64
+	impliedProbability float64
 }
 
 type quoteBucket struct {
-	fixtureID  string
 	fixtureKey string
 	sport      string
 	marketName string
@@ -103,56 +124,136 @@ type quoteBucket struct {
 	quotes     []normalizedQuote
 }
 
-func normalizeQuotes(quotes []models.OddsQuote) []normalizedQuote {
-	fixtureParticipants := inferFixtureParticipants(quotes)
+func normalizeQuotes(now time.Time, quotes []models.OddsQuote) []normalizedQuote {
 	result := make([]normalizedQuote, 0, len(quotes))
 	for _, quote := range quotes {
-		if quote.Suspended {
+		if quote.Suspended || !isFreshQuote(now, quote.CollectedAt) {
 			continue
 		}
 
-		marketKind, periodKey, lineKey, side := normalizeQuote(quote)
-		if marketKind == marketKindUnknown || side == sideUnknown || lineKey == "" {
-			continue
-		}
-
-		malayRisk, ok := normalizeMalayOdds(quote.Odds)
+		event, ok := normalizeEventIdentity(quote)
 		if !ok {
 			continue
 		}
 
-		fixtureKey, participants := resolveFixtureKey(quote, fixtureParticipants)
-		if fixtureKey == "" {
+		decimalOdds, ok := normalizeMalayOdds(quote.Odds)
+		if !ok {
+			continue
+		}
+
+		marketKind, periodKey, line, side, participant, ok := normalizeQuote(quote, event)
+		if !ok {
 			continue
 		}
 
 		result = append(result, normalizedQuote{
-			quote:                 quote,
-			sourceKey:             quoteSourceKey(quote),
-			marketKind:            marketKind,
-			periodKey:             periodKey,
-			lineKey:               lineKey,
-			side:                  side,
-			fixtureKey:            fixtureKey,
-			malayRisk:             malayRisk,
-			displayOdds:           quote.Odds,
-			canonicalParticipants: participants,
+			quote:              quote,
+			sourceKey:          quoteSourceKey(quote),
+			marketKind:         marketKind,
+			periodKey:          periodKey,
+			line:               line,
+			side:               side,
+			participant:        participant,
+			event:              event,
+			decimalOdds:        decimalOdds,
+			impliedProbability: 1 / decimalOdds,
 		})
 	}
 
 	return result
 }
 
+func isFreshQuote(now, collectedAt time.Time) bool {
+	if collectedAt.IsZero() {
+		return false
+	}
+
+	age := now.Sub(collectedAt.UTC())
+	return age >= -detectorMaxQuoteAge && age <= detectorMaxQuoteAge
+}
+
+func normalizeEventIdentity(quote models.OddsQuote) (eventIdentity, bool) {
+	sport := canonicalText(quote.Sport)
+	homeTeam := canonicalText(quote.HomeTeam)
+	awayTeam := canonicalText(quote.AwayTeam)
+	if sport == "" || homeTeam == "" || awayTeam == "" || homeTeam == awayTeam {
+		return eventIdentity{}, false
+	}
+
+	participants := [2]string{homeTeam, awayTeam}
+	if participants[0] > participants[1] {
+		participants[0], participants[1] = participants[1], participants[0]
+	}
+
+	event := eventIdentity{
+		fixtureKey:   participants[0] + " vs " + participants[1],
+		sport:        sport,
+		participants: participants,
+	}
+
+	return event, true
+}
+
 func normalizeMalayOdds(value float64) (float64, bool) {
 	switch {
-	case math.IsNaN(value), math.IsInf(value, 0):
+	case math.IsNaN(value), math.IsInf(value, 0), value == 0, value < -1, value > 1:
 		return 0, false
-	case value >= 0:
-		return 0, false
-	case value <= -1:
-		return 0, false
+	case value > 0:
+		return 1 + value, true
 	default:
-		return math.Abs(value), true
+		return 1 + (1 / math.Abs(value)), true
+	}
+}
+
+func normalizeQuote(
+	quote models.OddsQuote,
+	event eventIdentity,
+) (marketKind, string, normalizedLine, outcomeSide, string, bool) {
+	kind := normalizeMarketKind(quote.MarketID, quote.MarketName)
+	if kind == marketKindUnknown {
+		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+	}
+
+	line, ok := parseNormalizedLine(quote.OutcomeName)
+	if !ok {
+		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+	}
+
+	periodKey := normalizeMarketPeriod(quote.MarketID, quote.MarketName)
+	name := canonicalText(quote.OutcomeName)
+	switch kind {
+	case marketKindOverUnder:
+		side := detectOverUnderSide(name)
+		if side == sideUnknown {
+			return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+		}
+		return kind, periodKey, line, side, "", true
+	case marketKindHandicap:
+		participant := participantCandidate(quote.OutcomeName)
+		if participant != event.participants[0] && participant != event.participants[1] {
+			return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+		}
+		return kind, periodKey, line, sideUnknown, participant, true
+	default:
+		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+	}
+}
+
+func normalizeMarketKind(marketID, marketName string) marketKind {
+	combined := canonicalText(marketID + " " + marketName)
+	switch {
+	case strings.Contains(combined, "over under"),
+		strings.Contains(combined, "ta i xi u"),
+		strings.Contains(combined, "tai xiu"),
+		strings.Contains(combined, "o u"):
+		return marketKindOverUnder
+	case strings.Contains(combined, "handicap"),
+		strings.Contains(combined, "cu o c cha p"),
+		strings.Contains(combined, "cuoc chap"),
+		strings.Contains(combined, "chap chau a"):
+		return marketKindHandicap
+	default:
+		return marketKindUnknown
 	}
 }
 
@@ -160,22 +261,22 @@ func groupQuotes(quotes []normalizedQuote) map[string]*quoteBucket {
 	result := make(map[string]*quoteBucket)
 	for _, item := range quotes {
 		key := strings.Join([]string{
-			item.fixtureKey,
+			item.event.sport,
+			item.event.fixtureKey,
 			item.periodKey,
 			string(item.marketKind),
-			item.lineKey,
+			item.line.key,
 		}, "|")
 
 		bucket, ok := result[key]
 		if !ok {
 			bucket = &quoteBucket{
-				fixtureID:  item.quote.FixtureID,
-				fixtureKey: item.fixtureKey,
-				sport:      item.quote.Sport,
+				fixtureKey: item.event.fixtureKey,
+				sport:      item.event.sport,
 				marketName: chooseMarketName(item.quote, item.marketKind),
 				marketKind: item.marketKind,
 				periodKey:  item.periodKey,
-				lineKey:    item.lineKey,
+				lineKey:    item.line.key,
 			}
 			result[key] = bucket
 		}
@@ -186,65 +287,163 @@ func groupQuotes(quotes []normalizedQuote) map[string]*quoteBucket {
 	return result
 }
 
-func detectTwoWaySurebets(bucket *quoteBucket, leftSide, rightSide outcomeSide) []models.SurebetOpportunity {
-	leftQuotes := collectBestQuotes(bucket.quotes, leftSide)
-	rightQuotes := collectBestQuotes(bucket.quotes, rightSide)
+func detectOverUnderSurebets(bucket *quoteBucket, now time.Time) []models.SurebetOpportunity {
+	overQuotes := collectBestOverUnderQuotes(bucket.quotes, sideOver)
+	underQuotes := collectBestOverUnderQuotes(bucket.quotes, sideUnder)
 
 	opportunities := make([]models.SurebetOpportunity, 0)
-	for sourceKey, left := range leftQuotes {
-		for opponentSourceKey, right := range rightQuotes {
-			if sourceKey == opponentSourceKey {
+	for _, over := range overQuotes {
+		for _, under := range underQuotes {
+			if over.sourceKey == under.sourceKey || !sameEvent(over.event, under.event) {
 				continue
 			}
-
-			combinedRisk := left.malayRisk + right.malayRisk
-			if combinedRisk <= 1 {
-				continue
+			if opportunity, ok := buildOpportunity(bucket, over, under, now); ok {
+				opportunities = append(opportunities, opportunity)
 			}
-
-			expectedReturn := (2 / combinedRisk) - 1
-			if expectedReturn <= 0 {
-				continue
-			}
-
-			legs := buildLegs(left, right, combinedRisk)
-			detectedAt := maxTime(left.quote.CollectedAt, right.quote.CollectedAt)
-			opportunities = append(opportunities, models.SurebetOpportunity{
-				ID:               opportunityID(bucket.fixtureKey, bucket.marketName, bucket.lineKey, left.quote.ID, right.quote.ID),
-				FixtureID:        bucket.fixtureKey,
-				Sport:            bucket.sport,
-				MarketName:       bucket.marketName,
-				ProfitPercentage: round(expectedReturn * 100),
-				ExpectedReturn:   round(expectedReturn),
-				Currency:         "",
-				DetectedAt:       detectedAt,
-				ExpiresAt:        detectedAt.Add(30 * time.Second),
-				Legs:             legs,
-			})
 		}
 	}
 
 	return opportunities
 }
 
-func collectBestQuotes(quotes []normalizedQuote, targetSide outcomeSide) map[string]normalizedQuote {
+func collectBestOverUnderQuotes(quotes []normalizedQuote, targetSide outcomeSide) map[string]normalizedQuote {
 	result := make(map[string]normalizedQuote)
 	for _, item := range quotes {
 		if item.side != targetSide {
 			continue
 		}
 
-		existing, ok := result[item.sourceKey]
-		if !ok || item.malayRisk > existing.malayRisk {
-			result[item.sourceKey] = item
+		key := sourceEventKey(item)
+		existing, ok := result[key]
+		if !ok || isBetterQuote(item, existing) {
+			result[key] = item
 		}
 	}
 	return result
 }
 
-func buildLegs(left, right normalizedQuote, combinedRisk float64) []models.SurebetLeg {
-	leftStake := left.malayRisk / combinedRisk
-	rightStake := right.malayRisk / combinedRisk
+func detectHandicapSurebets(bucket *quoteBucket, now time.Time) []models.SurebetOpportunity {
+	bestBySourceAndParticipant := make(map[string]normalizedQuote)
+	for _, item := range bucket.quotes {
+		key := sourceEventKey(item) + "\x00" + item.participant
+		existing, ok := bestBySourceAndParticipant[key]
+		if !ok || isBetterQuote(item, existing) {
+			bestBySourceAndParticipant[key] = item
+		}
+	}
+
+	quotes := make([]normalizedQuote, 0, len(bestBySourceAndParticipant))
+	for _, item := range bestBySourceAndParticipant {
+		quotes = append(quotes, item)
+	}
+	sort.Slice(quotes, func(i, j int) bool {
+		if quotes[i].sourceKey == quotes[j].sourceKey {
+			return quotes[i].participant < quotes[j].participant
+		}
+		return quotes[i].sourceKey < quotes[j].sourceKey
+	})
+
+	opportunities := make([]models.SurebetOpportunity, 0)
+	for i := 0; i < len(quotes); i++ {
+		for j := i + 1; j < len(quotes); j++ {
+			left, right := quotes[i], quotes[j]
+			if left.sourceKey == right.sourceKey ||
+				left.participant == right.participant ||
+				!sameEvent(left.event, right.event) ||
+				!areOppositeHandicapLines(left.line, right.line) {
+				continue
+			}
+			if opportunity, ok := buildOpportunity(bucket, left, right, now); ok {
+				opportunities = append(opportunities, opportunity)
+			}
+		}
+	}
+
+	return opportunities
+}
+
+func isBetterQuote(candidate, current normalizedQuote) bool {
+	if candidate.decimalOdds != current.decimalOdds {
+		return candidate.decimalOdds > current.decimalOdds
+	}
+	if !candidate.quote.CollectedAt.Equal(current.quote.CollectedAt) {
+		return candidate.quote.CollectedAt.After(current.quote.CollectedAt)
+	}
+	return candidate.quote.ID < current.quote.ID
+}
+
+func sourceEventKey(item normalizedQuote) string {
+	return strings.Join([]string{
+		item.sourceKey,
+		item.event.sport,
+		item.event.fixtureKey,
+	}, "\x00")
+}
+
+func sameEvent(left, right eventIdentity) bool {
+	return left.sport == right.sport && left.fixtureKey == right.fixtureKey
+}
+
+func areOppositeHandicapLines(left, right normalizedLine) bool {
+	if len(left.values) != len(right.values) {
+		return false
+	}
+	for index := range left.values {
+		if math.Abs(left.values[index]+right.values[index]) > arbitrageTolerance {
+			return false
+		}
+	}
+	return true
+}
+
+func buildOpportunity(
+	bucket *quoteBucket,
+	left, right normalizedQuote,
+	now time.Time,
+) (models.SurebetOpportunity, bool) {
+	if !hasCompatibleQuoteTimes(left.quote.CollectedAt, right.quote.CollectedAt) {
+		return models.SurebetOpportunity{}, false
+	}
+
+	combinedProbability := left.impliedProbability + right.impliedProbability
+	if combinedProbability >= 1-arbitrageTolerance {
+		return models.SurebetOpportunity{}, false
+	}
+
+	expiresAt := minTime(
+		left.quote.CollectedAt.UTC().Add(detectorMaxQuoteAge),
+		right.quote.CollectedAt.UTC().Add(detectorMaxQuoteAge),
+	)
+	if !expiresAt.After(now) {
+		return models.SurebetOpportunity{}, false
+	}
+
+	expectedReturn := (1 / combinedProbability) - 1
+	return models.SurebetOpportunity{
+		ID: opportunityID(
+			bucket.sport,
+			bucket.fixtureKey,
+			bucket.marketKind,
+			bucket.periodKey,
+			bucket.lineKey,
+			left.quote.ID,
+			right.quote.ID,
+		),
+		FixtureID:        bucket.fixtureKey,
+		Sport:            bucket.sport,
+		MarketName:       bucket.marketName,
+		ProfitPercentage: round(expectedReturn * 100),
+		ExpectedReturn:   round(expectedReturn),
+		Currency:         "",
+		DetectedAt:       now,
+		ExpiresAt:        expiresAt,
+		Legs:             buildLegs(left, right, combinedProbability),
+	}, true
+}
+
+func buildLegs(left, right normalizedQuote, combinedProbability float64) []models.SurebetLeg {
+	leftStake := left.impliedProbability / combinedProbability
+	rightStake := right.impliedProbability / combinedProbability
 
 	return []models.SurebetLeg{
 		{
@@ -253,7 +452,7 @@ func buildLegs(left, right normalizedQuote, combinedRisk float64) []models.Sureb
 			MarketID:    left.quote.MarketID,
 			OutcomeID:   left.quote.OutcomeID,
 			OutcomeName: left.quote.OutcomeName,
-			Odds:        left.displayOdds,
+			Odds:        left.quote.Odds,
 			Stake:       round(leftStake),
 		},
 		{
@@ -262,47 +461,18 @@ func buildLegs(left, right normalizedQuote, combinedRisk float64) []models.Sureb
 			MarketID:    right.quote.MarketID,
 			OutcomeID:   right.quote.OutcomeID,
 			OutcomeName: right.quote.OutcomeName,
-			Odds:        right.displayOdds,
+			Odds:        right.quote.Odds,
 			Stake:       round(rightStake),
 		},
 	}
 }
 
-func normalizeQuote(quote models.OddsQuote) (marketKind, string, string, outcomeSide) {
-	name := strings.ToLower(strings.TrimSpace(quote.OutcomeName))
-	marketID := strings.ToLower(strings.TrimSpace(quote.MarketID))
-	marketName := strings.ToLower(strings.TrimSpace(quote.MarketName))
-	periodKey := normalizeMarketPeriod(marketID, marketName)
-	line := normalizeLine(extractLine(quote.OutcomeName))
-
-	switch {
-	case strings.Contains(marketID, "over-under"),
-		strings.Contains(marketID, "ta-i-xi-u"),
-		strings.Contains(marketID, "o-u"),
-		strings.Contains(marketName, "over/under"),
-		strings.Contains(marketName, "tài xỉu"),
-		strings.Contains(marketName, "tài/xỉu"),
-		strings.Contains(marketName, "tài xỉu"):
-		return marketKindOverUnder, periodKey, line, detectOverUnderSide(name)
-
-	case strings.Contains(marketID, "handicap"),
-		strings.Contains(marketID, "cu-o-c-cha-p"),
-		strings.Contains(marketName, "handicap"),
-		strings.Contains(marketName, "cược chấp"),
-		strings.Contains(marketName, "chấp châu á"):
-		return marketKindHandicap, periodKey, normalizeHandicapGroupLine(line), detectHandicapSide(quote, name)
-	default:
-		return marketKindUnknown, "", "", sideUnknown
-	}
-}
-
 func normalizeMarketPeriod(marketID, marketName string) string {
-	combined := strings.ToLower(strings.TrimSpace(marketID + " " + marketName))
+	combined := canonicalText(marketID + " " + marketName)
 	switch {
 	case strings.Contains(combined, "1h"),
 		strings.Contains(combined, "1st half"),
 		strings.Contains(combined, "first half"),
-		strings.Contains(combined, "hiệp 1"),
 		strings.Contains(combined, "hiep 1"):
 		return "1h"
 	default:
@@ -310,112 +480,50 @@ func normalizeMarketPeriod(marketID, marketName string) string {
 	}
 }
 
-func canonicalFixtureKey(quote models.OddsQuote) (string, [2]string) {
-	if key, participants := canonicalFixtureKeyFromTeams(quote.HomeTeam, quote.AwayTeam); key != "" {
-		return key, participants
+func parseNormalizedLine(value string) (normalizedLine, bool) {
+	raw := extractLine(value)
+	if raw == "" {
+		return normalizedLine{}, false
 	}
 
-	participants := extractParticipants(quote.OutcomeName)
-	if len(participants) < 2 {
-		return "", [2]string{}
+	parts := strings.Split(raw, "/")
+	values := make([]float64, 0, len(parts))
+	for index, part := range parts {
+		explicitSign := strings.HasPrefix(part, "+") || strings.HasPrefix(part, "-")
+		parsed, err := strconv.ParseFloat(part, 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return normalizedLine{}, false
+		}
+		if index > 0 && !explicitSign && values[0] < 0 {
+			parsed = -parsed
+		}
+		values = append(values, parsed)
 	}
 
-	return canonicalFixtureKeyFromTeams(participants[0], participants[1])
+	sort.Slice(values, func(i, j int) bool {
+		left, right := math.Abs(values[i]), math.Abs(values[j])
+		if left == right {
+			return values[i] < values[j]
+		}
+		return left < right
+	})
+
+	keyParts := make([]string, 0, len(values))
+	for _, line := range values {
+		keyParts = append(keyParts, formatLineNumber(math.Abs(line)))
+	}
+	return normalizedLine{values: values, key: strings.Join(keyParts, "/")}, true
 }
 
-func canonicalFixtureKeyFromTeams(homeTeam, awayTeam string) (string, [2]string) {
-	left := canonicalText(homeTeam)
-	right := canonicalText(awayTeam)
-	if left == "" || right == "" || left == right {
-		return "", [2]string{}
+func formatLineNumber(value float64) string {
+	if value == 0 {
+		return "0"
 	}
-
-	ordered := [2]string{left, right}
-	if ordered[0] > ordered[1] {
-		ordered[0], ordered[1] = ordered[1], ordered[0]
-	}
-
-	return ordered[0] + " vs " + ordered[1], ordered
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
-func resolveFixtureKey(quote models.OddsQuote, inferred map[string][2]string) (string, [2]string) {
-	if key, participants := canonicalFixtureKeyFromTeams(quote.HomeTeam, quote.AwayTeam); key != "" {
-		return key, participants
-	}
-
-	if participants, ok := inferred[sourceFixtureKey(quote)]; ok {
-		return participants[0] + " vs " + participants[1], participants
-	}
-
-	return canonicalFixtureKey(quote)
-}
-
-func inferFixtureParticipants(quotes []models.OddsQuote) map[string][2]string {
-	countsByFixture := make(map[string]map[string]int)
-
-	for _, quote := range quotes {
-		if key, participants := canonicalFixtureKeyFromTeams(quote.HomeTeam, quote.AwayTeam); key != "" {
-			countsByFixture[sourceFixtureKey(quote)] = map[string]int{
-				participants[0]: 1,
-				participants[1]: 1,
-			}
-			continue
-		}
-
-		candidate := participantCandidate(quote)
-		if candidate == "" {
-			continue
-		}
-
-		fixtureKey := sourceFixtureKey(quote)
-		if countsByFixture[fixtureKey] == nil {
-			countsByFixture[fixtureKey] = make(map[string]int)
-		}
-		countsByFixture[fixtureKey][candidate]++
-	}
-
-	result := make(map[string][2]string)
-	for fixtureKey, counts := range countsByFixture {
-		if len(counts) < 2 {
-			continue
-		}
-
-		type participantCount struct {
-			name  string
-			count int
-		}
-
-		ranked := make([]participantCount, 0, len(counts))
-		for name, count := range counts {
-			ranked = append(ranked, participantCount{name: name, count: count})
-		}
-
-		sort.Slice(ranked, func(i, j int) bool {
-			if ranked[i].count == ranked[j].count {
-				return ranked[i].name < ranked[j].name
-			}
-			return ranked[i].count > ranked[j].count
-		})
-
-		first := ranked[0].name
-		second := ranked[1].name
-		if first == "" || second == "" || first == second {
-			continue
-		}
-
-		ordered := [2]string{first, second}
-		if ordered[0] > ordered[1] {
-			ordered[0], ordered[1] = ordered[1], ordered[0]
-		}
-
-		result[fixtureKey] = ordered
-	}
-
-	return result
-}
-
-func participantCandidate(quote models.OddsQuote) string {
-	cleaned := strings.TrimSpace(removeLineSuffix(quote.OutcomeName))
+func participantCandidate(outcomeName string) string {
+	cleaned := strings.TrimSpace(removeLineSuffix(outcomeName))
 	cleaned = shortTagPattern.ReplaceAllString(cleaned, "")
 	cleaned = strings.TrimSpace(cleaned)
 	canonical := canonicalText(cleaned)
@@ -434,55 +542,8 @@ func isGenericParticipantLabel(value string) bool {
 	}
 }
 
-func extractParticipants(outcomeName string) []string {
-	cleaned := strings.TrimSpace(cleanOutcomeForParticipants(outcomeName))
-	if cleaned == "" {
-		return nil
-	}
-
-	switch {
-	case strings.Contains(cleaned, " vs "):
-		parts := strings.SplitN(cleaned, " vs ", 2)
-		return trimParticipants(parts)
-	case strings.Contains(cleaned, " -vs- "):
-		parts := strings.SplitN(cleaned, " -vs- ", 2)
-		return trimParticipants(parts)
-	case strings.Contains(cleaned, " - "):
-		parts := strings.SplitN(cleaned, " - ", 2)
-		return trimParticipants(parts)
-	default:
-		return nil
-	}
-}
-
-func trimParticipants(parts []string) []string {
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		value := strings.TrimSpace(part)
-		if value != "" {
-			result = append(result, value)
-		}
-	}
-	return result
-}
-
 func removeLineSuffix(value string) string {
 	return strings.TrimSpace(linePattern.ReplaceAllString(value, ""))
-}
-
-func cleanOutcomeForParticipants(value string) string {
-	trimmed := strings.TrimSpace(value)
-	trimmed = outcomeSuffixPattern.ReplaceAllString(trimmed, "")
-	trimmed = strings.TrimSpace(removeLineSuffix(trimmed))
-
-	switch {
-	case strings.HasSuffix(strings.ToLower(trimmed), " over"):
-		return strings.TrimSpace(trimmed[:len(trimmed)-len(" over")])
-	case strings.HasSuffix(strings.ToLower(trimmed), " under"):
-		return strings.TrimSpace(trimmed[:len(trimmed)-len(" under")])
-	default:
-		return trimmed
-	}
 }
 
 func canonicalText(value string) string {
@@ -501,50 +562,10 @@ func canonicalText(value string) string {
 
 func detectOverUnderSide(name string) outcomeSide {
 	switch {
-	case strings.Contains(name, "over"), strings.Contains(name, "tài"), strings.Contains(name, "tài"):
+	case strings.Contains(name, "over"), strings.Contains(name, "tai"):
 		return sideOver
-	case strings.Contains(name, "under"), strings.Contains(name, "xỉu"), strings.Contains(name, "xỉu"):
+	case strings.Contains(name, "under"), strings.Contains(name, "xiu"):
 		return sideUnder
-	default:
-		return sideUnknown
-	}
-}
-
-func detectHandicapSide(quote models.OddsQuote, name string) outcomeSide {
-	if side := detectHandicapSideByParticipant(quote); side != sideUnknown {
-		return side
-	}
-
-	switch {
-	case strings.HasPrefix(name, "home "), strings.HasPrefix(name, "đội nhà "), strings.Contains(name, "(h)"):
-		return sideHome
-	case strings.HasPrefix(name, "away "), strings.HasPrefix(name, "đội khách "), strings.Contains(name, "(a)"):
-		return sideAway
-	default:
-		line := extractLine(name)
-		if line == "" {
-			return sideUnknown
-		}
-		if strings.Contains(line, "-") {
-			return sideHome
-		}
-		return sideAway
-	}
-}
-
-func detectHandicapSideByParticipant(quote models.OddsQuote) outcomeSide {
-	homeTeam := canonicalText(quote.HomeTeam)
-	awayTeam := canonicalText(quote.AwayTeam)
-	if homeTeam == "" || awayTeam == "" {
-		return sideUnknown
-	}
-
-	outcomeParticipant := participantCandidate(quote)
-	switch outcomeParticipant {
-	case homeTeam:
-		return sideHome
-	case awayTeam:
-		return sideAway
 	default:
 		return sideUnknown
 	}
@@ -556,22 +577,6 @@ func extractLine(value string) string {
 		return ""
 	}
 	return match[1]
-}
-
-func normalizeLine(value string) string {
-	if value == "" {
-		return ""
-	}
-	return strings.TrimPrefix(strings.TrimSpace(value), "+")
-}
-
-func normalizeHandicapGroupLine(value string) string {
-	line := normalizeLine(value)
-	return strings.TrimPrefix(line, "-")
-}
-
-func sourceFixtureKey(quote models.OddsQuote) string {
-	return strings.Join([]string{quote.BookmakerID, quote.LobbyID, quote.FixtureID}, "|")
 }
 
 func quoteSourceKey(quote models.OddsQuote) string {
@@ -592,12 +597,18 @@ func chooseMarketName(quote models.OddsQuote, kind marketKind) string {
 	}
 }
 
-func opportunityID(fixtureKey, marketName, lineKey, leftID, rightID string) string {
+func opportunityID(
+	sport, fixtureKey string,
+	kind marketKind,
+	periodKey, lineKey, leftID, rightID string,
+) string {
 	legs := []string{leftID, rightID}
 	sort.Strings(legs)
 	hash := sha1.Sum([]byte(strings.Join([]string{
+		sport,
 		fixtureKey,
-		marketName,
+		string(kind),
+		periodKey,
 		lineKey,
 		legs[0],
 		legs[1],
@@ -605,15 +616,26 @@ func opportunityID(fixtureKey, marketName, lineKey, leftID, rightID string) stri
 	return hex.EncodeToString(hash[:])
 }
 
-func round(value float64) float64 {
-	return math.Round(value*10000) / 10000
-}
-
-func maxTime(left, right time.Time) time.Time {
-	if right.After(left) {
+func minTime(left, right time.Time) time.Time {
+	if right.Before(left) {
 		return right
 	}
 	return left
+}
+
+func hasCompatibleQuoteTimes(left, right time.Time) bool {
+	return absoluteDuration(left.Sub(right)) <= detectorMaxQuoteSkew
+}
+
+func absoluteDuration(value time.Duration) time.Duration {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+func round(value float64) float64 {
+	return math.Round(value*10000) / 10000
 }
 
 var _ Detector = detector{}

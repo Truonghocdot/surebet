@@ -10,6 +10,7 @@ export type CollectorSource = {
 
 export type OddsSelection = {
   fixtureId: string;
+  sport?: string;
   homeTeam?: string;
   awayTeam?: string;
   leagueName?: string;
@@ -33,6 +34,7 @@ export type OddsDelta = {
   source: CollectorSource;
   collectedAt: string;
   fixtureId: string;
+  sport?: string;
   homeTeam?: string;
   awayTeam?: string;
   leagueName?: string;

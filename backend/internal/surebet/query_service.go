@@ -9,7 +9,7 @@ import (
 	"surebet/backend/internal/models"
 )
 
-const detectorQuoteFreshnessWindow = 30 * time.Minute
+const detectorQuoteFreshnessWindow = 45 * time.Second
 
 type OddsReader interface {
 	ListCurrent(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
