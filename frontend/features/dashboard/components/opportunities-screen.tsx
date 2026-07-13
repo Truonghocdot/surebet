@@ -110,7 +110,7 @@ function OpportunityCard({ row }: { row: Opportunity }) {
                   {leg.bookmaker_id} / {leg.lobby_id}
                 </p>
                 <span className="rounded-full bg-[#3199ff] px-2.5 py-1 text-[11px] font-bold text-white">
-                  {formatMoneyOdds(leg.moneyOdds)}
+                  {leg.odds}
                 </span>
               </div>
 
@@ -130,7 +130,7 @@ function OpportunityCard({ row }: { row: Opportunity }) {
                 <div className="flex items-start justify-between gap-3 sm:items-center">
                   <span className="text-[rgba(255,255,255,0.58)]">Odds gốc</span>
                   <span className="text-[rgba(255,255,255,0.78)]">
-                    {leg.odds.toFixed(2)}
+                    {leg.odds}
                   </span>
                 </div>
               </div>
@@ -159,18 +159,14 @@ function formatTime(value: string) {
 }
 
 function deriveOpportunityPresentation(row: Opportunity) {
-  const legs = row.legs.slice(0, 2).map((leg) => {
-    const moneyOdds = convertToMoneyOdds(leg.odds);
-    return {
-      ...leg,
-      moneyOdds,
-      displayOutcome: deriveOutcomeDisplayLabel(leg, row)
-    };
-  });
+  const legs = row.legs.slice(0, 2).map((leg) => ({
+    ...leg,
+    displayOutcome: deriveOutcomeDisplayLabel(leg, row)
+  }));
 
   const moneyGap =
     legs.length >= 2
-      ? Math.abs(Math.abs(legs[0].moneyOdds) - Math.abs(legs[1].moneyOdds))
+      ? Math.abs(Math.abs(legs[0].odds) - Math.abs(legs[1].odds))
       : 0;
 
   return {
@@ -258,23 +254,6 @@ function resolvePrimaryLine(row: Opportunity) {
 function extractLine(value: string) {
   const match = value.trim().match(/([+-]?\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?)$/);
   return match?.[1] ?? "";
-}
-
-function convertToMoneyOdds(rawOdds: number) {
-  if (!Number.isFinite(rawOdds)) {
-    return 0;
-  }
-
-  return roundMoneyOdds(rawOdds);
-}
-
-function roundMoneyOdds(value: number) {
-  return Math.round(value * 100) / 100;
-}
-
-function formatMoneyOdds(value: number) {
-  const rounded = roundMoneyOdds(value);
-  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}`;
 }
 
 function normalizeLineForDisplay(value: string) {

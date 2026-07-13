@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ Cửa đối ứng: <b>Tài 2.5</b>
 Tỷ trọng vốn: <b>51.23%</b>
 Odds gốc: -0.67
 
-<b>Cửa 2 | jun88 / SABA</b> <code>+1.93</code>
+<b>Cửa 2 | jun88 / SABA</b> <code>1.93</code>
 Cửa đối ứng: <b>Xỉu 2.5</b>
 Tỷ trọng vốn: <b>48.77%</b>
 Odds gốc: 1.93`
@@ -96,17 +97,34 @@ Lệch tiền <b>0.02</b> | Lãi surebet <b>0.75%</b>
 Kèo chấp 0.5
 Hết hạn 20:11:30
 
-<b>Cửa 1 | m9bet / -</b> <code>+0.91</code>
+<b>Cửa 1 | m9bet / -</b> <code>0.91</code>
 Cửa đối ứng: <b>Team A -0.5</b>
 Tỷ trọng vốn: <b>50.50%</b>
 Odds gốc: 0.91
 
-<b>Cửa 2 | jun88 / CMD</b> <code>+0.89</code>
+<b>Cửa 2 | jun88 / CMD</b> <code>0.89</code>
 Cửa đối ứng: <b>Team B +0.5</b>
 Tỷ trọng vốn: <b>49.50%</b>
 Odds gốc: 0.89`
 
 	if got != want {
 		t.Fatalf("formatted message mismatch\nwant:\n%s\n\ngot:\n%s", want, got)
+	}
+}
+
+func TestFormatSurebetMessageAtKeepsRawOddsPrecision(t *testing.T) {
+	now := time.Date(2026, 7, 12, 20, 10, 0, 0, time.UTC)
+	item := dto.SurebetView{
+		FixtureID:  "Team A vs Team B",
+		DetectedAt: now,
+		ExpiresAt:  now.Add(time.Minute),
+		Legs: []dto.SurebetLegView{
+			{BookmakerID: "book-a", LobbyID: "main", OutcomeName: "Over 2.5", Odds: -0.6789},
+		},
+	}
+
+	message := formatSurebetMessageAt(item, now, time.UTC)
+	if !strings.Contains(message, "<code>-0.6789</code>") || !strings.Contains(message, "Odds gốc: -0.6789") {
+		t.Fatalf("expected raw odds precision in message, got:\n%s", message)
 	}
 }

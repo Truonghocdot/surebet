@@ -40,7 +40,6 @@ type formattedOpportunityPresentation struct {
 
 type formattedSurebetLeg struct {
 	dto.SurebetLegView
-	MoneyOdds      float64
 	DisplayOutcome string
 }
 
@@ -84,7 +83,7 @@ func formatSurebetMessageAt(item dto.SurebetView, now time.Time, location *time.
 		builder.WriteString(html.EscapeString(formatTelegramSourceLabel(leg.BookmakerID, leg.LobbyID)))
 		builder.WriteString("</b> ")
 		builder.WriteString("<code>")
-		builder.WriteString(html.EscapeString(formatTelegramMoneyOdds(leg.MoneyOdds)))
+		builder.WriteString(html.EscapeString(fmt.Sprint(leg.Odds)))
 		builder.WriteString("</code>\n")
 		builder.WriteString("Cửa đối ứng: <b>")
 		builder.WriteString(html.EscapeString(leg.DisplayOutcome))
@@ -93,7 +92,7 @@ func formatSurebetMessageAt(item dto.SurebetView, now time.Time, location *time.
 		builder.WriteString(formatTelegramPercent(leg.Stake * 100))
 		builder.WriteString("</b>\n")
 		builder.WriteString("Odds gốc: ")
-		builder.WriteString(formatTelegramFixed(leg.Odds))
+		builder.WriteString(fmt.Sprint(leg.Odds))
 	}
 
 	return builder.String()
@@ -108,14 +107,13 @@ func deriveTelegramOpportunityPresentation(item dto.SurebetView) formattedOpport
 
 		legs = append(legs, formattedSurebetLeg{
 			SurebetLegView: leg,
-			MoneyOdds:      convertTelegramMoneyOdds(leg.Odds),
 			DisplayOutcome: deriveTelegramOutcomeDisplayLabel(leg, item),
 		})
 	}
 
 	moneyGap := 0.0
 	if len(legs) >= 2 {
-		moneyGap = math.Abs(math.Abs(legs[0].MoneyOdds) - math.Abs(legs[1].MoneyOdds))
+		moneyGap = math.Abs(math.Abs(legs[0].Odds) - math.Abs(legs[1].Odds))
 	}
 
 	return formattedOpportunityPresentation{
@@ -213,26 +211,6 @@ func extractTelegramLine(value string) string {
 	return match[1]
 }
 
-func convertTelegramMoneyOdds(rawOdds float64) float64 {
-	if !isFiniteTelegramNumber(rawOdds) {
-		return 0
-	}
-
-	return roundTelegramMoneyOdds(rawOdds)
-}
-
-func roundTelegramMoneyOdds(value float64) float64 {
-	return math.Round(value*100) / 100
-}
-
-func formatTelegramMoneyOdds(value float64) string {
-	rounded := roundTelegramMoneyOdds(value)
-	if rounded > 0 {
-		return fmt.Sprintf("+%.2f", rounded)
-	}
-	return fmt.Sprintf("%.2f", rounded)
-}
-
 func normalizeTelegramLineForDisplay(value string) string {
 	return strings.TrimPrefix(strings.TrimSpace(value), "+")
 }
@@ -317,8 +295,4 @@ func formatTelegramSourceLabel(bookmakerID, lobbyID string) string {
 		lobbyID = "-"
 	}
 	return bookmakerID + " / " + lobbyID
-}
-
-func isFiniteTelegramNumber(value float64) bool {
-	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
