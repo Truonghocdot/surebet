@@ -2,6 +2,7 @@ type BackendCollectorRuntimeConfigResponse = {
   data?: {
     eightxbet_page_url?: string;
     eightxbet_base_url?: string;
+    eightxbet_inplay_page_url?: string;
     jun88_base_url?: string;
     jun88_bti_page_url?: string;
     jun88_saba_page_url?: string;
@@ -41,6 +42,7 @@ export async function syncCollectorRuntimeConfig(
 
   applySetting("EIGHTXBET_PAGE_URL", payload.data.eightxbet_page_url);
   applySetting("EIGHTXBET_BASE_URL", payload.data.eightxbet_base_url);
+  applySetting("EIGHTXBET_INPLAY_PAGE_URL", payload.data.eightxbet_inplay_page_url);
   applySetting("JUN88_BASE_URL", payload.data.jun88_base_url);
   applySetting("JUN88_BTI_PAGE_URL", payload.data.jun88_bti_page_url);
   applySetting("JUN88_SABA_PAGE_URL", payload.data.jun88_saba_page_url);

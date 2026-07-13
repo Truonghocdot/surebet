@@ -14,6 +14,7 @@ import type { CollectorConfig } from "@/features/admin/schemas/collector-config-
 const emptyConfig: CollectorConfig = {
   eightxbet_page_url: "",
   eightxbet_base_url: "",
+  eightxbet_inplay_page_url: "",
   jun88_base_url: "",
   jun88_bti_page_url: "",
   jun88_saba_page_url: "",
@@ -124,6 +125,16 @@ export function CollectorConfigScreen() {
                     value={form.eightxbet_base_url}
                     onChange={(value) =>
                       setForm((current) => ({ ...current, eightxbet_base_url: value }))
+                    }
+                  />
+                  <ConfigField
+                    label="EIGHTXBET_INPLAY_PAGE_URL"
+                    value={form.eightxbet_inplay_page_url}
+                    onChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        eightxbet_inplay_page_url: value
+                      }))
                     }
                   />
                   <ConfigField

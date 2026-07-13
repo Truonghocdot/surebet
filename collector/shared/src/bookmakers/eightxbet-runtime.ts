@@ -8,6 +8,7 @@ import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 
 const EIGHTXBET_INCOMING_PATH = "/sportEvents/incoming/football?hour=6";
+const EIGHTXBET_PREFERENCES_PATH = "/mine";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="v4-sport-asia-simple-handicap-unit-"]';
 const EIGHTXBET_INFINITE_SCROLL_BOTTOM = '[data-testid="v4-sport-simple-handicap-infinite-scroll-bottom"]';
 const EIGHTXBET_CARD_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
@@ -88,6 +89,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     this.page = page;
     this.targetURL = targetURL;
 
+    await bootstrapEightXBetPreferences(page, targetURL);
     await page.goto(targetURL, { waitUntil: "domcontentloaded" });
     return page;
   }
@@ -141,11 +143,43 @@ async function installEightXBetLocale(context: BrowserContext) {
       window.localStorage.setItem("language", "vi-VN");
       window.localStorage.setItem("lang", "vi-VN");
       window.localStorage.setItem("sport-market-type", "ML");
+      window.localStorage.setItem("sport-match-mode", "professional");
+      window.localStorage.setItem("sport-simple-type", "asia");
       window.sessionStorage.setItem("i18nextLng", "vi-VN");
       window.sessionStorage.setItem("language", "vi-VN");
       window.sessionStorage.setItem("lang", "vi-VN");
+      window.sessionStorage.setItem("sport-market-type", "ML");
+      window.sessionStorage.setItem("sport-match-mode", "professional");
+      window.sessionStorage.setItem("sport-simple-type", "asia");
     } catch {}
   });
+}
+
+async function bootstrapEightXBetPreferences(page: Page, targetURL: string) {
+  const preferenceURL = new URL(EIGHTXBET_PREFERENCES_PATH, targetURL).toString();
+
+  try {
+    await page.goto(preferenceURL, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => undefined);
+    await page.evaluate(() => {
+      const entries = [
+        ["i18nextLng", "vi-VN"],
+        ["language", "vi-VN"],
+        ["lang", "vi-VN"],
+        ["sport-market-type", "ML"],
+        ["sport-match-mode", "professional"],
+        ["sport-simple-type", "asia"]
+      ] as const;
+
+      for (const [key, value] of entries) {
+        window.localStorage.setItem(key, value);
+        window.sessionStorage.setItem(key, value);
+      }
+    });
+    await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
+  } catch (error) {
+    console.warn("[8xbet-worker] bootstrap /mine preferences failed:", error);
+  }
 }
 
 async function waitForEightXBetReady(page: Page, targetURL: string) {

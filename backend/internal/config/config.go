@@ -35,6 +35,7 @@ type AuthConfig struct {
 type CollectorRuntimeConfig struct {
 	EightXBetPageURL       string
 	EightXBetBaseURL       string
+	EightXBetInplayPageURL string
 	Jun88BaseURL           string
 	Jun88BtiPageURL        string
 	Jun88SabaPageURL       string
@@ -107,6 +108,7 @@ func LoadFromEnv() Config {
 		Collector: CollectorRuntimeConfig{
 			EightXBetPageURL:       envString("EIGHTXBET_PAGE_URL", ""),
 			EightXBetBaseURL:       envString("EIGHTXBET_BASE_URL", ""),
+			EightXBetInplayPageURL: envString("EIGHTXBET_INPLAY_PAGE_URL", ""),
 			Jun88BaseURL:           envString("JUN88_BASE_URL", ""),
 			Jun88BtiPageURL:        envString("JUN88_BTI_PAGE_URL", ""),
 			Jun88SabaPageURL:       envString("JUN88_SABA_PAGE_URL", envString("JUN88_IBC_PAGE_URL", "")),

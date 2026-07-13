@@ -15,6 +15,7 @@ const collectorSettingPrefix = "collector."
 const (
 	keyEightXBetPageURL       = collectorSettingPrefix + "eightxbet_page_url"
 	keyEightXBetBaseURL       = collectorSettingPrefix + "eightxbet_base_url"
+	keyEightXBetInplayPageURL = collectorSettingPrefix + "eightxbet_inplay_page_url"
 	keyJun88BaseURL           = collectorSettingPrefix + "jun88_base_url"
 	keyJun88BtiPageURL        = collectorSettingPrefix + "jun88_bti_page_url"
 	keyJun88SabaPageURL       = collectorSettingPrefix + "jun88_saba_page_url"
@@ -88,6 +89,7 @@ func (s *Service) UpdateCollectorConfig(
 	configValue := dto.CollectorRuntimeConfigView{
 		EightXBetPageURL:       strings.TrimSpace(request.EightXBetPageURL),
 		EightXBetBaseURL:       strings.TrimSpace(request.EightXBetBaseURL),
+		EightXBetInplayPageURL: strings.TrimSpace(request.EightXBetInplayPageURL),
 		Jun88BaseURL:           strings.TrimSpace(request.Jun88BaseURL),
 		Jun88BtiPageURL:        strings.TrimSpace(request.Jun88BtiPageURL),
 		Jun88SabaPageURL:       strings.TrimSpace(request.Jun88SabaPageURL),
@@ -126,6 +128,7 @@ func (s *Service) loadCollectorConfig(
 	result := dto.CollectorRuntimeConfigView{
 		EightXBetPageURL:       strings.TrimSpace(s.defaults.EightXBetPageURL),
 		EightXBetBaseURL:       strings.TrimSpace(s.defaults.EightXBetBaseURL),
+		EightXBetInplayPageURL: strings.TrimSpace(s.defaults.EightXBetInplayPageURL),
 		Jun88BaseURL:           strings.TrimSpace(s.defaults.Jun88BaseURL),
 		Jun88BtiPageURL:        strings.TrimSpace(s.defaults.Jun88BtiPageURL),
 		Jun88SabaPageURL:       strings.TrimSpace(s.defaults.Jun88SabaPageURL),
@@ -147,6 +150,8 @@ func (s *Service) loadCollectorConfig(
 			result.EightXBetPageURL = strings.TrimSpace(item.Value)
 		case keyEightXBetBaseURL:
 			result.EightXBetBaseURL = strings.TrimSpace(item.Value)
+		case keyEightXBetInplayPageURL:
+			result.EightXBetInplayPageURL = strings.TrimSpace(item.Value)
 		case keyJun88BaseURL:
 			result.Jun88BaseURL = strings.TrimSpace(item.Value)
 		case keyJun88BtiPageURL:
@@ -183,6 +188,7 @@ func toSettings(configValue dto.CollectorRuntimeConfigView) []models.RuntimeSett
 	return []models.RuntimeSetting{
 		{Key: keyEightXBetPageURL, Value: configValue.EightXBetPageURL},
 		{Key: keyEightXBetBaseURL, Value: configValue.EightXBetBaseURL},
+		{Key: keyEightXBetInplayPageURL, Value: configValue.EightXBetInplayPageURL},
 		{Key: keyJun88BaseURL, Value: configValue.Jun88BaseURL},
 		{Key: keyJun88BtiPageURL, Value: configValue.Jun88BtiPageURL},
 		{Key: keyJun88SabaPageURL, Value: configValue.Jun88SabaPageURL},
