@@ -160,7 +160,7 @@ function formatTime(value: string) {
 
 function deriveOpportunityPresentation(row: Opportunity) {
   const legs = row.legs.slice(0, 2).map((leg) => {
-    const moneyOdds = convertToMoneyOdds(leg.bookmaker_id, leg.odds);
+    const moneyOdds = convertToMoneyOdds(leg.odds);
     return {
       ...leg,
       moneyOdds,
@@ -260,28 +260,12 @@ function extractLine(value: string) {
   return match?.[1] ?? "";
 }
 
-function convertToMoneyOdds(bookmakerID: string, rawOdds: number) {
+function convertToMoneyOdds(rawOdds: number) {
   if (!Number.isFinite(rawOdds)) {
     return 0;
   }
 
-  if (bookmakerID === "8xbet") {
-    return roundMoneyOdds(decimalToMalayOdds(rawOdds));
-  }
-
   return roundMoneyOdds(rawOdds);
-}
-
-function decimalToMalayOdds(decimalOdds: number) {
-  if (!Number.isFinite(decimalOdds) || decimalOdds <= 0) {
-    return 0;
-  }
-
-  if (decimalOdds >= 2) {
-    return -(1 / (decimalOdds - 1));
-  }
-
-  return decimalOdds - 1;
 }
 
 function roundMoneyOdds(value: number) {

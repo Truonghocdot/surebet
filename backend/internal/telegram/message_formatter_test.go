@@ -22,7 +22,7 @@ func TestFormatSurebetMessageAt_FormatsOpportunityLikeDashboardCard(t *testing.T
 				LobbyID:     "BTI",
 				OutcomeID:   "leg-1",
 				OutcomeName: "Over 2.5",
-				Odds:        2.50,
+				Odds:        -0.67,
 				Stake:       0.5123,
 			},
 			{
@@ -47,7 +47,7 @@ Hết hạn 20:15:03
 <b>Cửa 1 | 8xbet / BTI</b> <code>-0.67</code>
 Cửa đối ứng: <b>Tài 2.5</b>
 Tỷ trọng vốn: <b>51.23%</b>
-Odds gốc: 2.50
+Odds gốc: -0.67
 
 <b>Cửa 2 | jun88 / SABA</b> <code>+1.93</code>
 Cửa đối ứng: <b>Xỉu 2.5</b>

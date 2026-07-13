@@ -2,6 +2,7 @@ import {
   BackendCollectorSink,
   envString,
   applyCollectorProxyProfile,
+  logCollectorProxyDebug,
   syncCollectorRuntimeConfig,
   type OddsDelta,
   type OddsSelection,
@@ -92,6 +93,8 @@ async function runWorker(sink: BackendCollectorSink) {
   if (runtimeConfig) {
     applyCollectorProxyProfile(runtimeConfig, "default");
   }
+
+  logCollectorProxyDebug("8xbet");
 
   const collector = new EightXBetCollector();
   let previous = new Map<string, OddsSelection>();

@@ -15,11 +15,6 @@ import (
 	"surebet/backend/internal/models"
 )
 
-const (
-	overUnderThreshold = 0.999
-	handicapThreshold  = 0.999
-)
-
 var (
 	linePattern          = regexp.MustCompile(`([+-]?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?)$`)
 	outcomeSuffixPattern = regexp.MustCompile(`(?i)\s+(over|under|home|away|đội nhà|đội khách)\s+[+-]?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?\s*$`)
@@ -50,9 +45,9 @@ func (detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models.S
 
 		switch bucket.marketKind {
 		case marketKindOverUnder:
-			opportunities = append(opportunities, detectTwoWaySurebets(bucket, sideOver, sideUnder, overUnderThreshold)...)
+			opportunities = append(opportunities, detectTwoWaySurebets(bucket, sideOver, sideUnder)...)
 		case marketKindHandicap:
-			opportunities = append(opportunities, detectTwoWaySurebets(bucket, sideHome, sideAway, handicapThreshold)...)
+			opportunities = append(opportunities, detectTwoWaySurebets(bucket, sideHome, sideAway)...)
 		}
 	}
 
@@ -92,7 +87,7 @@ type normalizedQuote struct {
 	lineKey               string
 	side                  outcomeSide
 	fixtureKey            string
-	decimalOdds           float64
+	malayRisk             float64
 	displayOdds           float64
 	canonicalParticipants [2]string
 }
@@ -121,7 +116,7 @@ func normalizeQuotes(quotes []models.OddsQuote) []normalizedQuote {
 			continue
 		}
 
-		decimal, ok := normalizeOdds(quote)
+		malayRisk, ok := normalizeMalayOdds(quote.Odds)
 		if !ok {
 			continue
 		}
@@ -139,7 +134,7 @@ func normalizeQuotes(quotes []models.OddsQuote) []normalizedQuote {
 			lineKey:               lineKey,
 			side:                  side,
 			fixtureKey:            fixtureKey,
-			decimalOdds:           decimal,
+			malayRisk:             malayRisk,
 			displayOdds:           quote.Odds,
 			canonicalParticipants: participants,
 		})
@@ -148,47 +143,16 @@ func normalizeQuotes(quotes []models.OddsQuote) []normalizedQuote {
 	return result
 }
 
-func normalizeOdds(quote models.OddsQuote) (float64, bool) {
-	value := quote.Odds
-	kind, _, _, _ := normalizeQuote(quote)
-
-	if quote.BookmakerID == "8xbet" {
-		switch {
-		case value > 1:
-			return value, true
-		case value > 0 && kind != marketKindOverUnder && kind != marketKindHandicap:
-			return value + 1, true
-		case value < 0 && kind != marketKindOverUnder && kind != marketKindHandicap:
-			return 1 + (1 / math.Abs(value)), true
-		default:
-			return 0, false
-		}
-	}
-
-	if kind == marketKindOverUnder || kind == marketKindHandicap {
-		return normalizeAsianOdds(value)
-	}
-
+func normalizeMalayOdds(value float64) (float64, bool) {
 	switch {
-	case value > 1:
-		return value, true
-	case value > 0:
-		return value + 1, true
-	case value < 0:
-		return 1 + (1 / math.Abs(value)), true
-	default:
+	case math.IsNaN(value), math.IsInf(value, 0):
 		return 0, false
-	}
-}
-
-func normalizeAsianOdds(value float64) (float64, bool) {
-	switch {
-	case value > 0:
-		return value + 1, true
-	case value < 0:
-		return 1 + (1 / math.Abs(value)), true
-	default:
+	case value >= 0:
 		return 0, false
+	case value <= -1:
+		return 0, false
+	default:
+		return math.Abs(value), true
 	}
 }
 
@@ -222,7 +186,7 @@ func groupQuotes(quotes []normalizedQuote) map[string]*quoteBucket {
 	return result
 }
 
-func detectTwoWaySurebets(bucket *quoteBucket, leftSide, rightSide outcomeSide, threshold float64) []models.SurebetOpportunity {
+func detectTwoWaySurebets(bucket *quoteBucket, leftSide, rightSide outcomeSide) []models.SurebetOpportunity {
 	leftQuotes := collectBestQuotes(bucket.quotes, leftSide)
 	rightQuotes := collectBestQuotes(bucket.quotes, rightSide)
 
@@ -233,25 +197,25 @@ func detectTwoWaySurebets(bucket *quoteBucket, leftSide, rightSide outcomeSide, 
 				continue
 			}
 
-			inv := (1 / left.decimalOdds) + (1 / right.decimalOdds)
-			if inv >= threshold {
+			combinedRisk := left.malayRisk + right.malayRisk
+			if combinedRisk <= 1 {
 				continue
 			}
 
-			profit := (1 - inv) * 100
-			if profit <= 0 {
+			expectedReturn := (2 / combinedRisk) - 1
+			if expectedReturn <= 0 {
 				continue
 			}
 
-			legs := buildLegs(left, right, inv)
+			legs := buildLegs(left, right, combinedRisk)
 			detectedAt := maxTime(left.quote.CollectedAt, right.quote.CollectedAt)
 			opportunities = append(opportunities, models.SurebetOpportunity{
 				ID:               opportunityID(bucket.fixtureKey, bucket.marketName, bucket.lineKey, left.quote.ID, right.quote.ID),
 				FixtureID:        bucket.fixtureKey,
 				Sport:            bucket.sport,
 				MarketName:       bucket.marketName,
-				ProfitPercentage: round(profit),
-				ExpectedReturn:   round(1 - inv),
+				ProfitPercentage: round(expectedReturn * 100),
+				ExpectedReturn:   round(expectedReturn),
 				Currency:         "",
 				DetectedAt:       detectedAt,
 				ExpiresAt:        detectedAt.Add(30 * time.Second),
@@ -271,16 +235,16 @@ func collectBestQuotes(quotes []normalizedQuote, targetSide outcomeSide) map[str
 		}
 
 		existing, ok := result[item.sourceKey]
-		if !ok || item.decimalOdds > existing.decimalOdds {
+		if !ok || item.malayRisk > existing.malayRisk {
 			result[item.sourceKey] = item
 		}
 	}
 	return result
 }
 
-func buildLegs(left, right normalizedQuote, inv float64) []models.SurebetLeg {
-	leftStake := (1 / left.decimalOdds) / inv
-	rightStake := (1 / right.decimalOdds) / inv
+func buildLegs(left, right normalizedQuote, combinedRisk float64) []models.SurebetLeg {
+	leftStake := left.malayRisk / combinedRisk
+	rightStake := right.malayRisk / combinedRisk
 
 	return []models.SurebetLeg{
 		{

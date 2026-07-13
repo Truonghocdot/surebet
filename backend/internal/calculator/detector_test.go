@@ -2,19 +2,20 @@ package calculator
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
 	"surebet/backend/internal/models"
 )
 
-func TestDetectOverUnderSurebet(t *testing.T) {
+func TestDetectMalayNegativeOverUnderSurebet(t *testing.T) {
 	detector := NewDetector()
 	now := time.Now().UTC()
 
 	quotes := []models.OddsQuote{
 		{
-			ID:          "a1",
+			ID:          "over-a",
 			BookmakerID: "book-a",
 			LobbyID:     "bti",
 			FixtureID:   "fixture-a",
@@ -22,11 +23,11 @@ func TestDetectOverUnderSurebet(t *testing.T) {
 			MarketName:  "Tài/Xỉu",
 			OutcomeID:   "over-a",
 			OutcomeName: "Arsenal vs Milan Over 2.5",
-			Odds:        0.95,
+			Odds:        -0.78,
 			CollectedAt: now,
 		},
 		{
-			ID:          "b1",
+			ID:          "under-b",
 			BookmakerID: "book-b",
 			LobbyID:     "cmd",
 			FixtureID:   "fixture-b",
@@ -46,41 +47,48 @@ func TestDetectOverUnderSurebet(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("expected 1 surebet, got %d", len(items))
 	}
-	if items[0].ProfitPercentage <= 0 {
-		t.Fatalf("expected positive profit, got %f", items[0].ProfitPercentage)
+
+	item := items[0]
+	assertAlmostEqual(t, item.ProfitPercentage, 19.0476)
+	assertAlmostEqual(t, item.ExpectedReturn, 0.1905)
+	if len(item.Legs) != 2 {
+		t.Fatalf("expected 2 legs, got %d", len(item.Legs))
 	}
-	if len(items[0].Legs) != 2 {
-		t.Fatalf("expected 2 legs, got %d", len(items[0].Legs))
-	}
+	assertAlmostEqual(t, item.Legs[0].Stake, 0.4643)
+	assertAlmostEqual(t, item.Legs[1].Stake, 0.5357)
 }
 
-func TestDetectHandicapSurebet(t *testing.T) {
+func TestDetectMalayNegativeHandicapSurebet(t *testing.T) {
 	detector := NewDetector()
 	now := time.Now().UTC()
 
 	quotes := []models.OddsQuote{
 		{
-			ID:          "a2",
+			ID:          "home-a",
 			BookmakerID: "book-a",
 			LobbyID:     "saba",
 			FixtureID:   "fixture-a",
+			HomeTeam:    "Arsenal",
+			AwayTeam:    "Milan",
 			MarketID:    "cu-o-c-cha-p",
 			MarketName:  "Cược chấp",
 			OutcomeID:   "home-a",
-			OutcomeName: "Arsenal vs Milan Home -0.5",
-			Odds:        0.97,
+			OutcomeName: "Arsenal -0.5",
+			Odds:        -0.73,
 			CollectedAt: now,
 		},
 		{
-			ID:          "b2",
+			ID:          "away-b",
 			BookmakerID: "book-b",
 			LobbyID:     "m9bet",
 			FixtureID:   "fixture-b",
+			HomeTeam:    "Arsenal",
+			AwayTeam:    "Milan",
 			MarketID:    "cu-o-c-cha-p",
 			MarketName:  "Cược chấp",
 			OutcomeID:   "away-b",
-			OutcomeName: "Arsenal vs Milan Away +0.5",
-			Odds:        -0.92,
+			OutcomeName: "Milan +0.5",
+			Odds:        -0.69,
 			CollectedAt: now,
 		},
 	}
@@ -94,33 +102,57 @@ func TestDetectHandicapSurebet(t *testing.T) {
 	}
 }
 
-func TestDetectIgnoresNonSurebet(t *testing.T) {
+func TestDetectIgnoresMixedSignsAndInsufficientMalayRisk(t *testing.T) {
 	detector := NewDetector()
 	now := time.Now().UTC()
 
 	quotes := []models.OddsQuote{
 		{
-			ID:          "a3",
+			ID:          "mixed-over",
 			BookmakerID: "book-a",
 			LobbyID:     "bti",
 			FixtureID:   "fixture-a",
 			MarketID:    "ta-i-xi-u",
 			MarketName:  "Tài/Xỉu",
-			OutcomeID:   "over-a",
+			OutcomeID:   "mixed-over",
 			OutcomeName: "PSG vs Dortmund Over 2.5",
-			Odds:        0.8,
+			Odds:        -0.62,
 			CollectedAt: now,
 		},
 		{
-			ID:          "b3",
+			ID:          "mixed-under",
 			BookmakerID: "book-b",
 			LobbyID:     "cmd",
 			FixtureID:   "fixture-b",
 			MarketID:    "ta-i-xi-u",
 			MarketName:  "Tài/Xỉu",
-			OutcomeID:   "under-b",
+			OutcomeID:   "mixed-under",
 			OutcomeName: "PSG vs Dortmund Under 2.5",
 			Odds:        0.82,
+			CollectedAt: now,
+		},
+		{
+			ID:          "small-home",
+			BookmakerID: "book-c",
+			LobbyID:     "saba",
+			FixtureID:   "fixture-c",
+			MarketID:    "cu-o-c-cha-p",
+			MarketName:  "Cược chấp",
+			OutcomeID:   "small-home",
+			OutcomeName: "PSG -0.5",
+			Odds:        -0.48,
+			CollectedAt: now,
+		},
+		{
+			ID:          "small-away",
+			BookmakerID: "book-d",
+			LobbyID:     "m9bet",
+			FixtureID:   "fixture-d",
+			MarketID:    "cu-o-c-cha-p",
+			MarketName:  "Cược chấp",
+			OutcomeID:   "small-away",
+			OutcomeName: "Dortmund +0.5",
+			Odds:        -0.50,
 			CollectedAt: now,
 		},
 	}
@@ -130,7 +162,7 @@ func TestDetectIgnoresNonSurebet(t *testing.T) {
 		t.Fatalf("detect returned error: %v", err)
 	}
 	if len(items) != 0 {
-		t.Fatalf("expected 0 surebet, got %d", len(items))
+		t.Fatalf("expected 0 surebets, got %d", len(items))
 	}
 }
 
@@ -144,35 +176,13 @@ func TestDetectAllowsDifferentLobbiesOfSameBookmaker(t *testing.T) {
 			BookmakerID: "jun88",
 			LobbyID:     "cmd",
 			FixtureID:   "fixture-a",
+			HomeTeam:    "Liverpool",
+			AwayTeam:    "Milan",
 			MarketID:    "ft-over-under",
 			MarketName:  "ft-over-under",
 			OutcomeID:   "cmd-over",
 			OutcomeName: "Over 3.5",
-			Odds:        0.98,
-			CollectedAt: now,
-		},
-		{
-			ID:          "cmd-home",
-			BookmakerID: "jun88",
-			LobbyID:     "cmd",
-			FixtureID:   "fixture-a",
-			MarketID:    "ft-handicap",
-			MarketName:  "ft-handicap",
-			OutcomeID:   "cmd-home",
-			OutcomeName: "Liverpool -0.5",
-			Odds:        0.82,
-			CollectedAt: now,
-		},
-		{
-			ID:          "cmd-away",
-			BookmakerID: "jun88",
-			LobbyID:     "cmd",
-			FixtureID:   "fixture-a",
-			MarketID:    "ft-handicap",
-			MarketName:  "ft-handicap",
-			OutcomeID:   "cmd-away",
-			OutcomeName: "Milan +0.5",
-			Odds:        0.84,
+			Odds:        -0.72,
 			CollectedAt: now,
 		},
 		{
@@ -180,35 +190,13 @@ func TestDetectAllowsDifferentLobbiesOfSameBookmaker(t *testing.T) {
 			BookmakerID: "jun88",
 			LobbyID:     "saba",
 			FixtureID:   "fixture-b",
+			HomeTeam:    "Liverpool",
+			AwayTeam:    "Milan",
 			MarketID:    "ta-i-xi-u",
 			MarketName:  "ta-i-xi-u",
 			OutcomeID:   "saba-under",
 			OutcomeName: "Xỉu 3.5",
-			Odds:        -0.9,
-			CollectedAt: now,
-		},
-		{
-			ID:          "saba-home",
-			BookmakerID: "jun88",
-			LobbyID:     "saba",
-			FixtureID:   "fixture-b",
-			MarketID:    "cu-o-c-cha-p",
-			MarketName:  "cu-o-c-cha-p",
-			OutcomeID:   "saba-home",
-			OutcomeName: "Liverpool -0.5",
-			Odds:        0.8,
-			CollectedAt: now,
-		},
-		{
-			ID:          "saba-away",
-			BookmakerID: "jun88",
-			LobbyID:     "saba",
-			FixtureID:   "fixture-b",
-			MarketID:    "cu-o-c-cha-p",
-			MarketName:  "cu-o-c-cha-p",
-			OutcomeID:   "saba-away",
-			OutcomeName: "Milan +0.5",
-			Odds:        0.8,
+			Odds:        -0.65,
 			CollectedAt: now,
 		},
 	}
@@ -241,7 +229,7 @@ func TestDetectUsesHomeAwayTeamsForOverUnderFixtureMatching(t *testing.T) {
 			MarketName:  "ft-over-under",
 			OutcomeID:   "cmd-over",
 			OutcomeName: "Over 3.5",
-			Odds:        0.98,
+			Odds:        -0.66,
 			CollectedAt: now,
 		},
 		{
@@ -255,7 +243,7 @@ func TestDetectUsesHomeAwayTeamsForOverUnderFixtureMatching(t *testing.T) {
 			MarketName:  "ft-over-under",
 			OutcomeID:   "saba-under",
 			OutcomeName: "Under 3.5",
-			Odds:        -0.9,
+			Odds:        -0.71,
 			CollectedAt: now,
 		},
 	}
@@ -266,94 +254,6 @@ func TestDetectUsesHomeAwayTeamsForOverUnderFixtureMatching(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Fatalf("expected 1 surebet matched by home/away teams, got %d", len(items))
-	}
-}
-
-func TestDetectTreatsAsianOddsOneAsDecimalTwo(t *testing.T) {
-	detector := NewDetector()
-	now := time.Now().UTC()
-
-	quotes := []models.OddsQuote{
-		{
-			ID:          "cmd-over",
-			BookmakerID: "jun88",
-			LobbyID:     "cmd",
-			FixtureID:   "fixture-a",
-			HomeTeam:    "USA (Uncle)",
-			AwayTeam:    "Scotland (v1nn)",
-			MarketID:    "ft-over-under",
-			MarketName:  "ft-over-under",
-			OutcomeID:   "cmd-over",
-			OutcomeName: "Over 6",
-			Odds:        1.00,
-			CollectedAt: now,
-		},
-		{
-			ID:          "saba-under",
-			BookmakerID: "jun88",
-			LobbyID:     "saba",
-			FixtureID:   "fixture-b",
-			HomeTeam:    "USA (Uncle)",
-			AwayTeam:    "Scotland (v1nn)",
-			MarketID:    "ft-over-under",
-			MarketName:  "ft-over-under",
-			OutcomeID:   "saba-under",
-			OutcomeName: "Under 6",
-			Odds:        -0.93,
-			CollectedAt: now,
-		},
-	}
-
-	items, err := detector.Detect(context.Background(), quotes)
-	if err != nil {
-		t.Fatalf("detect returned error: %v", err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("expected 1 surebet with asian odds 1.00 treated as decimal 2.00, got %d", len(items))
-	}
-}
-
-func TestDetectKeepsEightXBetDecimalOdds(t *testing.T) {
-	detector := NewDetector()
-	now := time.Now().UTC()
-
-	quotes := []models.OddsQuote{
-		{
-			ID:          "eight-home",
-			BookmakerID: "8xbet",
-			LobbyID:     "default",
-			FixtureID:   "eight-fixture",
-			HomeTeam:    "Gilla FC",
-			AwayTeam:    "HooGee",
-			MarketID:    "cu-o-c-cha-pcu-o-c-cha-p",
-			MarketName:  "Cược ChấpCược Chấp",
-			OutcomeID:   "eight-home",
-			OutcomeName: "Gilla FC -1",
-			Odds:        1.76,
-			CollectedAt: now,
-		},
-		{
-			ID:          "jun-away",
-			BookmakerID: "jun88",
-			LobbyID:     "cmd",
-			FixtureID:   "jun-fixture",
-			HomeTeam:    "Gilla FC",
-			AwayTeam:    "HooGee",
-			MarketID:    "ft-handicap",
-			MarketName:  "ft-handicap",
-			OutcomeID:   "jun-away",
-			OutcomeName: "HooGee +1",
-			Odds:        0.88,
-			CollectedAt: now,
-		},
-	}
-
-	items, err := detector.Detect(context.Background(), quotes)
-	if err != nil {
-		t.Fatalf("detect returned error: %v", err)
-	}
-	if len(items) != 0 {
-		t.Fatalf("expected 0 surebets when 8xbet decimal odds are kept as-is, got %d", len(items))
 	}
 }
 
@@ -371,31 +271,7 @@ func TestDetectSeparatesFullTimeAndFirstHalfMarkets(t *testing.T) {
 			MarketName:  "ft-over-under",
 			OutcomeID:   "ft-over",
 			OutcomeName: "Over 3.5",
-			Odds:        0.95,
-			CollectedAt: now,
-		},
-		{
-			ID:          "ft-home",
-			BookmakerID: "book-a",
-			LobbyID:     "cmd",
-			FixtureID:   "fixture-a",
-			MarketID:    "ft-handicap",
-			MarketName:  "ft-handicap",
-			OutcomeID:   "ft-home",
-			OutcomeName: "Arsenal -0.5",
-			Odds:        0.8,
-			CollectedAt: now,
-		},
-		{
-			ID:          "ft-away",
-			BookmakerID: "book-a",
-			LobbyID:     "cmd",
-			FixtureID:   "fixture-a",
-			MarketID:    "ft-handicap",
-			MarketName:  "ft-handicap",
-			OutcomeID:   "ft-away",
-			OutcomeName: "Milan +0.5",
-			Odds:        0.8,
+			Odds:        -0.73,
 			CollectedAt: now,
 		},
 		{
@@ -407,31 +283,7 @@ func TestDetectSeparatesFullTimeAndFirstHalfMarkets(t *testing.T) {
 			MarketName:  "1h-over-under",
 			OutcomeID:   "1h-under",
 			OutcomeName: "Under 3.5",
-			Odds:        0.95,
-			CollectedAt: now,
-		},
-		{
-			ID:          "1h-home",
-			BookmakerID: "book-b",
-			LobbyID:     "saba",
-			FixtureID:   "fixture-b",
-			MarketID:    "1h-handicap",
-			MarketName:  "1h-handicap",
-			OutcomeID:   "1h-home",
-			OutcomeName: "Arsenal -0.5",
-			Odds:        0.8,
-			CollectedAt: now,
-		},
-		{
-			ID:          "1h-away",
-			BookmakerID: "book-b",
-			LobbyID:     "saba",
-			FixtureID:   "fixture-b",
-			MarketID:    "1h-handicap",
-			MarketName:  "1h-handicap",
-			OutcomeID:   "1h-away",
-			OutcomeName: "Milan +0.5",
-			Odds:        0.8,
+			Odds:        -0.72,
 			CollectedAt: now,
 		},
 	}
@@ -442,5 +294,12 @@ func TestDetectSeparatesFullTimeAndFirstHalfMarkets(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("expected 0 surebets when only cross-period pairing is possible, got %d", len(items))
+	}
+}
+
+func assertAlmostEqual(t *testing.T, got, want float64) {
+	t.Helper()
+	if math.Abs(got-want) > 0.0002 {
+		t.Fatalf("expected %.4f, got %.4f", want, got)
 	}
 }

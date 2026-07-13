@@ -140,6 +140,7 @@ async function installEightXBetLocale(context: BrowserContext) {
       window.localStorage.setItem("i18nextLng", "vi-VN");
       window.localStorage.setItem("language", "vi-VN");
       window.localStorage.setItem("lang", "vi-VN");
+      window.localStorage.setItem("sport-market-type", "ML");
       window.sessionStorage.setItem("i18nextLng", "vi-VN");
       window.sessionStorage.setItem("language", "vi-VN");
       window.sessionStorage.setItem("lang", "vi-VN");

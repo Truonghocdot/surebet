@@ -106,6 +106,18 @@ export function collectorProxyDebugInfo(): CollectorProxyDebugInfo {
   return { mode };
 }
 
+export function logCollectorProxyDebug(collectorId: string) {
+  const proxy = collectorProxyDebugInfo();
+  console.log(
+    `[${collectorId}-worker] proxy debug: mode=${proxy.mode}` +
+      `${proxy.protocol ? ` protocol=${proxy.protocol}` : ""}` +
+      `${proxy.server ? ` server=${proxy.server}` : ""}` +
+      `${proxy.hasCredentials !== undefined ? ` has_credentials=${proxy.hasCredentials}` : ""}` +
+      `${proxy.proxyXoayKeyConfigured !== undefined ? ` proxyxoay_key_configured=${proxy.proxyXoayKeyConfigured}` : ""}` +
+      `${proxy.bypass ? ` bypass=${proxy.bypass}` : ""}`
+  );
+}
+
 function resolveProxyMode() {
   const explicit = envString("COLLECTOR_PROXY_MODE", "").trim().toLowerCase();
   if (explicit) {

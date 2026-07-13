@@ -1,9 +1,9 @@
 import {
   applyCollectorProxyProfile,
   BackendCollectorSink,
-  collectorProxyDebugInfo,
   createJun88LobbyCollector,
   envString,
+  logCollectorProxyDebug,
   syncCollectorRuntimeConfig,
   type LobbyCode,
   type OddsDelta,
@@ -117,18 +117,7 @@ async function runWorker(
   }
 
   const collector = createJun88LobbyCollector(collectorId, lobbyId);
-
-  if (lobbyId === "bti") {
-    const proxy = collectorProxyDebugInfo();
-    console.log(
-      `[${collectorId}-worker] proxy debug: mode=${proxy.mode}` +
-        `${proxy.protocol ? ` protocol=${proxy.protocol}` : ""}` +
-        `${proxy.server ? ` server=${proxy.server}` : ""}` +
-        `${proxy.hasCredentials !== undefined ? ` has_credentials=${proxy.hasCredentials}` : ""}` +
-        `${proxy.proxyXoayKeyConfigured !== undefined ? ` proxyxoay_key_configured=${proxy.proxyXoayKeyConfigured}` : ""}` +
-        `${proxy.bypass ? ` bypass=${proxy.bypass}` : ""}`
-    );
-  }
+  logCollectorProxyDebug(collectorId);
 
   if ("stream" in collector && typeof collector.stream === "function") {
     console.log(`[${collectorId}-worker] starting in streaming mode`);

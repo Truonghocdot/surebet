@@ -108,7 +108,7 @@ func deriveTelegramOpportunityPresentation(item dto.SurebetView) formattedOpport
 
 		legs = append(legs, formattedSurebetLeg{
 			SurebetLegView: leg,
-			MoneyOdds:      convertTelegramMoneyOdds(leg.BookmakerID, leg.Odds),
+			MoneyOdds:      convertTelegramMoneyOdds(leg.Odds),
 			DisplayOutcome: deriveTelegramOutcomeDisplayLabel(leg, item),
 		})
 	}
@@ -213,26 +213,12 @@ func extractTelegramLine(value string) string {
 	return match[1]
 }
 
-func convertTelegramMoneyOdds(bookmakerID string, rawOdds float64) float64 {
+func convertTelegramMoneyOdds(rawOdds float64) float64 {
 	if !isFiniteTelegramNumber(rawOdds) {
 		return 0
 	}
 
-	if strings.EqualFold(strings.TrimSpace(bookmakerID), "8xbet") {
-		return roundTelegramMoneyOdds(decimalToTelegramMalayOdds(rawOdds))
-	}
-
 	return roundTelegramMoneyOdds(rawOdds)
-}
-
-func decimalToTelegramMalayOdds(decimalOdds float64) float64 {
-	if !isFiniteTelegramNumber(decimalOdds) || decimalOdds <= 0 {
-		return 0
-	}
-	if decimalOdds >= 2 {
-		return -(1 / (decimalOdds - 1))
-	}
-	return decimalOdds - 1
 }
 
 func roundTelegramMoneyOdds(value float64) float64 {
