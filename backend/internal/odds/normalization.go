@@ -58,6 +58,7 @@ func normalizeViewPeriod(marketID, marketName string) string {
 	combined := canonicalViewText(marketID + " " + marketName)
 	switch {
 	case strings.Contains(combined, "1h"),
+		hasCanonicalViewToken(combined, "1st"),
 		strings.Contains(combined, "1st half"),
 		strings.Contains(combined, "first half"),
 		strings.Contains(combined, "hiep 1"):
@@ -72,11 +73,14 @@ func normalizeViewMarketType(marketID, marketName string) string {
 	switch {
 	case strings.Contains(combined, "over under"),
 		strings.Contains(combined, "ta i xi u"),
-		strings.Contains(combined, "tai xiu"):
+		strings.Contains(combined, "tai xiu"),
+		hasCanonicalViewToken(combined, "ou"):
 		return viewMarketOverUnder
 	case strings.Contains(combined, "handicap"),
 		strings.Contains(combined, "cu o c cha p"),
-		strings.Contains(combined, "run line"):
+		strings.Contains(combined, "run line"),
+		hasCanonicalViewToken(combined, "ah"),
+		hasCanonicalViewToken(combined, "hdp"):
 		return viewMarketHandicap
 	case strings.Contains(combined, "1x2"),
 		strings.Contains(combined, "winner"),
@@ -212,4 +216,13 @@ func canonicalViewText(value string) string {
 	normalized = viewSeparatorNormalizer.ReplaceAllString(normalized, " ")
 	normalized = viewWhitespacePattern.ReplaceAllString(normalized, " ")
 	return strings.TrimSpace(normalized)
+}
+
+func hasCanonicalViewToken(value, token string) bool {
+	for _, current := range strings.Fields(value) {
+		if current == token {
+			return true
+		}
+	}
+	return false
 }
