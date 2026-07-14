@@ -46,7 +46,7 @@ func main() {
 	)
 	surebetQuery := surebet.NewQueryService(
 		oddsSnapshotRepository,
-		calculator.NewDetector(),
+		calculator.NewDetectorWithLogger(log),
 	)
 	telegramNotifier := telegram.NewNotifier(
 		cfg.Telegram,

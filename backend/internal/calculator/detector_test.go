@@ -2,10 +2,12 @@ package calculator
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
+	"surebet/backend/internal/logger"
 	"surebet/backend/internal/models"
 )
 
@@ -334,6 +336,53 @@ func TestDetectSeparatesFullTimeAndFirstHalfMarkets(t *testing.T) {
 	}
 }
 
+func TestDetectRecognizesEightXBetStyleFirstHalfMarketCodes(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuoteWithMarket(now, "ft-over", "8xbet", "default", "Arsenal", "Milan", "tai-xiu-ou", "Over 2.5", -0.5),
+		testQuoteWithMarket(now, "1h-under", "jun88", "cmd", "Arsenal", "Milan", "tai-xiu-ou-1st", "Under 2.5", -0.5),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected first-half marketCode token to separate 8xbet-style markets, got %+v", items)
+	}
+}
+
+func TestDetectLogsRejectCountersBySource(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	log := &recordingDetectorLogger{}
+	detector := newDetectorWithLogger(func() time.Time { return now }, log)
+	quotes := []models.OddsQuote{
+		testQuote(now, "bad-odds", "8xbet", "default", "Arsenal", "Milan", "", "Over 2.5", 1.92),
+		testQuote(now, "missing-identity", "8xbet", "default", "", "Milan", "", "Over 2.5", -0.5),
+		testHandicapQuote(now, "participant-mismatch", "8xbet", "default", "Arsenal", "Milan", "Draw -0.5", -0.5),
+		testHandicapQuote(now, "left", "8xbet", "default", "Arsenal", "Milan", "Arsenal -0.5", -0.5),
+		testHandicapQuote(now, "right", "jun88", "cmd", "Arsenal", "Milan", "Milan -0.5", -0.5),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected rejects-only set to produce no opportunities, got %+v", items)
+	}
+
+	eightXBetEntry := log.findInfo("8xbet", "default")
+	if eightXBetEntry == nil {
+		t.Fatalf("expected detector reject log for 8xbet, got %+v", log.infos)
+	}
+
+	eightXBetFields := infoFieldMap(eightXBetEntry.fields)
+	assertFieldCount(t, eightXBetFields, "unsupported_odds", 1)
+	assertFieldCount(t, eightXBetFields, "missing_identity", 1)
+	assertFieldCount(t, eightXBetFields, "participant_mismatch", 1)
+	assertFieldCount(t, eightXBetFields, "non_opposite_handicap_line", 1)
+
+	jun88Entry := log.findInfo("jun88", "cmd")
+	if jun88Entry == nil {
+		t.Fatalf("expected detector reject log for jun88/cmd, got %+v", log.infos)
+	}
+	assertFieldCount(t, infoFieldMap(jun88Entry.fields), "non_opposite_handicap_line", 1)
+}
+
 func detect(t *testing.T, detector Detector, quotes []models.OddsQuote) []models.SurebetOpportunity {
 	t.Helper()
 	items, err := detector.Detect(context.Background(), quotes)
@@ -443,5 +492,52 @@ func assertAlmostEqual(t *testing.T, got, want float64) {
 	t.Helper()
 	if math.Abs(got-want) > 0.0002 {
 		t.Fatalf("expected %.4f, got %.4f", want, got)
+	}
+}
+
+type detectorInfoEntry struct {
+	message string
+	fields  []any
+}
+
+type recordingDetectorLogger struct {
+	infos []detectorInfoEntry
+}
+
+func (l *recordingDetectorLogger) With(...any) logger.Logger {
+	return l
+}
+
+func (l *recordingDetectorLogger) Info(message string, fields ...any) {
+	l.infos = append(l.infos, detectorInfoEntry{message: message, fields: fields})
+}
+
+func (l *recordingDetectorLogger) Warn(string, ...any) {}
+
+func (l *recordingDetectorLogger) Error(string, ...any) {}
+
+func (l *recordingDetectorLogger) findInfo(bookmakerID, lobbyID string) *detectorInfoEntry {
+	for index := range l.infos {
+		fields := infoFieldMap(l.infos[index].fields)
+		if fields["bookmaker_id"] == bookmakerID && fields["lobby_id"] == lobbyID {
+			return &l.infos[index]
+		}
+	}
+	return nil
+}
+
+func infoFieldMap(fields []any) map[string]string {
+	result := make(map[string]string)
+	for index := 0; index+1 < len(fields); index += 2 {
+		result[fmt.Sprint(fields[index])] = fmt.Sprint(fields[index+1])
+	}
+	return result
+}
+
+func assertFieldCount(t *testing.T, fields map[string]string, key string, want int) {
+	t.Helper()
+	got := fields[key]
+	if got != fmt.Sprint(want) {
+		t.Fatalf("expected %s=%d, got %q in %+v", key, want, got, fields)
 	}
 }

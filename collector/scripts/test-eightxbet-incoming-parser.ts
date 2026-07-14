@@ -28,13 +28,21 @@ async function main() {
   const awayHandicap = snapshot.selections.find(
     (selection) =>
       selection.fixtureId === "4658513" &&
-      selection.marketId === "cu-o-c-cha-p-cu-o-c-cha-p" &&
+      selection.marketId === "cu-o-c-cha-p-ah" &&
       selection.outcomeName.includes("RoPS Rovaniemi")
   );
   if (!awayHandicap?.outcomeName.includes("-1/1.5")) {
     throw new Error(
       `8xbet incoming parser should preserve away handicap sign, got ${awayHandicap?.outcomeName ?? "missing"}`
     );
+  }
+
+  const firstHalfHandicap = snapshot.selections.find(
+    (selection) =>
+      selection.fixtureId === "4658513" && selection.marketId === "cu-o-c-cha-p-ah-1st"
+  );
+  if (!firstHalfHandicap) {
+    throw new Error("8xbet parser should keep marketCode in first-half market ids.");
   }
 
   const inplaySnapshot = parseEightXBetIncomingSnapshot(

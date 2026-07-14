@@ -56,7 +56,7 @@ function parseMatchCard(cardNode: HTMLElement, options: { forceLive: boolean }) 
     cardNode.querySelectorAll('[data-testid="sport-simple-asia-odds-layout"]')
   ) as HTMLElement[];
   const headers = Array.from(cardNode.querySelectorAll('[data-testid="sport-hover-popover"]'))
-    .map((node) => textContent(node))
+    .map((node) => extractMarketHeader(node as HTMLElement))
     .filter(Boolean);
 
   const selections: OddsSelection[] = [];
@@ -150,6 +150,7 @@ function parseOddsButton(
     context.awayTeam,
     line
   );
+  const marketId = resolveMarketID(context.marketName, marketCode);
 
   return {
     fixtureId: context.fixtureId,
@@ -158,13 +159,24 @@ function parseOddsButton(
     leagueName: context.leagueName,
     matchState: context.matchState,
     eventStartAt: context.eventStartAt,
-    marketId: normalizeToken(context.marketName),
-    outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(outcomeName)}`,
+    marketId,
+    outcomeId: `${context.fixtureId}:${marketId}:${normalizeToken(outcomeName)}`,
     outcomeName,
     odds,
     availableStake: 0,
     suspended: buttonNode.className.includes("cursor-default")
   } satisfies OddsSelection;
+}
+
+function extractMarketHeader(node: HTMLElement) {
+  const visibleLabel =
+    textContent(node.querySelector(".line-clamp-1")) ||
+    textContent(node.querySelector(".line-clamp-2"));
+  if (visibleLabel) {
+    return visibleLabel;
+  }
+
+  return dedupeRepeatedLabel(textContent(node));
 }
 
 function resolveOutcomeName(
@@ -304,7 +316,23 @@ function formatOutcome(base: string, line: string) {
 }
 
 function sanitizeOuLine(line: string) {
-  return line.replace(/^(O|U)\s+/i, "").replace(/^(O|U)$/i, "").trim();
+  return line
+    .replace(/^(O|U|Tai|Xiu|Tài|Xỉu)\s+/i, "")
+    .replace(/^(O|U|Tai|Xiu|Tài|Xỉu)$/i, "")
+    .trim();
+}
+
+function resolveMarketID(marketName: string, marketCode: string) {
+  const normalizedName = normalizeToken(dedupeRepeatedLabel(normalizeRawText(marketName)));
+  const normalizedCode = normalizeToken(marketCode);
+
+  if (normalizedName && normalizedCode) {
+    return `${normalizedName}-${normalizedCode}`;
+  }
+  if (normalizedName) {
+    return normalizedName;
+  }
+  return normalizedCode;
 }
 
 function stableFixtureId(input: string) {
@@ -349,4 +377,23 @@ function isLikelyParticipantName(value: string) {
   }
 
   return true;
+}
+
+function dedupeRepeatedLabel(value: string) {
+  const normalized = normalizeRawText(value);
+  if (!normalized) {
+    return "";
+  }
+
+  const tokens = normalized.split(" ");
+  if (tokens.length > 1 && tokens.length % 2 === 0) {
+    const midpoint = tokens.length / 2;
+    const left = tokens.slice(0, midpoint).join(" ");
+    const right = tokens.slice(midpoint).join(" ");
+    if (left === right) {
+      return left;
+    }
+  }
+
+  return normalized;
 }

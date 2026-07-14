@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
+	"surebet/backend/internal/logger"
 	"surebet/backend/internal/models"
 )
 
@@ -32,20 +33,31 @@ var (
 
 type detector struct {
 	now func() time.Time
+	log logger.Logger
 }
 
 func NewDetector() Detector {
 	return detector{now: time.Now}
 }
 
+func NewDetectorWithLogger(log logger.Logger) Detector {
+	return detector{now: time.Now, log: log}
+}
+
 func newDetector(now func() time.Time) detector {
 	return detector{now: now}
 }
 
+func newDetectorWithLogger(now func() time.Time, log logger.Logger) detector {
+	return detector{now: now, log: log}
+}
+
 func (d detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models.SurebetOpportunity, error) {
 	now := d.now().UTC()
-	normalized := normalizeQuotes(now, quotes)
+	stats := newDetectorRunStats()
+	normalized := normalizeQuotes(now, quotes, stats)
 	if len(normalized) == 0 {
+		stats.logRejects(d.log)
 		return nil, nil
 	}
 
@@ -61,7 +73,7 @@ func (d detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models
 		case marketKindOverUnder:
 			opportunities = append(opportunities, detectOverUnderSurebets(bucket, now)...)
 		case marketKindHandicap:
-			opportunities = append(opportunities, detectHandicapSurebets(bucket, now)...)
+			opportunities = append(opportunities, detectHandicapSurebets(bucket, now, stats)...)
 		}
 	}
 
@@ -72,6 +84,7 @@ func (d detector) Detect(_ context.Context, quotes []models.OddsQuote) ([]models
 		return opportunities[i].ProfitPercentage > opportunities[j].ProfitPercentage
 	})
 
+	stats.logRejects(d.log)
 	return opportunities, nil
 }
 
@@ -125,31 +138,126 @@ type quoteBucket struct {
 	quotes     []normalizedQuote
 }
 
-func normalizeQuotes(now time.Time, quotes []models.OddsQuote) []normalizedQuote {
+type detectorRejectReason string
+
+const (
+	rejectReasonMissingIdentity         detectorRejectReason = "missing_identity"
+	rejectReasonUnsupportedOdds         detectorRejectReason = "unsupported_odds"
+	rejectReasonParticipantMismatch     detectorRejectReason = "participant_mismatch"
+	rejectReasonNonOppositeHandicapLine detectorRejectReason = "non_opposite_handicap_line"
+)
+
+var detectorRejectReasonOrder = []detectorRejectReason{
+	rejectReasonMissingIdentity,
+	rejectReasonUnsupportedOdds,
+	rejectReasonParticipantMismatch,
+	rejectReasonNonOppositeHandicapLine,
+}
+
+type detectorRunStats struct {
+	rejects map[string]map[detectorRejectReason]int
+}
+
+func newDetectorRunStats() *detectorRunStats {
+	return &detectorRunStats{
+		rejects: make(map[string]map[detectorRejectReason]int),
+	}
+}
+
+func (s *detectorRunStats) increment(sourceKey string, reason detectorRejectReason) {
+	if s == nil || sourceKey == "" || reason == "" {
+		return
+	}
+
+	if s.rejects[sourceKey] == nil {
+		s.rejects[sourceKey] = make(map[detectorRejectReason]int)
+	}
+	s.rejects[sourceKey][reason]++
+}
+
+func (s *detectorRunStats) logRejects(log logger.Logger) {
+	if s == nil || log == nil || len(s.rejects) == 0 {
+		return
+	}
+
+	sourceKeys := make([]string, 0, len(s.rejects))
+	for sourceKey := range s.rejects {
+		sourceKeys = append(sourceKeys, sourceKey)
+	}
+	sort.Strings(sourceKeys)
+
+	for _, sourceKey := range sourceKeys {
+		counters := s.rejects[sourceKey]
+		if len(counters) == 0 {
+			continue
+		}
+
+		fields := make([]any, 0, 6+len(detectorRejectReasonOrder)*2)
+		parts := strings.SplitN(sourceKey, "|", 2)
+		if len(parts) == 2 {
+			fields = append(fields,
+				"bookmaker_id", parts[0],
+				"lobby_id", parts[1],
+			)
+		} else {
+			fields = append(fields, "source_key", sourceKey)
+		}
+
+		total := 0
+		for _, reason := range detectorRejectReasonOrder {
+			count := counters[reason]
+			if count == 0 {
+				continue
+			}
+
+			total += count
+			fields = append(fields, string(reason), count)
+		}
+		if total == 0 {
+			continue
+		}
+
+		fields = append(fields, "total_rejects", total)
+		log.Info("detector rejected quotes", fields...)
+	}
+}
+
+func normalizeQuotes(
+	now time.Time,
+	quotes []models.OddsQuote,
+	stats *detectorRunStats,
+) []normalizedQuote {
 	result := make([]normalizedQuote, 0, len(quotes))
 	for _, quote := range quotes {
+		sourceKey := quoteSourceKey(quote)
 		if quote.Suspended || !isFreshQuote(now, quote.CollectedAt) {
 			continue
 		}
 
 		event, ok := normalizeEventIdentity(quote)
 		if !ok {
+			stats.increment(sourceKey, rejectReasonMissingIdentity)
 			continue
 		}
 
 		decimalOdds, ok := normalizeMalayOdds(quote.Odds)
 		if !ok {
+			stats.increment(sourceKey, rejectReasonUnsupportedOdds)
 			continue
 		}
 
-		marketKind, periodKey, line, side, participant, ok := normalizeQuote(quote, event)
+		marketKind, periodKey, line, side, participant, rejectReason, ok := normalizeQuote(
+			quote,
+			event,
+		)
 		if !ok {
+			stats.increment(sourceKey, rejectReason)
 			continue
 		}
 
 		result = append(result, normalizedQuote{
 			quote:              quote,
-			sourceKey:          quoteSourceKey(quote),
+			sourceKey:          sourceKey,
 			marketKind:         marketKind,
 			periodKey:          periodKey,
 			line:               line,
@@ -209,15 +317,15 @@ func normalizeMalayOdds(value float64) (float64, bool) {
 func normalizeQuote(
 	quote models.OddsQuote,
 	event eventIdentity,
-) (marketKind, string, normalizedLine, outcomeSide, string, bool) {
+) (marketKind, string, normalizedLine, outcomeSide, string, detectorRejectReason, bool) {
 	kind := normalizeMarketKind(quote.MarketID, quote.MarketName)
 	if kind == marketKindUnknown {
-		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", "", false
 	}
 
 	line, ok := parseNormalizedLine(quote.OutcomeName)
 	if !ok {
-		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", "", false
 	}
 
 	periodKey := normalizeMarketPeriod(quote.MarketID, quote.MarketName)
@@ -226,17 +334,17 @@ func normalizeQuote(
 	case marketKindOverUnder:
 		side := detectOverUnderSide(name)
 		if side == sideUnknown {
-			return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+			return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", "", false
 		}
-		return kind, periodKey, line, side, "", true
+		return kind, periodKey, line, side, "", "", true
 	case marketKindHandicap:
 		participant := participantCandidate(quote.OutcomeName)
 		if participant != event.participants[0] && participant != event.participants[1] {
-			return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+			return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", rejectReasonParticipantMismatch, false
 		}
-		return kind, periodKey, line, sideUnknown, participant, true
+		return kind, periodKey, line, sideUnknown, participant, "", true
 	default:
-		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", false
+		return marketKindUnknown, "", normalizedLine{}, sideUnknown, "", "", false
 	}
 }
 
@@ -246,12 +354,14 @@ func normalizeMarketKind(marketID, marketName string) marketKind {
 	case strings.Contains(combined, "over under"),
 		strings.Contains(combined, "ta i xi u"),
 		strings.Contains(combined, "tai xiu"),
-		strings.Contains(combined, "o u"):
+		strings.Contains(combined, "o u"),
+		hasCanonicalToken(combined, "ou"):
 		return marketKindOverUnder
 	case strings.Contains(combined, "handicap"),
 		strings.Contains(combined, "cu o c cha p"),
 		strings.Contains(combined, "cuoc chap"),
-		strings.Contains(combined, "chap chau a"):
+		strings.Contains(combined, "chap chau a"),
+		hasCanonicalToken(combined, "ah"):
 		return marketKindHandicap
 	default:
 		return marketKindUnknown
@@ -323,7 +433,11 @@ func collectBestOverUnderQuotes(quotes []normalizedQuote, targetSide outcomeSide
 	return result
 }
 
-func detectHandicapSurebets(bucket *quoteBucket, now time.Time) []models.SurebetOpportunity {
+func detectHandicapSurebets(
+	bucket *quoteBucket,
+	now time.Time,
+	stats *detectorRunStats,
+) []models.SurebetOpportunity {
 	bestBySourceAndParticipant := make(map[string]normalizedQuote)
 	for _, item := range bucket.quotes {
 		key := sourceEventKey(item) + "\x00" + item.participant
@@ -350,8 +464,12 @@ func detectHandicapSurebets(bucket *quoteBucket, now time.Time) []models.Surebet
 			left, right := quotes[i], quotes[j]
 			if sameSource(left, right) ||
 				left.participant == right.participant ||
-				!sameEvent(left.event, right.event) ||
-				!areOppositeHandicapLines(left.line, right.line) {
+				!sameEvent(left.event, right.event) {
+				continue
+			}
+			if !areOppositeHandicapLines(left.line, right.line) {
+				stats.increment(left.sourceKey, rejectReasonNonOppositeHandicapLine)
+				stats.increment(right.sourceKey, rejectReasonNonOppositeHandicapLine)
 				continue
 			}
 			if opportunity, ok := buildOpportunity(bucket, left, right, now); ok {
@@ -476,6 +594,7 @@ func normalizeMarketPeriod(marketID, marketName string) string {
 	combined := canonicalText(marketID + " " + marketName)
 	switch {
 	case strings.Contains(combined, "1h"),
+		hasCanonicalToken(combined, "1st"),
 		strings.Contains(combined, "1st half"),
 		strings.Contains(combined, "first half"),
 		strings.Contains(combined, "hiep 1"):
@@ -587,6 +706,15 @@ func canonicalText(value string) string {
 	normalized = separatorNormalizer.ReplaceAllString(normalized, " ")
 	normalized = whitespacePattern.ReplaceAllString(normalized, " ")
 	return strings.TrimSpace(normalized)
+}
+
+func hasCanonicalToken(value, token string) bool {
+	for _, current := range strings.Fields(value) {
+		if current == token {
+			return true
+		}
+	}
+	return false
 }
 
 func detectOverUnderSide(name string) outcomeSide {
