@@ -4,7 +4,7 @@ import { writeDebugArtifacts } from "../core/debug.js";
 import { envInt } from "../core/env.js";
 import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
 import { parseEightXBetIncomingSnapshot } from "./parsers/eightxbet-incoming-parser.js";
-import { pageReloadIntervalMs } from "./streaming-utils.js";
+import { browserRecycleIntervalMs, pageReloadIntervalMs } from "./streaming-utils.js";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
@@ -29,6 +29,7 @@ export class EightXBetRuntime implements CollectorRuntime {
   private page: Page | null = null;
   private targetURL = "";
   private lastPageReloadAt = 0;
+  private sessionStartedAt = 0;
 
   constructor(private readonly collectorId: string) {}
 
@@ -59,12 +60,20 @@ export class EightXBetRuntime implements CollectorRuntime {
       return snapshot;
     } catch (error) {
       await writeDebugArtifacts(page, `${this.collectorId}-collect-failed`);
-      await this.resetPage();
+      await this.resetPage(true);
       throw error;
     }
   }
 
   private async ensurePage(targetURL: string) {
+    if (
+      this.sessionStartedAt > 0 &&
+      Date.now() - this.sessionStartedAt >= browserRecycleIntervalMs()
+    ) {
+      console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
+      await this.resetPage(true);
+    }
+
     if (
       this.page &&
       !this.page.isClosed() &&
@@ -96,6 +105,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     await bootstrapEightXBetPreferences(page, targetURL);
     await page.goto(targetURL, { waitUntil: "domcontentloaded" });
     this.lastPageReloadAt = Date.now();
+    this.sessionStartedAt = Date.now();
     return page;
   }
 
@@ -108,13 +118,17 @@ export class EightXBetRuntime implements CollectorRuntime {
     this.lastPageReloadAt = Date.now();
   }
 
-  private async resetPage() {
+  private async resetPage(closeBrowser = false) {
     const context = this.context;
     this.context = null;
     this.page = null;
     this.targetURL = "";
     this.lastPageReloadAt = 0;
+    this.sessionStartedAt = 0;
     await context?.close().catch(() => undefined);
+    if (closeBrowser) {
+      await closeSharedBrowser();
+    }
   }
 }
 
@@ -141,6 +155,12 @@ async function getSharedBrowser() {
   }
 
   return sharedBrowserPromise;
+}
+
+async function closeSharedBrowser() {
+  const browser = sharedBrowser;
+  sharedBrowser = null;
+  await browser?.close().catch(() => undefined);
 }
 
 async function installEightXBetLocale(context: BrowserContext) {

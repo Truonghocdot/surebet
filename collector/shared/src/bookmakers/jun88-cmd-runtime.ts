@@ -14,6 +14,7 @@ import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
 import {
   assertSnapshotHasSelections,
+  browserRecycleIntervalMs,
   buildDeltas,
   heartbeatIntervalMs,
   heartbeatOf,
@@ -52,13 +53,20 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         await installCmdObserver(target, initialSnapshot);
         let activeSnapshot = initialSnapshot;
+        const sessionStartedAt = Date.now();
         let lastHeartbeatAt = Date.now();
         let lastReloadAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
         const pollIntervalMs = streamPollIntervalMs();
         const reloadIntervalMs = pageReloadIntervalMs();
+        const recycleIntervalMs = browserRecycleIntervalMs();
 
         while (!page.isClosed()) {
+          if (Date.now() - sessionStartedAt >= recycleIntervalMs) {
+            console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
+            return;
+          }
+
           if (Date.now() - lastReloadAt >= reloadIntervalMs) {
             await page.reload({ waitUntil: "domcontentloaded" });
             target = await resolveCmdContentTarget(page);

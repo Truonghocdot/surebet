@@ -11,6 +11,7 @@ import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88SabaSnapshot } from "./parsers/jun88-ibc-parser.js";
 import {
   assertSnapshotHasSelections,
+  browserRecycleIntervalMs,
   buildDeltas,
   heartbeatIntervalMs,
   heartbeatOf,
@@ -50,14 +51,21 @@ export class Jun88SabaRuntime implements StreamingCollectorRuntime {
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
 
         let activeSnapshot = initialSnapshot;
+        const sessionStartedAt = Date.now();
         let lastHeartbeatAt = Date.now();
         let lastReloadAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
         const pollIntervalMs = streamPollIntervalMs();
         const reloadIntervalMs = pageReloadIntervalMs();
+        const recycleIntervalMs = browserRecycleIntervalMs();
         await installSabaObserver(target, initialSnapshot);
 
         while (!page.isClosed()) {
+          if (Date.now() - sessionStartedAt >= recycleIntervalMs) {
+            console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
+            return;
+          }
+
           if (Date.now() - lastReloadAt >= reloadIntervalMs) {
             await page.reload({ waitUntil: "domcontentloaded" });
             target = await resolveContentTarget(page);

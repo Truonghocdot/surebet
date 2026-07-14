@@ -12,6 +12,7 @@ import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88M9BetSnapshot } from "./parsers/jun88-m8-parser.js";
 import {
   assertSnapshotHasSelections,
+  browserRecycleIntervalMs,
   buildDeltas,
   heartbeatIntervalMs,
   heartbeatOf,
@@ -54,13 +55,20 @@ export class Jun88M9BetRuntime implements StreamingCollectorRuntime {
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         await installM9BetObserver(target, initialSnapshot);
         let activeSnapshot = initialSnapshot;
+        const sessionStartedAt = Date.now();
         let lastHeartbeatAt = Date.now();
         let lastReloadAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
         const pollIntervalMs = streamPollIntervalMs();
         const reloadIntervalMs = pageReloadIntervalMs();
+        const recycleIntervalMs = browserRecycleIntervalMs();
 
         while (!page.isClosed()) {
+          if (Date.now() - sessionStartedAt >= recycleIntervalMs) {
+            console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
+            return;
+          }
+
           if (Date.now() - lastReloadAt >= reloadIntervalMs) {
             await page.reload({ waitUntil: "domcontentloaded" });
             target = await resolveM9BetContentTarget(page);

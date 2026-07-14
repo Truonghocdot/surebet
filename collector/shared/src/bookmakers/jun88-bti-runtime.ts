@@ -12,6 +12,7 @@ import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88BtiSnapshot } from "./parsers/jun88-bti-parser.js";
 import {
   assertSnapshotHasSelections,
+  browserRecycleIntervalMs,
   buildDeltas,
   heartbeatIntervalMs,
   pageReloadIntervalMs,
@@ -48,13 +49,20 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
         await installBtiObserver(page, initialSnapshot);
 
         let activeSnapshot = initialSnapshot;
+        const sessionStartedAt = Date.now();
         let lastHeartbeatAt = Date.now();
         let lastReloadAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
         const pollIntervalMs = streamPollIntervalMs();
         const reloadIntervalMs = pageReloadIntervalMs();
+        const recycleIntervalMs = browserRecycleIntervalMs();
 
         while (!page.isClosed()) {
+          if (Date.now() - sessionStartedAt >= recycleIntervalMs) {
+            console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
+            return;
+          }
+
           if (Date.now() - lastReloadAt >= reloadIntervalMs) {
             await page.reload({ waitUntil: "domcontentloaded" });
             await page.waitForSelector(".master_fe_Event_match", { timeout: 20_000 });

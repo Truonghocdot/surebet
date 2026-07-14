@@ -15,6 +15,10 @@ export function pageReloadIntervalMs() {
   return Math.max(envInt("COLLECT_PAGE_RELOAD_MS", 30_000), 1_000);
 }
 
+export function browserRecycleIntervalMs() {
+  return Math.max(envInt("COLLECT_BROWSER_RECYCLE_MS", 300_000), 60_000);
+}
+
 export function heartbeatIntervalMs() {
   return Math.max(envInt("COLLECT_HEARTBEAT_MS", 15_000), 1_000);
 }
