@@ -3,6 +3,7 @@ import {
   envString,
   applyCollectorProxyProfile,
   logCollectorProxyDebug,
+  pageReloadIntervalMs,
   syncCollectorRuntimeConfig,
   type OddsDelta,
   type OddsSelection,
@@ -102,6 +103,8 @@ async function runWorker(sink: BackendCollectorSink) {
   let previous = new Map<string, OddsSelection>();
   let initialized = false;
   let lastHeartbeatAt = 0;
+  let lastBootstrapAt = 0;
+  const snapshotRefreshMs = pageReloadIntervalMs();
 
   while (true) {
     const startedAt = Date.now();
@@ -109,13 +112,30 @@ async function runWorker(sink: BackendCollectorSink) {
     try {
       const snapshot = await collector.collect();
 
+      const next = selectionMap(snapshot);
+      const shouldRefreshSnapshot =
+        !initialized || Date.now() - lastBootstrapAt >= snapshotRefreshMs;
+
       if (!initialized) {
         console.log("[8xbet-worker] pushing bootstrap...");
         await sink.pushBootstrap(snapshot);
-        previous = selectionMap(snapshot);
+        previous = next;
         initialized = true;
+        lastBootstrapAt = Date.now();
+      } else if (shouldRefreshSnapshot) {
+        console.log("[8xbet-worker] refreshing snapshot after page reload interval...");
+        await sink.pushBootstrap(snapshot);
+
+        const removed = buildDeltas(snapshot, previous, next).filter(
+          (delta) => delta.op === "remove"
+        );
+        if (removed.length > 0) {
+          await sink.pushDelta(removed);
+        }
+
+        previous = next;
+        lastBootstrapAt = Date.now();
       } else {
-        const next = selectionMap(snapshot);
         const deltas = buildDeltas(snapshot, previous, next);
         if (deltas.length > 0) {
           console.log(`[8xbet-worker] pushing ${deltas.length} deltas...`);

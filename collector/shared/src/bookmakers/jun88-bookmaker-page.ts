@@ -1,6 +1,7 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { formatError, writeContextDebugArtifacts } from "../core/debug.js";
+import { envInt } from "../core/env.js";
 import type { Jun88LobbyAccess } from "../contracts.js";
 
 export async function withJun88BookmakerPage<T>(
@@ -110,7 +111,7 @@ async function openLobby(
 
 async function waitForStablePage(page: Page) {
   await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+  await page.waitForTimeout(Math.max(envInt("COLLECT_PAGE_SETTLE_MS", 1_000), 0));
 }
 
 function matchesExpectedOrigin(url: string, patterns: string[] = []) {

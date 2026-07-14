@@ -10,7 +10,14 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88BtiSnapshot } from "./parsers/jun88-bti-parser.js";
-import { assertSnapshotHasSelections } from "./streaming-utils.js";
+import {
+  assertSnapshotHasSelections,
+  buildDeltas,
+  heartbeatIntervalMs,
+  pageReloadIntervalMs,
+  selectionMap,
+  streamPollIntervalMs
+} from "./streaming-utils.js";
 
 export class Jun88BtiRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
@@ -40,24 +47,53 @@ export class Jun88BtiRuntime implements StreamingCollectorRuntime {
 
         await installBtiObserver(page, initialSnapshot);
 
+        let activeSnapshot = initialSnapshot;
         let lastHeartbeatAt = Date.now();
+        let lastReloadAt = Date.now();
+        const heartbeatMs = heartbeatIntervalMs();
+        const pollIntervalMs = streamPollIntervalMs();
+        const reloadIntervalMs = pageReloadIntervalMs();
+
         while (!page.isClosed()) {
+          if (Date.now() - lastReloadAt >= reloadIntervalMs) {
+            await page.reload({ waitUntil: "domcontentloaded" });
+            await page.waitForSelector(".master_fe_Event_match", { timeout: 20_000 });
+
+            const reloadedSnapshot = parseJun88BtiSnapshot(await page.content(), page.url());
+            assertSnapshotHasSelections(reloadedSnapshot, this.collectorId);
+            await sink.pushBootstrap(reloadedSnapshot);
+
+            const removed = buildDeltas(
+              reloadedSnapshot,
+              selectionMap(activeSnapshot),
+              selectionMap(reloadedSnapshot)
+            ).filter((delta) => delta.op === "remove");
+            if (removed.length > 0) {
+              await sink.pushDelta(removed);
+            }
+
+            await installBtiObserver(page, reloadedSnapshot);
+            activeSnapshot = reloadedSnapshot;
+            lastReloadAt = Date.now();
+            continue;
+          }
+
           const deltas = await readBtiDeltas(page);
           if (deltas.length > 0) {
             await sink.pushDelta(
               deltas.map((delta) => ({
                 ...delta,
-                source: initialSnapshot.source
+                source: activeSnapshot.source
               }))
             );
           }
 
-          if (Date.now() - lastHeartbeatAt >= 15_000) {
-            await sink.heartbeat(heartbeatOf(initialSnapshot.source));
+          if (Date.now() - lastHeartbeatAt >= heartbeatMs) {
+            await sink.heartbeat(heartbeatOf(activeSnapshot.source));
             lastHeartbeatAt = Date.now();
           }
 
-          await page.waitForTimeout(300);
+          await page.waitForTimeout(pollIntervalMs);
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);

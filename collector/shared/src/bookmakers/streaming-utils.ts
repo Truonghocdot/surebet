@@ -5,6 +5,19 @@ import type {
   OddsSelection,
   OddsSnapshot
 } from "../contracts.js";
+import { envInt } from "../core/env.js";
+
+export function streamPollIntervalMs() {
+  return Math.max(envInt("COLLECT_STREAM_POLL_MS", 300), 50);
+}
+
+export function pageReloadIntervalMs() {
+  return Math.max(envInt("COLLECT_PAGE_RELOAD_MS", 30_000), 1_000);
+}
+
+export function heartbeatIntervalMs() {
+  return Math.max(envInt("COLLECT_HEARTBEAT_MS", 15_000), 1_000);
+}
 
 export function selectionMap(snapshot: OddsSnapshot) {
   return new Map(snapshot.selections.map((selection) => [selection.outcomeId, selection]));

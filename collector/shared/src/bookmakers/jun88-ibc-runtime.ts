@@ -9,7 +9,15 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88SabaSnapshot } from "./parsers/jun88-ibc-parser.js";
-import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
+import {
+  assertSnapshotHasSelections,
+  buildDeltas,
+  heartbeatIntervalMs,
+  heartbeatOf,
+  pageReloadIntervalMs,
+  selectionMap,
+  streamPollIntervalMs
+} from "./streaming-utils.js";
 const SABA_READY_SELECTORS = ".c-match, .c-event-card";
 
 export class Jun88SabaRuntime implements StreamingCollectorRuntime {
@@ -30,7 +38,7 @@ export class Jun88SabaRuntime implements StreamingCollectorRuntime {
     const lobby = requireLobbyConfig("saba");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
-        const target = await resolveContentTarget(page);
+        let target = await resolveContentTarget(page);
         const initialHTML = await target.content();
         const initialSnapshot = parseJun88SabaSnapshot(
           initialHTML,
@@ -41,20 +49,52 @@ export class Jun88SabaRuntime implements StreamingCollectorRuntime {
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
 
+        let activeSnapshot = initialSnapshot;
         let lastHeartbeatAt = Date.now();
-        await installSabaObserver(page, initialSnapshot);
+        let lastReloadAt = Date.now();
+        const heartbeatMs = heartbeatIntervalMs();
+        const pollIntervalMs = streamPollIntervalMs();
+        const reloadIntervalMs = pageReloadIntervalMs();
+        await installSabaObserver(target, initialSnapshot);
 
         while (!page.isClosed()) {
-          await page.waitForTimeout(300);
-          const deltas = await readSabaDeltas(page);
+          if (Date.now() - lastReloadAt >= reloadIntervalMs) {
+            await page.reload({ waitUntil: "domcontentloaded" });
+            target = await resolveContentTarget(page);
+            const reloadedSnapshot = parseJun88SabaSnapshot(
+              await target.content(),
+              target.url(),
+              this.collectorId
+            );
+            assertSnapshotHasSelections(reloadedSnapshot, this.collectorId);
+            await sink.pushBootstrap(reloadedSnapshot);
+
+            const removed = buildDeltas(
+              reloadedSnapshot,
+              selectionMap(activeSnapshot),
+              selectionMap(reloadedSnapshot)
+            ).filter((delta) => delta.op === "remove");
+            if (removed.length > 0) {
+              await sink.pushDelta(removed);
+            }
+
+            await installSabaObserver(target, reloadedSnapshot);
+            activeSnapshot = reloadedSnapshot;
+            lastReloadAt = Date.now();
+            continue;
+          }
+
+          const deltas = await readSabaDeltas(target);
           if (deltas.length > 0) {
             await sink.pushDelta(deltas);
           }
 
-          if (Date.now() - lastHeartbeatAt >= 15_000) {
-            await sink.heartbeat(heartbeatOf(initialSnapshot.source));
+          if (Date.now() - lastHeartbeatAt >= heartbeatMs) {
+            await sink.heartbeat(heartbeatOf(activeSnapshot.source));
             lastHeartbeatAt = Date.now();
           }
+
+          await page.waitForTimeout(pollIntervalMs);
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
@@ -74,13 +114,10 @@ function requireLobbyConfig(lobbyId: "saba") {
   return lobby;
 }
 
-async function resolveContentTarget(page: Page) {
+async function resolveContentTarget(page: Page): Promise<Page | Frame> {
   const pageLocator = page.locator(SABA_READY_SELECTORS).first();
   if (await pageLocator.count()) {
-    return {
-      content: () => page.content(),
-      url: () => page.url()
-    };
+    return page;
   }
 
   await page.waitForSelector(`#sportsFrame, ${SABA_READY_SELECTORS}`, {
@@ -90,18 +127,12 @@ async function resolveContentTarget(page: Page) {
   const iframe = await page.locator("#sportsFrame").elementHandle();
   const frame = await iframe?.contentFrame();
   if (!frame) {
-    return {
-      content: () => page.content(),
-      url: () => page.url()
-    };
+    return page;
   }
 
   await waitForFrameContent(frame);
 
-  return {
-    content: () => frame.content(),
-    url: () => frame.url()
-  };
+  return frame;
 }
 
 async function waitForFrameContent(frame: Frame) {
@@ -119,7 +150,7 @@ async function waitForFrameContent(frame: Frame) {
 }
 
 async function installSabaObserver(
-  page: import("playwright").Page,
+  target: Page | Frame,
   snapshot: { source: CollectorSource; selections: Array<{ outcomeId: string; outcomeName: string; odds: number }> }
 ) {
   const seededFingerprints = Object.fromEntries(
@@ -245,11 +276,11 @@ async function installSabaObserver(
     })
   `;
 
-  await page.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
+  await target.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
 }
 
-async function readSabaDeltas(page: import("playwright").Page) {
-  return page.evaluate(() => {
+async function readSabaDeltas(target: Page | Frame) {
+  return target.evaluate(() => {
     const win = window as Window & {
       __surebet_saba_stream__?: {
         queue: import("../contracts.js").OddsDelta[];

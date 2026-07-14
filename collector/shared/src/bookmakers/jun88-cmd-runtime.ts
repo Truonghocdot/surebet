@@ -12,7 +12,15 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
-import { assertSnapshotHasSelections, heartbeatOf } from "./streaming-utils.js";
+import {
+  assertSnapshotHasSelections,
+  buildDeltas,
+  heartbeatIntervalMs,
+  heartbeatOf,
+  pageReloadIntervalMs,
+  selectionMap,
+  streamPollIntervalMs
+} from "./streaming-utils.js";
 
 const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header";
 
@@ -33,7 +41,7 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
     const lobby = requireLobbyConfig("cmd");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
-        const target = await resolveCmdContentTarget(page);
+        let target = await resolveCmdContentTarget(page);
         const initialSnapshot = parseJun88CmdSnapshot(
           await target.content(),
           target.url(),
@@ -43,19 +51,51 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         await installCmdObserver(target, initialSnapshot);
+        let activeSnapshot = initialSnapshot;
         let lastHeartbeatAt = Date.now();
+        let lastReloadAt = Date.now();
+        const heartbeatMs = heartbeatIntervalMs();
+        const pollIntervalMs = streamPollIntervalMs();
+        const reloadIntervalMs = pageReloadIntervalMs();
 
         while (!page.isClosed()) {
-          await page.waitForTimeout(300);
+          if (Date.now() - lastReloadAt >= reloadIntervalMs) {
+            await page.reload({ waitUntil: "domcontentloaded" });
+            target = await resolveCmdContentTarget(page);
+            const reloadedSnapshot = parseJun88CmdSnapshot(
+              await target.content(),
+              target.url(),
+              this.collectorId
+            );
+            assertSnapshotHasSelections(reloadedSnapshot, this.collectorId);
+            await sink.pushBootstrap(reloadedSnapshot);
+
+            const removed = buildDeltas(
+              reloadedSnapshot,
+              selectionMap(activeSnapshot),
+              selectionMap(reloadedSnapshot)
+            ).filter((delta) => delta.op === "remove");
+            if (removed.length > 0) {
+              await sink.pushDelta(removed);
+            }
+
+            await installCmdObserver(target, reloadedSnapshot);
+            activeSnapshot = reloadedSnapshot;
+            lastReloadAt = Date.now();
+            continue;
+          }
+
           const deltas = await readCmdDeltas(target);
           if (deltas.length > 0) {
             await sink.pushDelta(deltas);
           }
 
-          if (Date.now() - lastHeartbeatAt >= 15_000) {
-            await sink.heartbeat(heartbeatOf(initialSnapshot.source));
+          if (Date.now() - lastHeartbeatAt >= heartbeatMs) {
+            await sink.heartbeat(heartbeatOf(activeSnapshot.source));
             lastHeartbeatAt = Date.now();
           }
+
+          await page.waitForTimeout(pollIntervalMs);
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);

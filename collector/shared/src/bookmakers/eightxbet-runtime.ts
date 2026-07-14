@@ -1,8 +1,10 @@
 import type { CollectContext, CollectorRuntime, OddsSnapshot } from "../contracts.js";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { writeDebugArtifacts } from "../core/debug.js";
+import { envInt } from "../core/env.js";
 import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
 import { parseEightXBetIncomingSnapshot } from "./parsers/eightxbet-incoming-parser.js";
+import { pageReloadIntervalMs } from "./streaming-utils.js";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
@@ -26,6 +28,7 @@ export class EightXBetRuntime implements CollectorRuntime {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private targetURL = "";
+  private lastPageReloadAt = 0;
 
   constructor(private readonly collectorId: string) {}
 
@@ -34,6 +37,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     const page = await this.ensurePage(targetURL);
 
     try {
+      await this.reloadPageIfDue(page);
       await waitForEightXBetReady(page, targetURL);
       await autoScrollIncomingList(page);
       const renderState = await stabilizeIncomingList(page);
@@ -91,7 +95,17 @@ export class EightXBetRuntime implements CollectorRuntime {
 
     await bootstrapEightXBetPreferences(page, targetURL);
     await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+    this.lastPageReloadAt = Date.now();
     return page;
+  }
+
+  private async reloadPageIfDue(page: Page) {
+    if (Date.now() - this.lastPageReloadAt < pageReloadIntervalMs()) {
+      return;
+    }
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    this.lastPageReloadAt = Date.now();
   }
 
   private async resetPage() {
@@ -99,6 +113,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     this.context = null;
     this.page = null;
     this.targetURL = "";
+    this.lastPageReloadAt = 0;
     await context?.close().catch(() => undefined);
   }
 }
@@ -160,7 +175,7 @@ async function bootstrapEightXBetPreferences(page: Page, targetURL: string) {
 
   try {
     await page.goto(preferenceURL, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => undefined);
+    await waitForPageSettle(page);
     await page.evaluate(() => {
       const entries = [
         ["i18nextLng", "vi-VN"],
@@ -183,7 +198,7 @@ async function bootstrapEightXBetPreferences(page: Page, targetURL: string) {
 }
 
 async function waitForEightXBetReady(page: Page, targetURL: string) {
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+  await waitForPageSettle(page);
   let ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
     () => true,
     () => false
@@ -192,7 +207,7 @@ async function waitForEightXBetReady(page: Page, targetURL: string) {
   if (!ready) {
     await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
     await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+    await waitForPageSettle(page);
     ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
       () => true,
       () => false
@@ -202,6 +217,10 @@ async function waitForEightXBetReady(page: Page, targetURL: string) {
   if (!ready) {
     throw new Error("8xbet incoming list did not render in time.");
   }
+}
+
+async function waitForPageSettle(page: Page) {
+  await page.waitForTimeout(Math.max(envInt("COLLECT_PAGE_SETTLE_MS", 1_000), 0));
 }
 
 function isRawFallbackSnapshot(snapshot: OddsSnapshot) {
