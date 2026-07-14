@@ -294,7 +294,7 @@ func detectOverUnderSurebets(bucket *quoteBucket, now time.Time) []models.Surebe
 	opportunities := make([]models.SurebetOpportunity, 0)
 	for _, over := range overQuotes {
 		for _, under := range underQuotes {
-			if sameBookmaker(over, under) || !sameEvent(over.event, under.event) {
+			if sameSource(over, under) || !sameEvent(over.event, under.event) {
 				continue
 			}
 			if opportunity, ok := buildOpportunity(bucket, over, under, now); ok {
@@ -347,7 +347,7 @@ func detectHandicapSurebets(bucket *quoteBucket, now time.Time) []models.Surebet
 	for i := 0; i < len(quotes); i++ {
 		for j := i + 1; j < len(quotes); j++ {
 			left, right := quotes[i], quotes[j]
-			if sameBookmaker(left, right) ||
+			if sameSource(left, right) ||
 				left.participant == right.participant ||
 				!sameEvent(left.event, right.event) ||
 				!areOppositeHandicapLines(left.line, right.line) {
@@ -384,8 +384,8 @@ func sameEvent(left, right eventIdentity) bool {
 	return left.sport == right.sport && left.fixtureKey == right.fixtureKey
 }
 
-func sameBookmaker(left, right normalizedQuote) bool {
-	return canonicalText(left.quote.BookmakerID) == canonicalText(right.quote.BookmakerID)
+func sameSource(left, right normalizedQuote) bool {
+	return left.sourceKey == right.sourceKey
 }
 
 func areOppositeHandicapLines(left, right normalizedLine) bool {

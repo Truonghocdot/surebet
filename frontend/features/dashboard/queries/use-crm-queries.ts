@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchDashboardSnapshot,
   fetchMatchedFixtures,
+  fetchOpportunityBoard,
   fetchOpportunities
 } from "@/features/dashboard/api/mock-dashboard-api";
 import { backendWebSocketURL } from "@/lib/realtime-url";
@@ -12,6 +13,7 @@ import { backendWebSocketURL } from "@/lib/realtime-url";
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
   matchedFixtures: ["crm", "matched-fixtures"] as const,
+  opportunityBoard: ["crm", "opportunity-board"] as const,
   opportunities: ["crm", "opportunities"] as const
 };
 
@@ -26,6 +28,13 @@ export function useOpportunitiesQuery() {
   return useQuery({
     queryKey: crmQueryKeys.opportunities,
     queryFn: fetchOpportunities
+  });
+}
+
+export function useOpportunityBoardQuery() {
+  return useQuery({
+    queryKey: crmQueryKeys.opportunityBoard,
+    queryFn: fetchOpportunityBoard
   });
 }
 
@@ -54,6 +63,7 @@ export function useRealtimeWebSocket() {
     const refreshRealtimeQueries = () => {
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunities });
+      void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunityBoard });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.matchedFixtures });
     };
 

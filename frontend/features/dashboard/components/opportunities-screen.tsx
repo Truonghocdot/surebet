@@ -1,144 +1,219 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { DataPanel } from "@/components/dashboard/data-panel";
 import { SectionHeader } from "@/components/dashboard/section-header";
 import { QueryShell } from "@/features/dashboard/components/query-shell";
 import {
-  useOpportunitiesQuery,
+  useOpportunityBoardQuery,
   useRealtimeWebSocket
 } from "@/features/dashboard/queries/use-crm-queries";
-import type { Opportunity } from "@/features/dashboard/schemas/crm-schemas";
+import type {
+  OpportunityBoard,
+  OpportunityBoardFixture,
+  OpportunityBoardMarket,
+  OpportunityBoardOutcome
+} from "@/features/dashboard/schemas/crm-schemas";
 
 export function OpportunitiesScreen() {
-  const query = useOpportunitiesQuery();
+  const query = useOpportunityBoardQuery();
   const realtimeStatus = useRealtimeWebSocket();
 
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="Cơ hội"
-        title="Cơ hội đang được phát hiện"
+        eyebrow="So sánh kèo"
+        title="Bảng trận khớp giữa các nhà cái"
       />
 
-      <DataPanel
-        description=""
-        title="Danh sách cơ hội"
-      >
-        <div className="mb-5 inline-flex w-fit flex-wrap items-center gap-2 rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
-          <span
-            className={`size-2 rounded-full ${
-              realtimeStatus === "live"
-                ? "bg-emerald-500"
-                : realtimeStatus === "connecting"
-                  ? "bg-amber-500"
-                  : "bg-slate-400"
-            }`}
-          />
-          {realtimeStatus === "live"
-            ? "Đang nhận dữ liệu"
-            : realtimeStatus === "connecting"
-              ? "Đang kết nối"
-              : "Đang kết nối lại"}
-        </div>
+      <DataPanel description="" title="Danh sách so sánh">
+        <RealtimeIndicator status={realtimeStatus} />
 
-        <QueryShell<Opportunity[]> {...query}>
-          {(items) => (
-            <div className="grid gap-4">
-              {items.length === 0 ? (
-                <div className="rounded-[28px] border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
-                  <p className="font-semibold text-[var(--ink)]">
-                    Chưa có cơ hội đang còn hiệu lực
-                  </p>
-                  <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--muted)]">
-                    Màn hình vẫn đang nhận dữ liệu quét. Khi có cặp tỷ lệ tạo ra lợi thế,
-                    hệ thống sẽ cập nhật ở đây.
-                  </p>
-                </div>
-              ) : null}
-
-              {items.map((row) => (
-                <OpportunityCard key={row.id} row={row} />
-              ))}
-            </div>
-          )}
+        <QueryShell<OpportunityBoard> {...query}>
+          {(board) =>
+            board.items.length > 0 ? (
+              <OpportunityBoardTable board={board} />
+            ) : (
+              <EmptyBoard />
+            )
+          }
         </QueryShell>
       </DataPanel>
     </div>
   );
 }
 
-function OpportunityCard({ row }: { row: Opportunity }) {
-  const presentation = deriveOpportunityPresentation(row);
-
+function RealtimeIndicator({ status }: { status: "connecting" | "live" | "reconnecting" }) {
   return (
-    <article className="overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,#23262f_0%,#1a1d24_100%)] p-4 text-white shadow-[0_20px_40px_rgba(15,31,38,0.2)] md:rounded-[28px] md:p-5">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <span className="rounded-full bg-[#f2c94c] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#5a4600]">
-            {formatFreshness(row.detected_at)}
-          </span>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
-            <span className="rounded-full bg-[#3199ff] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white">
-              Lệch tiền {presentation.moneyGap.toFixed(2)}
+    <div className="mb-5 inline-flex w-fit flex-wrap items-center gap-2 rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">
+      <span
+        className={`size-2 rounded-full ${
+          status === "live"
+            ? "bg-emerald-500"
+            : status === "connecting"
+              ? "bg-amber-500"
+              : "bg-slate-400"
+        }`}
+      />
+      {status === "live"
+        ? "Đang nhận dữ liệu"
+        : status === "connecting"
+          ? "Đang kết nối"
+          : "Đang kết nối lại"}
+    </div>
+  );
+}
+
+function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
+  return (
+    <div className="overflow-x-auto pb-2">
+      <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
+        <colgroup>
+          <col className="w-[300px]" />
+          <col className="w-[180px]" />
+          <col className="w-[min(360px,35vw)]" />
+          <col className="w-[min(360px,35vw)]" />
+        </colgroup>
+        <thead className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+          <tr>
+            <th className="sticky left-0 z-20 border-b border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-3 font-semibold">
+              Trận
+            </th>
+            <th className="sticky left-[300px] z-20 border-b border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-3 font-semibold">
+              Sảnh
+            </th>
+            <th className="border-b border-[color:var(--line)] px-4 py-3 font-semibold">Kèo chấp</th>
+            <th className="border-b border-[color:var(--line)] px-4 py-3 font-semibold">Tài xỉu</th>
+          </tr>
+        </thead>
+        {board.items.map((fixture) => (
+          <FixtureRows fixture={fixture} key={fixture.id} />
+        ))}
+      </table>
+    </div>
+  );
+}
+
+function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
+  return (
+    <tbody className="align-top">
+      {fixture.sources.map((source, index) => (
+        <tr className="group" key={source.id}>
+          {index === 0 ? <FixtureCell fixture={fixture} rowSpan={fixture.sources.length} /> : null}
+          <td className="sticky left-[300px] z-10 border-b border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4 group-hover:bg-white">
+            <p className="break-words font-semibold text-[var(--ink)]">{source.bookmaker_id}</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">{source.lobby_id || "default"}</p>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              {formatFreshness(source.latest_collected_at)}
+            </p>
+          </td>
+          <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
+            <MarketCell markets={source.handicap} />
+          </td>
+          <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
+            <MarketCell markets={source.over_under} />
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  );
+}
+
+function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; rowSpan: number }) {
+  return (
+    <td
+      className="sticky left-0 z-10 border-b border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4 group-hover:bg-white"
+      rowSpan={rowSpan}
+    >
+      <div className="max-w-[268px]">
+        <div className="flex flex-wrap items-start gap-2">
+          <p className="font-semibold leading-5 text-[var(--ink)]">{fixture.match_name}</p>
+          {fixture.has_surebet ? (
+            <span className="rounded border border-emerald-600/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800">
+              Khớp
             </span>
-            <span className="text-xs font-semibold text-[rgba(255,255,255,0.68)]">
-              Lãi surebet {row.profit_percentage.toFixed(2)}%
-            </span>
-          </div>
+          ) : null}
         </div>
-
-        <div className="space-y-2 text-left sm:text-center">
-          <p className="break-words text-base font-semibold text-white sm:text-lg">
-            {row.fixture_id}
-          </p>
-          <p className="text-sm text-[rgba(255,255,255,0.82)]">
-            {presentation.marketLabel}
-          </p>
-          <p className="text-xs uppercase tracking-[0.16em] text-[rgba(255,255,255,0.58)]">
-            Hết hạn {formatTime(row.expires_at)}
-          </p>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 md:gap-4">
-          {presentation.legs.map((leg, index) => (
-            <div
-              className="rounded-[20px] border border-[rgba(255,255,255,0.16)] bg-[rgba(255,255,255,0.03)] p-4 md:rounded-[22px]"
-              key={`${row.id}-${leg.outcome_id}-${index}`}
-            >
-              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="break-all text-base font-bold text-white sm:text-lg">
-                  {leg.bookmaker_id} / {leg.lobby_id}
-                </p>
-                <span className="rounded-full bg-[#3199ff] px-2.5 py-1 text-[11px] font-bold text-white">
-                  {leg.odds}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex items-start justify-between gap-3 sm:items-center">
-                  <span className="text-[rgba(255,255,255,0.78)]">Cửa đối ứng</span>
-                  <span className="break-words text-right font-semibold text-white sm:max-w-[65%]">
-                    {leg.displayOutcome}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3 sm:items-center">
-                  <span className="text-[rgba(255,255,255,0.78)]">Tỷ trọng vốn</span>
-                  <span className="font-semibold text-white">
-                    {(leg.stake * 100).toFixed(2)}%
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3 sm:items-center">
-                  <span className="text-[rgba(255,255,255,0.58)]">Odds gốc</span>
-                  <span className="text-[rgba(255,255,255,0.78)]">
-                    {leg.odds}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+        <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+          {fixture.league_names.length > 0 ? fixture.league_names.join(", ") : "Chưa rõ giải"}
+        </p>
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
+          <span>{matchStateLabel(fixture.match_state)}</span>
+          <span>{formatFreshness(fixture.latest_collected_at)}</span>
         </div>
       </div>
-    </article>
+    </td>
+  );
+}
+
+function MarketCell({ markets }: { markets: OpportunityBoardMarket[] }) {
+  if (markets.length === 0) {
+    return <span className="text-xs text-[var(--muted)]">-</span>;
+  }
+
+  return (
+    <div className="grid gap-2">
+      {markets.map((market) => (
+        <section
+          className="overflow-hidden rounded-lg border border-[color:var(--line)] bg-white/60"
+          key={market.id}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-[color:var(--line)] bg-slate-50 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
+            <span>{market.period}</span>
+            <span>{market.line || "Không line"}</span>
+          </div>
+          <div className="grid gap-px bg-[color:var(--line)]">
+            {market.outcomes.map((outcome) => (
+              <OutcomeOdds outcome={outcome} key={outcome.outcome_id} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function OutcomeOdds({ outcome }: { outcome: OpportunityBoardOutcome }) {
+  const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${outcome.is_surebet_leg}`;
+  const previousSignature = useRef<string | null>(null);
+  const [isFlashing, setIsFlashing] = useState(false);
+
+  useEffect(() => {
+    const changed = previousSignature.current !== null && previousSignature.current !== signature;
+    previousSignature.current = signature;
+
+    if (!changed || !outcome.is_surebet_leg) {
+      setIsFlashing(false);
+      return;
+    }
+
+    setIsFlashing(true);
+    const timeout = window.setTimeout(() => setIsFlashing(false), 900);
+    return () => window.clearTimeout(timeout);
+  }, [outcome.is_surebet_leg, signature]);
+
+  return (
+    <div
+      className={`flex min-h-9 items-center justify-between gap-3 px-2.5 py-1.5 transition-colors ${
+        outcome.is_surebet_leg
+          ? "border-emerald-600/40 bg-emerald-500/15 text-emerald-950"
+          : "bg-white/80 text-[var(--ink)]"
+      } ${isFlashing ? "opportunity-odds-pulse" : ""}`}
+    >
+      <span className="min-w-0 break-words text-xs font-medium leading-4">{outcome.outcome_name}</span>
+      <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{outcome.odds}</span>
+    </div>
+  );
+}
+
+function EmptyBoard() {
+  return (
+    <div className="border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
+      <p className="font-semibold text-[var(--ink)]">Chưa có trận khớp giữa các nhà cái</p>
+      <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--muted)]">
+        Bảng sẽ hiển thị khi một trận có dữ liệu từ ít nhất hai sảnh khác nhau.
+      </p>
+    </div>
   );
 }
 
@@ -147,147 +222,21 @@ function formatFreshness(value: string) {
   if (seconds < 60) {
     return `${seconds} giây trước`;
   }
-  return `${Math.floor(seconds / 60)} phút trước`;
-}
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
-}
-
-function deriveOpportunityPresentation(row: Opportunity) {
-  const legs = row.legs.slice(0, 2).map((leg) => ({
-    ...leg,
-    displayOutcome: deriveOutcomeDisplayLabel(leg, row)
-  }));
-
-  const moneyGap =
-    legs.length >= 2
-      ? Math.abs(Math.abs(legs[0].odds) - Math.abs(legs[1].odds))
-      : 0;
-
-  return {
-    marketLabel: deriveMarketDisplayLabel(row),
-    moneyGap,
-    legs
-  };
-}
-
-function deriveMarketDisplayLabel(row: Opportunity) {
-  const marketKind = detectMarketKind(row);
-  const line = resolvePrimaryLine(row);
-
-  if (marketKind === "over_under" && line) {
-    return `Tài/Xỉu ${normalizeLineForDisplay(line)}`;
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)} phút trước`;
   }
-  if (marketKind === "handicap" && line) {
-    return `Kèo chấp ${normalizeHandicapLineForDisplay(line)}`;
+  return `${Math.floor(seconds / 3600)} giờ trước`;
+}
+
+function matchStateLabel(value: string) {
+  if (value === "live") {
+    return "Đang đá";
   }
-  if (marketKind === "one_x_two") {
-    return "1X2";
+  if (value === "upcoming") {
+    return "Sắp đá";
   }
-
-  return beautifyRawText(row.market_name || "Kèo đối ứng");
-}
-
-function deriveOutcomeDisplayLabel(
-  leg: Opportunity["legs"][number],
-  row: Opportunity
-) {
-  const marketKind = detectMarketKind(row);
-  const line = resolvePrimaryLine(row);
-  const normalized = canonicalText(leg.outcome_name);
-
-  if (marketKind === "over_under") {
-    if (containsOneOf(normalized, ["over", "tai"])) {
-      return line ? `Tài ${normalizeLineForDisplay(line)}` : "Tài";
-    }
-    if (containsOneOf(normalized, ["under", "xiu"])) {
-      return line ? `Xỉu ${normalizeLineForDisplay(line)}` : "Xỉu";
-    }
+  if (value === "finished") {
+    return "Đã xong";
   }
-
-  if (marketKind === "one_x_two") {
-    if (containsOneOf(normalized, ["draw", "hoa"])) {
-      return "Hòa";
-    }
-  }
-
-  return beautifyOutcomeName(leg.outcome_name);
-}
-
-function detectMarketKind(row: Opportunity) {
-  const combined = canonicalText(
-    [row.market_name, ...row.legs.map((leg) => leg.outcome_name)].join(" ")
-  );
-
-  if (
-    containsOneOf(combined, ["over under", "over", "under", "tai", "xiu", "o u"])
-  ) {
-    return "over_under" as const;
-  }
-
-  if (containsOneOf(combined, ["handicap", "chap"])) {
-    return "handicap" as const;
-  }
-
-  if (containsOneOf(combined, ["1x2", "draw", "hoa"])) {
-    return "one_x_two" as const;
-  }
-
-  if (row.legs.some((leg) => extractLine(leg.outcome_name) !== "")) {
-    return "handicap" as const;
-  }
-
-  return "unknown" as const;
-}
-
-function resolvePrimaryLine(row: Opportunity) {
-  return row.legs
-    .map((leg) => extractLine(leg.outcome_name))
-    .find((value) => value !== "") ?? "";
-}
-
-function extractLine(value: string) {
-  const match = value.trim().match(/([+-]?\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)?)$/);
-  return match?.[1] ?? "";
-}
-
-function normalizeLineForDisplay(value: string) {
-  return value.trim().replace(/^\+/, "");
-}
-
-function normalizeHandicapLineForDisplay(value: string) {
-  return normalizeLineForDisplay(value).replace(/^-/, "");
-}
-
-function beautifyOutcomeName(value: string) {
-  return value
-    .replace(/\s+/g, " ")
-    .replace(/Away Goal O\/UAway Goal O\/U ov\s+/i, "")
-    .replace(/Home Goal O\/UHome Goal O\/U ov\s+/i, "")
-    .trim();
-}
-
-function beautifyRawText(value: string) {
-  return value
-    .replace(/-/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function canonicalText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function containsOneOf(value: string, patterns: string[]) {
-  return patterns.some((pattern) => value.includes(pattern));
+  return "Chưa rõ";
 }

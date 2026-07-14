@@ -74,8 +74,30 @@
   }
 }
 
+@keyframes opportunity-odds-pulse {
+  0% {
+    background-color: rgba(16, 185, 129, 0.52);
+    box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.75);
+  }
+
+  100% {
+    background-color: rgba(16, 185, 129, 0.15);
+    box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.4);
+  }
+}
+
+.opportunity-odds-pulse {
+  animation: opportunity-odds-pulse 900ms ease-out;
+}
+
 @media (max-width: 640px) {
   .dashboard-page {
     @apply gap-3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opportunity-odds-pulse {
+    animation: none;
   }
 }

@@ -68,7 +68,51 @@ export const matchedFixturesSnapshotSchema = z.object({
   items: z.array(matchedFixtureSchema)
 });
 
+export const opportunityBoardOutcomeSchema = z.object({
+  outcome_id: z.string(),
+  outcome_name: z.string(),
+  side: z.string(),
+  odds: z.number(),
+  collected_at: z.string(),
+  is_surebet_leg: z.boolean()
+});
+
+export const opportunityBoardMarketSchema = z.object({
+  id: z.string(),
+  period: z.string(),
+  line: z.string(),
+  outcomes: z.array(opportunityBoardOutcomeSchema)
+});
+
+export const opportunityBoardSourceSchema = z.object({
+  id: z.string(),
+  bookmaker_id: z.string(),
+  lobby_id: z.string(),
+  latest_collected_at: z.string(),
+  handicap: z.array(opportunityBoardMarketSchema),
+  over_under: z.array(opportunityBoardMarketSchema)
+});
+
+export const opportunityBoardFixtureSchema = z.object({
+  id: z.string(),
+  match_name: z.string(),
+  match_state: z.string(),
+  latest_collected_at: z.string(),
+  league_names: z.array(z.string()),
+  has_surebet: z.boolean(),
+  sources: z.array(opportunityBoardSourceSchema)
+});
+
+export const opportunityBoardSchema = z.object({
+  items: z.array(opportunityBoardFixtureSchema)
+});
+
 export type DashboardSnapshot = z.infer<typeof dashboardSnapshotSchema>;
 export type Opportunity = z.infer<typeof opportunitySchema>;
 export type MatchedFixture = z.infer<typeof matchedFixtureSchema>;
 export type MatchedFixturesSnapshot = z.infer<typeof matchedFixturesSnapshotSchema>;
+export type OpportunityBoard = z.infer<typeof opportunityBoardSchema>;
+export type OpportunityBoardFixture = z.infer<typeof opportunityBoardFixtureSchema>;
+export type OpportunityBoardSource = z.infer<typeof opportunityBoardSourceSchema>;
+export type OpportunityBoardMarket = z.infer<typeof opportunityBoardMarketSchema>;
+export type OpportunityBoardOutcome = z.infer<typeof opportunityBoardOutcomeSchema>;
