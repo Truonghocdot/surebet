@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { JSDOM } from "jsdom";
 import { parseJun88CmdSnapshot } from "@surebet/collector-shared";
 
 async function main() {
@@ -24,6 +25,55 @@ async function main() {
   if (snapshot.selections.length === 0) {
     throw new Error("CMD parser returned an empty snapshot.");
   }
+
+  assertLeagueScopes(html, snapshot);
+}
+
+function assertLeagueScopes(
+  html: string,
+  snapshot: ReturnType<typeof parseJun88CmdSnapshot>
+) {
+  const document = new JSDOM(html).window.document;
+  const expectedByFixture = new Map<string, string>();
+
+  for (const matchNode of Array.from(document.querySelectorAll(".match.default-match"))) {
+    const fixtureID = matchNode.getAttribute("groupid");
+    const leagueName = precedingLeagueName(matchNode);
+    if (fixtureID && leagueName) {
+      expectedByFixture.set(fixtureID, leagueName);
+    }
+  }
+
+  const mismatches = snapshot.selections.filter((selection) => {
+    const expected = expectedByFixture.get(selection.fixtureId);
+    return expected !== undefined && selection.leagueName !== expected;
+  });
+  if (mismatches.length > 0) {
+    throw new Error(
+      `CMD parser assigned ${mismatches.length} selection(s) to the wrong league: ${JSON.stringify(mismatches.slice(0, 2))}`
+    );
+  }
+}
+
+function precedingLeagueName(matchNode: Element) {
+  const scope = matchNode.closest(".tableDiv");
+  if (!scope) {
+    return "";
+  }
+
+  const entries = Array.from(scope.querySelectorAll(".league label, .match.default-match"));
+  const matchIndex = entries.indexOf(matchNode);
+  for (let index = matchIndex - 1; index >= 0; index -= 1) {
+    if (entries[index].matches(".league label")) {
+      return textContent(entries[index]);
+    }
+  }
+
+  return "";
+}
+
+function textContent(node: Element | null) {
+  return node?.textContent?.replace(/\s+/g, " ").trim() ?? "";
 }
 
 main().catch((error) => {

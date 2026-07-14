@@ -40,11 +40,7 @@ export const parseJun88M8Snapshot = parseJun88M9BetSnapshot;
 
 function parseOddsRow(rowNode: HTMLElement) {
   const oddsID = rowNode.getAttribute("oddsid") || "";
-  const leagueName =
-    textContent(
-      rowNode.previousElementSibling?.querySelector(".Span_titleleague") ||
-        rowNode.closest("table")?.querySelector(".Span_titleleague")
-    ) || "";
+  const leagueName = textContent(findPrecedingLeagueTitle(rowNode));
   const detailTeams = resolveTeamsFromMoreBet(rowNode);
   const homeTeam = detailTeams.homeTeam || resolveHomeTeam(rowNode);
   const awayTeam = detailTeams.awayTeam || resolveAwayTeam(rowNode);
@@ -137,6 +133,23 @@ function parseOddsRow(rowNode: HTMLElement) {
       eventStartAt
     })
   ];
+}
+
+function findPrecedingLeagueTitle(rowNode: HTMLElement) {
+  const table = rowNode.closest("table");
+  if (!table) {
+    return null;
+  }
+
+  const entries = Array.from(table.querySelectorAll(".Span_titleleague, tr[oddsid]"));
+  const rowIndex = entries.indexOf(rowNode);
+  for (let index = rowIndex - 1; index >= 0; index -= 1) {
+    if (entries[index].matches(".Span_titleleague")) {
+      return entries[index];
+    }
+  }
+
+  return null;
 }
 
 function parseHdpMarket(node: HTMLElement | undefined, base: MarketContext) {

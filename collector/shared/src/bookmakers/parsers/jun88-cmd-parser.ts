@@ -37,12 +37,7 @@ export function parseJun88CmdSnapshot(
 
 function parseMatch(matchNode: HTMLElement) {
   const matchID = matchNode.id.replace(/^R_/, "");
-  const leagueName =
-    textContent(
-      matchNode.previousElementSibling?.classList.contains("league")
-        ? matchNode.previousElementSibling.querySelector("label")
-        : matchNode.closest(".tableDiv")?.querySelector(".league label")
-    ) || "";
+  const leagueName = textContent(findPrecedingLeagueLabel(matchNode));
   const homeTeam =
     textContent(matchNode.querySelector(`#ht_${matchID}`)) ||
     textContent(matchNode.querySelector(".tableDiv-match-info__event div:first-child")) ||
@@ -84,6 +79,23 @@ function parseMatch(matchNode: HTMLElement) {
       matchState: detectCmdMatchState(matchNode)
     })
   ];
+}
+
+function findPrecedingLeagueLabel(matchNode: HTMLElement) {
+  const scope = matchNode.closest(".tableDiv");
+  if (!scope) {
+    return null;
+  }
+
+  const entries = Array.from(scope.querySelectorAll(".league label, .match.default-match"));
+  const matchIndex = entries.indexOf(matchNode);
+  for (let index = matchIndex - 1; index >= 0; index -= 1) {
+    if (entries[index].matches(".league label")) {
+      return entries[index];
+    }
+  }
+
+  return null;
 }
 
 function parseMarketRow(

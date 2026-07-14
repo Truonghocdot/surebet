@@ -215,12 +215,20 @@ async function installM9BetObserver(
           .trim();
       };
 
+      const precedingLeagueTitle = (rowNode) => {
+        const table = rowNode.closest("table");
+        if (!table) return null;
+        const entries = Array.from(table.querySelectorAll(".Span_titleleague, tr[oddsid]"));
+        const rowIndex = entries.indexOf(rowNode);
+        for (let index = rowIndex - 1; index >= 0; index -= 1) {
+          if (entries[index].matches(".Span_titleleague")) return entries[index];
+        }
+        return null;
+      };
+
       const parseRow = (rowNode) => {
         const oddsID = rowNode.getAttribute("oddsid") || "";
-        const leagueName = text(
-          (rowNode.previousElementSibling && rowNode.previousElementSibling.querySelector(".Span_titleleague")) ||
-          rowNode.closest("table")?.querySelector(".Span_titleleague")
-        );
+        const leagueName = text(precedingLeagueTitle(rowNode));
         const moreBetLink = rowNode.querySelector("[onclick*='MoreBetGen.aspx']")?.getAttribute("onclick") || "";
         const homeMatch = moreBetLink.match(/[?&]home=([^&']+)/i);
         const awayMatch = moreBetLink.match(/[?&]away=([^&']+)/i);

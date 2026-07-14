@@ -225,12 +225,20 @@ async function installCmdObserver(
         };
       };
 
+      const precedingLeagueLabel = (matchNode) => {
+        const scope = matchNode.closest(".tableDiv");
+        if (!scope) return null;
+        const entries = Array.from(scope.querySelectorAll(".league label, .match.default-match"));
+        const matchIndex = entries.indexOf(matchNode);
+        for (let index = matchIndex - 1; index >= 0; index -= 1) {
+          if (entries[index].matches(".league label")) return entries[index];
+        }
+        return null;
+      };
+
       const parseMatch = (matchNode) => {
         const matchID = (matchNode.id || "").replace(/^R_/, "");
-        const previousLeague = matchNode.previousElementSibling && matchNode.previousElementSibling.classList.contains("league")
-          ? matchNode.previousElementSibling.querySelector("label")
-          : matchNode.closest(".tableDiv")?.querySelector(".league label");
-        const leagueName = text(previousLeague);
+        const leagueName = text(precedingLeagueLabel(matchNode));
         const homeTeam = text(matchNode.querySelector("#ht_" + matchID)) || text(matchNode.querySelector(".tableDiv-match-info__event div:first-child"));
         const awayTeam = text(matchNode.querySelector("#at_" + matchID)) || text(matchNode.querySelector(".tableDiv-match-info__event div:nth-child(2)"));
         const drawLabel = text(matchNode.querySelector(".drawcss")) || "Hòa";
