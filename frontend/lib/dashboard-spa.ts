@@ -3,7 +3,8 @@ export const dashboardHrefs = [
   "/opportunities",
   "/matches",
   "/admin",
-  "/collector-config"
+  "/collector-config",
+  "/calculator"
 ] as const;
 
 export type DashboardHref = (typeof dashboardHrefs)[number];

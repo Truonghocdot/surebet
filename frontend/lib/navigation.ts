@@ -3,6 +3,7 @@ import {
   Activity,
   BellRing,
   Cable,
+  Calculator,
   ArrowLeftRight,
   Network,
   type LucideIcon
@@ -47,6 +48,12 @@ export function navigationItems(user: Pick<SessionUser, "role">): NavItem[] {
       href: "/collector-config",
       description: "Cấu hình URL scrape tập trung",
       icon: Cable
+    });
+    items.push({
+      label: "Máy tính",
+      href: "/calculator",
+      description: "Nhập odds để chia vốn hai cửa",
+      icon: Calculator
     });
   }
 

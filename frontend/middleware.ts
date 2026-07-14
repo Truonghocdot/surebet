@@ -31,6 +31,9 @@ export const config = {
     "/login",
     "/dashboard/:path*",
     "/matches/:path*",
-    "/opportunities/:path*"
+    "/opportunities/:path*",
+    "/admin/:path*",
+    "/collector-config/:path*",
+    "/calculator/:path*"
   ]
 };
