@@ -108,10 +108,10 @@ function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
             </p>
           </td>
           <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
-            <MarketCell markets={source.handicap} />
+            <MarketCell marketType="handicap" markets={source.handicap} />
           </td>
           <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
-            <MarketCell markets={source.over_under} />
+            <MarketCell marketType="over_under" markets={source.over_under} />
           </td>
         </tr>
       ))}
@@ -146,7 +146,13 @@ function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; r
   );
 }
 
-function MarketCell({ markets }: { markets: OpportunityBoardMarket[] }) {
+function MarketCell({
+  marketType,
+  markets
+}: {
+  marketType: "handicap" | "over_under";
+  markets: OpportunityBoardMarket[];
+}) {
   if (markets.length === 0) {
     return <span className="text-xs text-[var(--muted)]">-</span>;
   }
@@ -159,12 +165,16 @@ function MarketCell({ markets }: { markets: OpportunityBoardMarket[] }) {
           key={market.id}
         >
           <div className="flex items-center justify-between gap-3 border-b border-[color:var(--line)] bg-slate-50 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-            <span>{market.period}</span>
+            <span>{periodLabel(market.period)}</span>
             <span>{market.line || "Không line"}</span>
           </div>
           <div className="grid gap-px bg-[color:var(--line)]">
             {market.outcomes.map((outcome) => (
-              <OutcomeOdds outcome={outcome} key={outcome.outcome_id} />
+              <OutcomeOdds
+                displayOutcome={outcomeLabel(marketType, outcome)}
+                outcome={outcome}
+                key={outcome.outcome_id}
+              />
             ))}
           </div>
         </section>
@@ -173,7 +183,13 @@ function MarketCell({ markets }: { markets: OpportunityBoardMarket[] }) {
   );
 }
 
-function OutcomeOdds({ outcome }: { outcome: OpportunityBoardOutcome }) {
+function OutcomeOdds({
+  displayOutcome,
+  outcome
+}: {
+  displayOutcome: string;
+  outcome: OpportunityBoardOutcome;
+}) {
   const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${outcome.is_surebet_leg}`;
   const previousSignature = useRef<string | null>(null);
   const [isFlashing, setIsFlashing] = useState(false);
@@ -200,10 +216,45 @@ function OutcomeOdds({ outcome }: { outcome: OpportunityBoardOutcome }) {
           : "bg-white/80 text-[var(--ink)]"
       } ${isFlashing ? "opportunity-odds-pulse" : ""}`}
     >
-      <span className="min-w-0 break-words text-xs font-medium leading-4">{outcome.outcome_name}</span>
+      <span className="min-w-0 break-words text-xs font-medium leading-4">{displayOutcome}</span>
       <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{outcome.odds}</span>
     </div>
   );
+}
+
+function periodLabel(value: string) {
+  if (value === "FT") {
+    return "Toàn trận (FT)";
+  }
+  if (value === "1H") {
+    return "Hiệp 1 (1H)";
+  }
+  return value;
+}
+
+function outcomeLabel(
+  marketType: "handicap" | "over_under",
+  outcome: OpportunityBoardOutcome
+) {
+  if (marketType !== "over_under") {
+    return outcome.outcome_name;
+  }
+
+  if (outcome.side === "over") {
+    return "Tài";
+  }
+  if (outcome.side === "under") {
+    return "Xỉu";
+  }
+
+  const normalized = outcome.outcome_name.toLowerCase();
+  if (normalized.includes("over") || normalized.includes("tài")) {
+    return "Tài";
+  }
+  if (normalized.includes("under") || normalized.includes("xỉu")) {
+    return "Xỉu";
+  }
+  return outcome.outcome_name;
 }
 
 function EmptyBoard() {
