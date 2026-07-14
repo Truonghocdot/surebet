@@ -83,8 +83,7 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
 
   for (const item of items) {
     const fixtureID = canonicalFixtureKey(item);
-    const marketType = supportedMarketType(item.market_type);
-    if (!fixtureID || !marketType) {
+    if (!fixtureID) {
       continue;
     }
 
@@ -120,6 +119,15 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
     };
     source.latest_collected_at = latestTimestamp(source.latest_collected_at, item.collected_at);
 
+    // Keep the fixture visible when a live source temporarily exposes only 1X2 or another unsupported market.
+    fixture.sources.set(sourceID, source);
+    fixtures.set(fixtureID, fixture);
+
+    const marketType = supportedMarketType(item.market_type);
+    if (!marketType) {
+      continue;
+    }
+
     const existingMarket = source.markets[marketType].get(marketID);
     const market = existingMarket ?? {
       id: marketID,
@@ -139,9 +147,7 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       is_surebet_leg: isSurebetLeg
     });
     source.markets[marketType].set(marketID, market);
-    fixture.sources.set(sourceID, source);
     fixture.has_surebet ||= isSurebetLeg;
-    fixtures.set(fixtureID, fixture);
   }
 
   return Array.from(fixtures.values());
