@@ -16,7 +16,15 @@ export function canonicalFixtureKey({ homeTeam, awayTeam }: FixtureParticipants)
 }
 
 function canonicalParticipantName(value: string) {
-  return canonicalText(value.normalize("NFKD").replace(neutralVenueSuffix, ""));
+  const canonical = canonicalText(value.normalize("NFKD").replace(neutralVenueSuffix, ""));
+  const tokens = canonical.split(" ").filter(Boolean);
+  while (tokens[0] === "fc") {
+    tokens.shift();
+  }
+  while (tokens[tokens.length - 1] === "fc") {
+    tokens.pop();
+  }
+  return tokens.length > 0 ? tokens.join(" ") : canonical;
 }
 
 function canonicalText(value: string) {

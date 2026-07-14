@@ -151,6 +151,46 @@ func TestOddsSnapshotRepositoryDetectorSourceQueryFiltersSingleSource(t *testing
 	}
 }
 
+func TestOddsSnapshotRepositoryReplaceSourceSnapshotSuspendsMissingRows(t *testing.T) {
+	db, err := gorm.Open(
+		postgres.Open("host=localhost user=surebet password=surebet dbname=surebet sslmode=disable"),
+		&gorm.Config{
+			DryRun:               true,
+			DisableAutomaticPing: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("open dry-run db: %v", err)
+	}
+
+	collectedAt := time.Date(2026, 7, 14, 15, 0, 0, 0, time.UTC)
+	sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
+		return suspendMissingSourceRowsQuery(
+			tx.WithContext(context.Background()),
+			"8xbet",
+			"default",
+			collectedAt,
+			[]string{"quote-a"},
+		).Updates(map[string]any{
+			"suspended":    true,
+			"collected_at": collectedAt,
+		})
+	})
+
+	if !strings.Contains(sql, "UPDATE \"odds_quotes\"") {
+		t.Fatalf("expected replace snapshot to suspend missing rows, got SQL: %s", sql)
+	}
+	if !strings.Contains(sql, "bookmaker_id = '8xbet'") || !strings.Contains(sql, "lobby_id = 'default'") {
+		t.Fatalf("expected replace snapshot to scope suspension to source, got SQL: %s", sql)
+	}
+	if !strings.Contains(sql, "id NOT IN ('quote-a')") {
+		t.Fatalf("expected replace snapshot to preserve current snapshot ids, got SQL: %s", sql)
+	}
+	if !strings.Contains(sql, "\"suspended\"=true") && !strings.Contains(sql, "\"suspended\" = true") {
+		t.Fatalf("expected replace snapshot to update suspended state, got SQL: %s", sql)
+	}
+}
+
 func TestDedupeOddsQuotesKeepsLatestQuotePerID(t *testing.T) {
 	older := time.Date(2026, 6, 30, 11, 0, 0, 0, time.UTC)
 	newer := older.Add(5 * time.Second)

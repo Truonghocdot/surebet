@@ -43,33 +43,37 @@ func (r *OddsSnapshotRepository) Upsert(ctx context.Context, quotes []models.Odd
 	quotes = dedupeOddsQuotes(quotes)
 
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return tx.
-			Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "id"}},
-				DoUpdates: clause.Assignments(map[string]any{
-					"bookmaker_id":    clause.Column{Name: "excluded.bookmaker_id"},
-					"lobby_id":        clause.Column{Name: "excluded.lobby_id"},
-					"fixture_id":      clause.Column{Name: "excluded.fixture_id"},
-					"fixture_marker":  gorm.Expr("COALESCE(NULLIF(excluded.fixture_marker, ''), odds_quotes.fixture_marker)"),
-					"home_team":       clause.Column{Name: "excluded.home_team"},
-					"away_team":       clause.Column{Name: "excluded.away_team"},
-					"league_name":     gorm.Expr("COALESCE(NULLIF(excluded.league_name, ''), odds_quotes.league_name)"),
-					"sport":           clause.Column{Name: "excluded.sport"},
-					"market_id":       clause.Column{Name: "excluded.market_id"},
-					"market_marker":   gorm.Expr("COALESCE(NULLIF(excluded.market_marker, ''), odds_quotes.market_marker)"),
-					"market_name":     clause.Column{Name: "excluded.market_name"},
-					"outcome_id":      clause.Column{Name: "excluded.outcome_id"},
-					"outcome_marker":  gorm.Expr("COALESCE(NULLIF(excluded.outcome_marker, ''), odds_quotes.outcome_marker)"),
-					"outcome_name":    clause.Column{Name: "excluded.outcome_name"},
-					"odds":            clause.Column{Name: "excluded.odds"},
-					"available_stake": clause.Column{Name: "excluded.available_stake"},
-					"suspended":       clause.Column{Name: "excluded.suspended"},
-					"match_state":     gorm.Expr("COALESCE(NULLIF(excluded.match_state, ''), odds_quotes.match_state)"),
-					"event_start_at":  gorm.Expr("COALESCE(excluded.event_start_at, odds_quotes.event_start_at)"),
-					"collected_at":    clause.Column{Name: "excluded.collected_at"},
-				}),
-			}).
-			CreateInBatches(&quotes, oddsUpsertBatchSize).Error
+		return upsertOddsQuotes(tx, quotes)
+	})
+}
+
+func (r *OddsSnapshotRepository) ReplaceSourceSnapshot(
+	ctx context.Context,
+	bookmakerID, lobbyID string,
+	collectedAt time.Time,
+	quotes []models.OddsQuote,
+) error {
+	if len(quotes) == 0 {
+		return nil
+	}
+
+	quotes = dedupeOddsQuotes(quotes)
+	collectedAt = collectedAt.UTC()
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := upsertOddsQuotes(tx, quotes); err != nil {
+			return err
+		}
+
+		quoteIDs := make([]string, 0, len(quotes))
+		for _, quote := range quotes {
+			quoteIDs = append(quoteIDs, quote.ID)
+		}
+
+		return suspendMissingSourceRowsQuery(tx, bookmakerID, lobbyID, collectedAt, quoteIDs).Updates(map[string]any{
+			"suspended":    true,
+			"collected_at": collectedAt,
+		}).Error
 	})
 }
 
@@ -232,6 +236,53 @@ func buildLatestOddsSnapshotSubquery(db *gorm.DB, options currentQueryOptions) *
 	return db.
 		Select(fmt.Sprintf("DISTINCT ON (%s) odds_quotes.*", distinctOn)).
 		Order(orderBy)
+}
+
+func upsertOddsQuotes(db *gorm.DB, quotes []models.OddsQuote) error {
+	return db.
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "id"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"bookmaker_id":    clause.Column{Name: "excluded.bookmaker_id"},
+				"lobby_id":        clause.Column{Name: "excluded.lobby_id"},
+				"fixture_id":      clause.Column{Name: "excluded.fixture_id"},
+				"fixture_marker":  gorm.Expr("COALESCE(NULLIF(excluded.fixture_marker, ''), odds_quotes.fixture_marker)"),
+				"home_team":       clause.Column{Name: "excluded.home_team"},
+				"away_team":       clause.Column{Name: "excluded.away_team"},
+				"league_name":     gorm.Expr("COALESCE(NULLIF(excluded.league_name, ''), odds_quotes.league_name)"),
+				"sport":           clause.Column{Name: "excluded.sport"},
+				"market_id":       clause.Column{Name: "excluded.market_id"},
+				"market_marker":   gorm.Expr("COALESCE(NULLIF(excluded.market_marker, ''), odds_quotes.market_marker)"),
+				"market_name":     clause.Column{Name: "excluded.market_name"},
+				"outcome_id":      clause.Column{Name: "excluded.outcome_id"},
+				"outcome_marker":  gorm.Expr("COALESCE(NULLIF(excluded.outcome_marker, ''), odds_quotes.outcome_marker)"),
+				"outcome_name":    clause.Column{Name: "excluded.outcome_name"},
+				"odds":            clause.Column{Name: "excluded.odds"},
+				"available_stake": clause.Column{Name: "excluded.available_stake"},
+				"suspended":       clause.Column{Name: "excluded.suspended"},
+				"match_state":     gorm.Expr("COALESCE(NULLIF(excluded.match_state, ''), odds_quotes.match_state)"),
+				"event_start_at":  gorm.Expr("COALESCE(excluded.event_start_at, odds_quotes.event_start_at)"),
+				"collected_at":    clause.Column{Name: "excluded.collected_at"},
+			}),
+		}).
+		CreateInBatches(&quotes, oddsUpsertBatchSize).Error
+}
+
+func suspendMissingSourceRowsQuery(
+	db *gorm.DB,
+	bookmakerID, lobbyID string,
+	collectedAt time.Time,
+	quoteIDs []string,
+) *gorm.DB {
+	query := db.
+		Model(&models.OddsQuote{}).
+		Where("bookmaker_id = ? AND lobby_id = ?", bookmakerID, lobbyID).
+		Where("collected_at <= ?", collectedAt.UTC()).
+		Where("suspended = ?", false)
+	if len(quoteIDs) > 0 {
+		query = query.Where("id NOT IN ?", quoteIDs)
+	}
+	return query
 }
 
 func detectorMarketSQL(tableName string) string {

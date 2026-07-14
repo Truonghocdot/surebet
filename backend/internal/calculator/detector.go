@@ -539,12 +539,32 @@ func participantCandidate(outcomeName string) string {
 }
 
 func canonicalParticipantText(value string) string {
-	return canonicalText(neutralVenuePattern.ReplaceAllString(value, ""))
+	canonical := canonicalText(neutralVenuePattern.ReplaceAllString(value, ""))
+	tokens := strings.Fields(canonical)
+	for len(tokens) > 0 && isGenericClubToken(tokens[0]) {
+		tokens = tokens[1:]
+	}
+	for len(tokens) > 0 && isGenericClubToken(tokens[len(tokens)-1]) {
+		tokens = tokens[:len(tokens)-1]
+	}
+	if len(tokens) == 0 {
+		return canonical
+	}
+	return strings.Join(tokens, " ")
 }
 
 func isGenericParticipantLabel(value string) bool {
 	switch value {
 	case "draw", "hoa", "hoa n", "even", "odd", "over", "under", "tai", "xiu":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGenericClubToken(value string) bool {
+	switch value {
+	case "fc":
 		return true
 	default:
 		return false

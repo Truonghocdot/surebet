@@ -50,7 +50,7 @@ func (s apiService) IngestBootstrap(ctx context.Context, request dto.CollectorBo
 	s.log.Info("collector bootstrap ingested", "collector_id", request.Source.CollectorID, "selections", len(request.Selections))
 	quotes := mapSelections(request.Source, request.CollectedAt, request.Selections)
 	s.logDetectorIdentityGaps(quotes)
-	if err := s.writer.Upsert(ctx, quotes); err != nil {
+	if err := s.replaceSourceSnapshot(ctx, request.Source, request.CollectedAt, quotes); err != nil {
 		return err
 	}
 	if err := s.publisher.PublishOddsUpdated(
@@ -119,6 +119,26 @@ func (s apiService) triggerSurebetNotifier() {
 	if s.notifier != nil {
 		s.notifier.Trigger()
 	}
+}
+
+func (s apiService) replaceSourceSnapshot(
+	ctx context.Context,
+	source dto.CollectorSource,
+	collectedAt time.Time,
+	quotes []models.OddsQuote,
+) error {
+	if writer, ok := s.writer.(interface {
+		ReplaceSourceSnapshot(
+			ctx context.Context,
+			bookmakerID, lobbyID string,
+			collectedAt time.Time,
+			quotes []models.OddsQuote,
+		) error
+	}); ok {
+		return writer.ReplaceSourceSnapshot(ctx, source.BookmakerID, source.LobbyID, collectedAt, quotes)
+	}
+
+	return s.writer.Upsert(ctx, quotes)
 }
 
 func mapSelections(source dto.CollectorSource, collectedAt time.Time, selections []dto.CollectorSelection) []models.OddsQuote {

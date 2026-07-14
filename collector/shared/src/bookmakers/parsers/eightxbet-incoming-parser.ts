@@ -43,9 +43,7 @@ function parseMatchCard(cardNode: HTMLElement, options: { forceLive: boolean }) 
     extractFixtureId(cardNode.getAttribute("data-testid") || "") ||
     stableFixtureId(`${leagueName}|${textContent(cardNode)}`);
   const gameStage = textContent(cardNode.querySelector('[data-testid="simple-game-stage"]'));
-  const teamNames = Array.from(cardNode.querySelectorAll("small.text-text-2"))
-    .map((node) => textContent(node))
-    .filter(Boolean);
+  const teamNames = extractTeamNames(cardNode);
 
   if (teamNames.length < 2) {
     return [];
@@ -80,6 +78,22 @@ function parseMatchCard(cardNode: HTMLElement, options: { forceLive: boolean }) 
 
   void gameStage;
   return selections;
+}
+
+function extractTeamNames(cardNode: HTMLElement) {
+  const leftColumn =
+    (cardNode.querySelector(".flex.w-full.flex-row.justify-between.pb-0.pt-2 > div") as
+      | HTMLElement
+      | null) ?? cardNode;
+
+  return Array.from(leftColumn.querySelectorAll("small.text-text-2"))
+    .filter((node) => !node.closest('button[data-testid^="oddsBtn-"]'))
+    .filter((node) => !node.closest('[data-testid="simple-game-stage"]'))
+    .filter((node) => !node.closest('[data-testid="simple-handicap-game-header-count-icon"]'))
+    .map((node) => textContent(node))
+    .filter(Boolean)
+    .filter(isLikelyParticipantName)
+    .slice(0, 2);
 }
 
 function parseMarketColumn(
@@ -311,4 +325,28 @@ function textContent(node: Element | null | undefined) {
 
 function normalizeRawText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function isLikelyParticipantName(value: string) {
+  const normalized = normalizeRawText(value).toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    normalized === "upcoming" ||
+    normalized === "live" ||
+    normalized === "today" ||
+    normalized === "tomorrow" ||
+    normalized === "ht" ||
+    normalized === "ft"
+  ) {
+    return false;
+  }
+
+  if (/^\d{1,2}:\d{2}$/.test(normalized) || /^\d{1,2}-\d{1,2}$/.test(normalized)) {
+    return false;
+  }
+
+  return true;
 }
