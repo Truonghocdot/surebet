@@ -74,6 +74,19 @@ func TestDetectRejectsNonArbitrageDecimalOdds(t *testing.T) {
 	}
 }
 
+func TestDetectRejectsDifferentLobbiesOfTheSameBookmaker(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuote(now, "over", "jun88", "cmd", "Arsenal", "Milan", "", "Over 2.5", -0.5),
+		testQuote(now, "under", "jun88", "saba", "Arsenal", "Milan", "", "Under 2.5", -0.5),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected quotes from different lobbies of the same bookmaker to be rejected, got %+v", items)
+	}
+}
+
 func TestDetectRejectsQuotesWithoutDetectorIdentity(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })
