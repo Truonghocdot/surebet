@@ -122,6 +122,31 @@ func TestDetectMatchesCanonicalTeamsAndAllowsMissingOptionalMetadata(t *testing.
 	}
 }
 
+func TestDetectMatchesTeamsWithNeutralVenueAnnotation(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+
+	t.Run("over under", func(t *testing.T) {
+		quotes := []models.OddsQuote{
+			testQuote(now, "over", "jun88", "cmd", "FC Andorra (N)", "Millwall", "", "Over 2.5", -0.5),
+			testQuote(now, "under", "8xbet", "default", "Millwall", "FC Andorra", "", "Under 2.5", -0.5),
+		}
+		if items := detect(t, detector, quotes); len(items) != 1 {
+			t.Fatalf("expected neutral venue annotation to match, got %+v", items)
+		}
+	})
+
+	t.Run("handicap", func(t *testing.T) {
+		quotes := []models.OddsQuote{
+			testHandicapQuote(now, "andorra", "jun88", "cmd", "FC Andorra (N)", "Millwall", "FC Andorra (N) -0.5", -0.5),
+			testHandicapQuote(now, "millwall", "8xbet", "default", "Millwall", "FC Andorra", "Millwall +0.5", -0.5),
+		}
+		if items := detect(t, detector, quotes); len(items) != 1 {
+			t.Fatalf("expected neutral venue handicap to match, got %+v", items)
+		}
+	})
+}
+
 func TestDetectSeparatesDifferentSports(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })
@@ -236,7 +261,7 @@ func TestDetectRejectsStaleQuotesAndAllowsFreshTimestampSkew(t *testing.T) {
 		underAt time.Time
 		want    int
 	}{
-		{name: "stale", overAt: now.Add(-61 * time.Second), underAt: now, want: 0},
+		{name: "stale", overAt: now.Add(-46 * time.Second), underAt: now, want: 0},
 		{name: "skewed but fresh", overAt: now.Add(-20 * time.Second), underAt: now, want: 1},
 		{name: "fresh pair", overAt: now.Add(-20 * time.Second), underAt: now.Add(-15 * time.Second), want: 1},
 	}
@@ -251,7 +276,7 @@ func TestDetectRejectsStaleQuotesAndAllowsFreshTimestampSkew(t *testing.T) {
 				t.Fatalf("expected %d opportunities, got %d", test.want, len(items))
 			}
 			if test.name == "fresh pair" {
-				if !items[0].ExpiresAt.Equal(now.Add(40 * time.Second)) {
+				if !items[0].ExpiresAt.Equal(now.Add(25 * time.Second)) {
 					t.Fatalf("expected expiry from oldest quote, got %s", items[0].ExpiresAt)
 				}
 				if !items[0].DetectedAt.Equal(now) {

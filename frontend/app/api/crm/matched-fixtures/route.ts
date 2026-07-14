@@ -3,6 +3,7 @@ import {
   fetchBackendOdds,
   type BackendOdds
 } from "@/lib/server-dashboard-data";
+import { canonicalFixtureKey } from "@/lib/fixture-identity";
 
 type MutableSource = {
   source_id: string;
@@ -101,7 +102,10 @@ function groupMatchedFixtures(items: BackendOdds[]) {
   const grouped = new Map<string, MutableFixture>();
 
   for (const item of items) {
-    const marker = fixtureMarker(item);
+    const marker = canonicalFixtureKey({
+      homeTeam: item.home_team,
+      awayTeam: item.away_team
+    });
     if (!marker) {
       continue;
     }
@@ -159,20 +163,6 @@ function groupMatchedFixtures(items: BackendOdds[]) {
   return Array.from(grouped.values());
 }
 
-function fixtureMarker(item: BackendOdds) {
-  if (item.fixture_marker) {
-    return item.fixture_marker;
-  }
-
-  const home = normalizeName(item.home_team);
-  const away = normalizeName(item.away_team);
-  if (!home || !away) {
-    return "";
-  }
-
-  return `${home}-vs-${away}`;
-}
-
 function marketMarker(item: BackendOdds) {
   return [
     item.period || "ft",
@@ -189,15 +179,6 @@ function displayMatchName(item: BackendOdds) {
     return `${item.home_team || "Đội nhà"} - ${item.away_team || "Đội khách"}`;
   }
   return item.fixture_id || item.fixture_marker || "Chưa rõ trận đấu";
-}
-
-function normalizeName(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 function normalizeMatchState(value: string) {

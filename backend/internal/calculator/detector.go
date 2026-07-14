@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	detectorMaxQuoteAge  = 60 * time.Second
+	detectorMaxQuoteAge  = 45 * time.Second
 	detectorMaxQuoteSkew = 5 * time.Minute
 	arbitrageTolerance   = 1e-9
 )
@@ -25,6 +25,7 @@ const (
 var (
 	linePattern         = regexp.MustCompile(`([+-]?\d+(?:\.\d+)?(?:/[+-]?\d+(?:\.\d+)?)?)\s*$`)
 	shortTagPattern     = regexp.MustCompile(`(?i)\s+\((h|a)\)\s*$`)
+	neutralVenuePattern = regexp.MustCompile(`(?i)\s*\(\s*n\s*\)\s*$`)
 	whitespacePattern   = regexp.MustCompile(`\s+`)
 	separatorNormalizer = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 )
@@ -174,8 +175,8 @@ func isFreshQuote(now, collectedAt time.Time) bool {
 
 func normalizeEventIdentity(quote models.OddsQuote) (eventIdentity, bool) {
 	sport := canonicalText(quote.Sport)
-	homeTeam := canonicalText(quote.HomeTeam)
-	awayTeam := canonicalText(quote.AwayTeam)
+	homeTeam := canonicalParticipantText(quote.HomeTeam)
+	awayTeam := canonicalParticipantText(quote.AwayTeam)
 	if sport == "" || homeTeam == "" || awayTeam == "" || homeTeam == awayTeam {
 		return eventIdentity{}, false
 	}
@@ -530,11 +531,15 @@ func participantCandidate(outcomeName string) string {
 	cleaned := strings.TrimSpace(removeLineSuffix(outcomeName))
 	cleaned = shortTagPattern.ReplaceAllString(cleaned, "")
 	cleaned = strings.TrimSpace(cleaned)
-	canonical := canonicalText(cleaned)
+	canonical := canonicalParticipantText(cleaned)
 	if canonical == "" || isGenericParticipantLabel(canonical) {
 		return ""
 	}
 	return canonical
+}
+
+func canonicalParticipantText(value string) string {
+	return canonicalText(neutralVenuePattern.ReplaceAllString(value, ""))
 }
 
 func isGenericParticipantLabel(value string) bool {

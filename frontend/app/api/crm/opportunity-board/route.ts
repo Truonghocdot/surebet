@@ -4,6 +4,7 @@ import {
   fetchBackendOpportunities,
   type BackendOdds
 } from "@/lib/server-dashboard-data";
+import { canonicalFixtureKey } from "@/lib/fixture-identity";
 
 type MarketType = "handicap" | "over_under";
 
@@ -82,7 +83,10 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
   const fixtures = new Map<string, MutableFixture>();
 
   for (const item of items) {
-    const fixtureID = canonicalFixtureKey(item);
+    const fixtureID = canonicalFixtureKey({
+      homeTeam: item.home_team,
+      awayTeam: item.away_team
+    });
     if (!fixtureID) {
       continue;
     }
@@ -183,15 +187,6 @@ function serializeMarkets(markets: Map<string, MutableMarket>) {
     .sort(compareMarkets);
 }
 
-function canonicalFixtureKey(item: BackendOdds) {
-  const home = canonicalText(item.home_team);
-  const away = canonicalText(item.away_team);
-  if (!home || !away || home === away) {
-    return "";
-  }
-  return [home, away].sort((left, right) => left.localeCompare(right)).join(" vs ");
-}
-
 function supportedMarketType(value: string): MarketType | null {
   if (value === "handicap" || value === "over_under") {
     return value;
@@ -286,14 +281,4 @@ function sideRank(side: string) {
     default:
       return 2;
   }
-}
-
-function canonicalText(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
