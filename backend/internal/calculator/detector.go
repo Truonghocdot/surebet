@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	detectorMaxQuoteAge  = 45 * time.Second
+	detectorMaxQuoteAge  = 300 * time.Second
 	detectorMaxQuoteSkew = 5 * time.Minute
 	arbitrageTolerance   = 1e-9
 )
