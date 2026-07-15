@@ -116,15 +116,19 @@ export function SurebetCalculatorScreen() {
   const displayedLeftStake =
     stakeMode === "left"
       ? leftStakeInput
-      : calculation
+      : stakeMode === "right" && calculation
         ? formatEditableMoney(calculation.leftStake)
-        : leftStakeInput;
+        : stakeMode === "total" && calculation
+          ? formatEditableMoney(calculation.leftStake)
+          : leftStakeInput;
   const displayedRightStake =
     stakeMode === "right"
       ? rightStakeInput
-      : calculation
+      : stakeMode === "left" && calculation
         ? formatEditableMoney(calculation.rightStake)
-        : rightStakeInput;
+        : stakeMode === "total" && calculation
+          ? formatEditableMoney(calculation.rightStake)
+          : rightStakeInput;
 
   return (
     <div className="dashboard-page">
