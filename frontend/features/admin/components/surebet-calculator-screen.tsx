@@ -11,6 +11,7 @@ import { useSessionStore } from "@/features/auth/store/session-store";
 import { cn } from "@/lib/utils";
 
 type OddsFormat = "malay" | "decimal";
+type StakeMode = "ratio" | "total" | "left" | "right";
 
 const moneyPresets = [100_000, 200_000, 500_000, 1_000_000];
 
@@ -20,6 +21,9 @@ export function SurebetCalculatorScreen() {
   const [leftOdds, setLeftOdds] = useState("");
   const [rightOdds, setRightOdds] = useState("");
   const [totalStake, setTotalStake] = useState("");
+  const [leftStakeInput, setLeftStakeInput] = useState("");
+  const [rightStakeInput, setRightStakeInput] = useState("");
+  const [stakeMode, setStakeMode] = useState<StakeMode>("ratio");
 
   if (!user) {
     return (
@@ -48,11 +52,17 @@ export function SurebetCalculatorScreen() {
   const leftRaw = parseNumberish(leftOdds);
   const rightRaw = parseNumberish(rightOdds);
   const totalStakeValue = parseNumberish(totalStake);
+  const leftStakeRaw = parseNumberish(leftStakeInput);
+  const rightStakeRaw = parseNumberish(rightStakeInput);
 
   const leftDecimal = toDecimalOdds(leftRaw, oddsFormat);
   const rightDecimal = toDecimalOdds(rightRaw, oddsFormat);
   const totalStakeAmount =
     totalStakeValue !== null && totalStakeValue > 0 ? totalStakeValue : null;
+  const leftStakeAmount =
+    leftStakeRaw !== null && leftStakeRaw > 0 ? leftStakeRaw : null;
+  const rightStakeAmount =
+    rightStakeRaw !== null && rightStakeRaw > 0 ? rightStakeRaw : null;
 
   const leftError =
     leftOdds.trim() === ""
@@ -74,11 +84,47 @@ export function SurebetCalculatorScreen() {
     totalStake.trim() !== "" && totalStakeAmount === null
       ? "Tổng tiền phải lớn hơn 0."
       : "";
+  const leftStakeError =
+    leftStakeInput.trim() !== "" && leftStakeAmount === null
+      ? "Tiền cửa A phải lớn hơn 0."
+      : "";
+  const rightStakeError =
+    rightStakeInput.trim() !== "" && rightStakeAmount === null
+      ? "Tiền cửa B phải lớn hơn 0."
+      : "";
 
   const calculation =
     leftDecimal !== null && rightDecimal !== null
-      ? buildSurebetCalculation(leftDecimal, rightDecimal, totalStakeAmount)
+      ? stakeMode === "left" && leftStakeAmount !== null
+        ? buildSurebetCalculation(leftDecimal, rightDecimal, {
+            kind: "left",
+            amount: leftStakeAmount
+          })
+        : stakeMode === "right" && rightStakeAmount !== null
+          ? buildSurebetCalculation(leftDecimal, rightDecimal, {
+              kind: "right",
+              amount: rightStakeAmount
+            })
+          : stakeMode === "total" && totalStakeAmount !== null
+            ? buildSurebetCalculation(leftDecimal, rightDecimal, {
+                kind: "total",
+                amount: totalStakeAmount
+              })
+            : buildSurebetCalculation(leftDecimal, rightDecimal, null)
       : null;
+
+  const displayedLeftStake =
+    stakeMode === "left"
+      ? leftStakeInput
+      : calculation
+        ? formatEditableMoney(calculation.leftStake)
+        : leftStakeInput;
+  const displayedRightStake =
+    stakeMode === "right"
+      ? rightStakeInput
+      : calculation
+        ? formatEditableMoney(calculation.rightStake)
+        : rightStakeInput;
 
   return (
     <div className="dashboard-page">
@@ -111,7 +157,10 @@ export function SurebetCalculatorScreen() {
                 setLeftOdds("0.95");
                 setRightOdds("-0.92");
                 setTotalStake("1000000");
+                setLeftStakeInput("");
+                setRightStakeInput("");
                 setOddsFormat("malay");
+                setStakeMode("total");
               }}
               size="sm"
               type="button"
@@ -124,6 +173,9 @@ export function SurebetCalculatorScreen() {
                 setLeftOdds("");
                 setRightOdds("");
                 setTotalStake("");
+                setLeftStakeInput("");
+                setRightStakeInput("");
+                setStakeMode("ratio");
               }}
               size="sm"
               type="button"
@@ -182,7 +234,12 @@ export function SurebetCalculatorScreen() {
                     description="Nếu để trống, hệ thống chỉ trả ra tỷ lệ phần trăm chia vốn."
                     error={totalStakeError}
                     label="Tổng tiền muốn vào"
-                    onChange={setTotalStake}
+                    onChange={(value) => {
+                      setTotalStake(value);
+                      setLeftStakeInput("");
+                      setRightStakeInput("");
+                      setStakeMode(value.trim() ? "total" : "ratio");
+                    }}
                     value={totalStake}
                   />
                   <div className="flex flex-wrap gap-2">
@@ -199,6 +256,45 @@ export function SurebetCalculatorScreen() {
                       </Button>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[color:var(--line)] bg-white/72 p-4">
+                <div className="mb-3">
+                  <p className="text-sm font-semibold text-[var(--ink)]">
+                    Hoặc nhập trực tiếp tiền cho một cửa
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
+                    Gõ tiền ở cửa A hoặc cửa B, hệ thống sẽ tự tính cửa còn lại theo đúng
+                    payout tương ứng.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <OddsField
+                    description="Ví dụ: 500000"
+                    error={leftStakeError}
+                    label="Tiền cửa A"
+                    onChange={(value) => {
+                      setLeftStakeInput(value);
+                      setRightStakeInput("");
+                      setTotalStake("");
+                      setStakeMode(value.trim() ? "left" : "ratio");
+                    }}
+                    value={displayedLeftStake}
+                  />
+                  <OddsField
+                    description="Ví dụ: 500000"
+                    error={rightStakeError}
+                    label="Tiền cửa B"
+                    onChange={(value) => {
+                      setRightStakeInput(value);
+                      setLeftStakeInput("");
+                      setTotalStake("");
+                      setStakeMode(value.trim() ? "right" : "ratio");
+                    }}
+                    value={displayedRightStake}
+                  />
                 </div>
               </div>
             </div>
@@ -235,10 +331,22 @@ export function SurebetCalculatorScreen() {
                     label="Decimal cửa A"
                     value={leftDecimal !== null ? formatOdds(leftDecimal) : "-"}
                   />
-                  <ConversionRow
-                    label="Decimal cửa B"
-                    value={rightDecimal !== null ? formatOdds(rightDecimal) : "-"}
-                  />
+                    <ConversionRow
+                      label="Decimal cửa B"
+                      value={rightDecimal !== null ? formatOdds(rightDecimal) : "-"}
+                    />
+                    <ConversionRow
+                      label="Chế độ tiền"
+                      value={
+                        stakeMode === "left"
+                          ? "Nhập cửa A"
+                          : stakeMode === "right"
+                            ? "Nhập cửa B"
+                            : stakeMode === "total"
+                              ? "Nhập tổng vốn"
+                              : "Tỷ lệ"
+                      }
+                    />
                 </div>
               </InlineCard>
             </div>
@@ -334,7 +442,7 @@ export function SurebetCalculatorScreen() {
                     <AmountRow
                       label="Cửa A"
                       value={
-                        totalStakeAmount !== null
+                        calculation.sourceKind !== "ratio"
                           ? formatMoney(calculation.leftStake)
                           : `= ${formatPercent(calculation.leftShare * 100)} tổng vốn`
                       }
@@ -342,15 +450,19 @@ export function SurebetCalculatorScreen() {
                     <AmountRow
                       label="Cửa B"
                       value={
-                        totalStakeAmount !== null
+                        calculation.sourceKind !== "ratio"
                           ? formatMoney(calculation.rightStake)
                           : `= ${formatPercent(calculation.rightShare * 100)} tổng vốn`
                       }
                     />
                     <AmountRow
+                      label="Tổng tiền vào"
+                      value={formatMoney(calculation.totalStake)}
+                    />
+                    <AmountRow
                       label="Payout nếu A thắng"
                       value={
-                        totalStakeAmount !== null
+                        calculation.sourceKind !== "ratio"
                           ? formatMoney(calculation.leftPayout)
                           : formatUnit(calculation.leftDecimal * calculation.leftShare)
                       }
@@ -358,7 +470,7 @@ export function SurebetCalculatorScreen() {
                     <AmountRow
                       label="Payout nếu B thắng"
                       value={
-                        totalStakeAmount !== null
+                        calculation.sourceKind !== "ratio"
                           ? formatMoney(calculation.rightPayout)
                           : formatUnit(calculation.rightDecimal * calculation.rightShare)
                       }
@@ -367,7 +479,7 @@ export function SurebetCalculatorScreen() {
                       emphasized
                       label="Lợi nhuận khóa"
                       value={
-                        totalStakeAmount !== null
+                        calculation.sourceKind !== "ratio"
                           ? formatSignedMoney(calculation.lockedProfit)
                           : formatPercent(calculation.profitPercentage)
                       }
@@ -558,27 +670,51 @@ function ShareMeter({
 function buildSurebetCalculation(
   leftDecimal: number,
   rightDecimal: number,
-  totalStake: number | null
+  source:
+    | {
+        kind: "total" | "left" | "right";
+        amount: number;
+      }
+    | null
 ) {
   const leftImplied = 1 / leftDecimal;
   const rightImplied = 1 / rightDecimal;
   const combinedProbability = leftImplied + rightImplied;
   const leftShare = leftImplied / combinedProbability;
   const rightShare = rightImplied / combinedProbability;
-  const baseStake = totalStake ?? 100;
-  const leftStake = baseStake * leftShare;
-  const rightStake = baseStake * rightShare;
+  const sourceKind = source?.kind ?? "ratio";
+  const defaultBaseStake = 100;
+
+  let leftStake = defaultBaseStake * leftShare;
+  let rightStake = defaultBaseStake * rightShare;
+
+  if (source?.kind === "total") {
+    leftStake = source.amount * leftShare;
+    rightStake = source.amount * rightShare;
+  }
+  if (source?.kind === "left") {
+    leftStake = source.amount;
+    rightStake = (leftStake * leftDecimal) / rightDecimal;
+  }
+  if (source?.kind === "right") {
+    rightStake = source.amount;
+    leftStake = (rightStake * rightDecimal) / leftDecimal;
+  }
+
+  const totalStake = leftStake + rightStake;
   const leftPayout = leftStake * leftDecimal;
   const rightPayout = rightStake * rightDecimal;
-  const lockedProfit = Math.min(leftPayout, rightPayout) - baseStake;
+  const lockedProfit = Math.min(leftPayout, rightPayout) - totalStake;
   const expectedReturn = (1 / combinedProbability) - 1;
 
   return {
+    sourceKind,
     leftDecimal,
     rightDecimal,
     combinedProbability,
     leftShare,
     rightShare,
+    totalStake,
     leftStake,
     rightStake,
     leftPayout,
@@ -644,8 +780,12 @@ function formatUnit(value: number) {
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("vi-VN", {
-    maximumFractionDigits: 0
+    maximumFractionDigits: 2
   }).format(value);
+}
+
+function formatEditableMoney(value: number) {
+  return trimTrailingZeros(value.toFixed(value >= 1000 ? 0 : 2));
 }
 
 function compactMoney(value: number) {
