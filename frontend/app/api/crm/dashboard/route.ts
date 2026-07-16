@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/features/auth/server/session";
+import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
 import { fetchBackendOpportunities } from "@/lib/server-dashboard-data";
 
 export async function GET() {
   try {
-    const opportunities = await fetchBackendOpportunities();
+    const [user, rawOpportunities] = await Promise.all([
+      getSessionUser(),
+      fetchBackendOpportunities()
+    ]);
+    const opportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
 
     const uniqueFixtures = new Set(opportunities.map((item) => item.fixture_id)).size;
     const uniqueSources = new Set(

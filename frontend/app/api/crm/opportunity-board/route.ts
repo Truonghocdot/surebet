@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/features/auth/server/session";
+import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
 import {
   fetchBackendOdds,
   fetchBackendOpportunities,
@@ -42,10 +44,12 @@ type MutableFixture = {
 
 export async function GET() {
   try {
-    const [odds, opportunities] = await Promise.all([
+    const [user, odds, rawOpportunities] = await Promise.all([
+      getSessionUser(),
       fetchBackendOdds(false),
       fetchBackendOpportunities()
     ]);
+    const opportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
     const surebetLegs = new Set(
       opportunities.flatMap((opportunity) =>
         opportunity.legs.map((leg) => outcomeKey(leg.bookmaker_id, leg.lobby_id, leg.outcome_id))

@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/features/auth/server/session";
+import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
 import { fetchBackendOpportunities } from "@/lib/server-dashboard-data";
 
 export async function GET() {
   try {
-    return NextResponse.json(await fetchBackendOpportunities());
+    const [user, opportunities] = await Promise.all([
+      getSessionUser(),
+      fetchBackendOpportunities()
+    ]);
+    return NextResponse.json(filterOpportunitiesForRole(opportunities, user?.role));
   } catch (error) {
     return NextResponse.json(
       {
