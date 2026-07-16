@@ -14,8 +14,8 @@ import (
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/realtime"
-	"surebet/backend/internal/repository/redisstore"
 	"surebet/backend/internal/repository/gormstore"
+	"surebet/backend/internal/repository/redisstore"
 	"surebet/backend/internal/runtimeconfig"
 	"surebet/backend/internal/surebet"
 	"surebet/backend/internal/telegram"
@@ -29,6 +29,10 @@ func main() {
 	db, err := gormstore.Open(cfg.Postgres)
 	if err != nil {
 		log.Error("failed to open postgres", "error", err.Error())
+		os.Exit(1)
+	}
+	if err := gormstore.EnsureTelegramRecipientSchema(db); err != nil {
+		log.Error("failed to ensure telegram recipient schema", "error", err.Error())
 		os.Exit(1)
 	}
 	redisClient, err := redisstore.Open(cfg.Redis)

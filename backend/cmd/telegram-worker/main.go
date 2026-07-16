@@ -22,6 +22,10 @@ func main() {
 		log.Error("failed to open postgres", "error", err.Error())
 		os.Exit(1)
 	}
+	if err := gormstore.EnsureTelegramRecipientSchema(db); err != nil {
+		log.Error("failed to ensure telegram recipient schema", "error", err.Error())
+		os.Exit(1)
+	}
 
 	recipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	queueRepository := gormstore.NewTelegramNotificationLogRepository(db)

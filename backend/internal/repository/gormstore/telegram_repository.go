@@ -19,6 +19,10 @@ func NewTelegramRecipientRepository(db *gorm.DB) *TelegramRecipientRepository {
 	return &TelegramRecipientRepository{db: db}
 }
 
+func EnsureTelegramRecipientSchema(db *gorm.DB) error {
+	return db.AutoMigrate(&models.TelegramRecipient{})
+}
+
 func (r *TelegramRecipientRepository) ListAll(ctx context.Context) ([]models.TelegramRecipient, error) {
 	var recipients []models.TelegramRecipient
 	err := r.db.WithContext(ctx).
@@ -90,15 +94,17 @@ func (r *TelegramRecipientRepository) Upsert(
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "chat_id"}},
 			DoUpdates: clause.Assignments(map[string]any{
-				"name":              clause.Column{Name: "excluded.name"},
-				"is_active":         clause.Column{Name: "excluded.is_active"},
-				"notes":             clause.Column{Name: "excluded.notes"},
-				"source":            gorm.Expr("COALESCE(NULLIF(excluded.source, ''), telegram_recipients.source)"),
-				"chat_type":         clause.Column{Name: "excluded.chat_type"},
-				"telegram_username": clause.Column{Name: "excluded.telegram_username"},
-				"membership_status": clause.Column{Name: "excluded.membership_status"},
-				"last_seen_at":      clause.Column{Name: "excluded.last_seen_at"},
-				"updated_at":        clause.Column{Name: "excluded.updated_at"},
+				"name":                               clause.Column{Name: "excluded.name"},
+				"is_active":                          clause.Column{Name: "excluded.is_active"},
+				"notes":                              clause.Column{Name: "excluded.notes"},
+				"source":                             gorm.Expr("COALESCE(NULLIF(excluded.source, ''), telegram_recipients.source)"),
+				"chat_type":                          clause.Column{Name: "excluded.chat_type"},
+				"telegram_username":                  clause.Column{Name: "excluded.telegram_username"},
+				"membership_status":                  clause.Column{Name: "excluded.membership_status"},
+				"receives_one_negative_one_positive": clause.Column{Name: "excluded.receives_one_negative_one_positive"},
+				"receives_two_negative":              clause.Column{Name: "excluded.receives_two_negative"},
+				"last_seen_at":                       clause.Column{Name: "excluded.last_seen_at"},
+				"updated_at":                         clause.Column{Name: "excluded.updated_at"},
 			}),
 		}).
 		Create(&recipient).Error

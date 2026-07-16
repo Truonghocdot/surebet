@@ -70,18 +70,20 @@ type SurebetOpportunity struct {
 }
 
 type TelegramRecipient struct {
-	ID               uint64     `json:"id" gorm:"primaryKey"`
-	Name             string     `json:"name"`
-	ChatID           string     `json:"chat_id" gorm:"column:chat_id"`
-	IsActive         bool       `json:"is_active" gorm:"column:is_active"`
-	Notes            string     `json:"notes"`
-	Source           string     `json:"source"`
-	ChatType         string     `json:"chat_type" gorm:"column:chat_type"`
-	TelegramUsername string     `json:"telegram_username" gorm:"column:telegram_username"`
-	MembershipStatus string     `json:"membership_status" gorm:"column:membership_status"`
-	LastSeenAt       *time.Time `json:"last_seen_at,omitempty" gorm:"column:last_seen_at"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID                             uint64     `json:"id" gorm:"primaryKey"`
+	Name                           string     `json:"name"`
+	ChatID                         string     `json:"chat_id" gorm:"column:chat_id"`
+	IsActive                       bool       `json:"is_active" gorm:"column:is_active"`
+	Notes                          string     `json:"notes"`
+	Source                         string     `json:"source"`
+	ChatType                       string     `json:"chat_type" gorm:"column:chat_type"`
+	TelegramUsername               string     `json:"telegram_username" gorm:"column:telegram_username"`
+	MembershipStatus               string     `json:"membership_status" gorm:"column:membership_status"`
+	ReceivesOneNegativeOnePositive bool       `json:"receives_one_negative_one_positive" gorm:"column:receives_one_negative_one_positive;default:true"`
+	ReceivesTwoNegative            bool       `json:"receives_two_negative" gorm:"column:receives_two_negative;default:true"`
+	LastSeenAt                     *time.Time `json:"last_seen_at,omitempty" gorm:"column:last_seen_at"`
+	CreatedAt                      time.Time  `json:"created_at"`
+	UpdatedAt                      time.Time  `json:"updated_at"`
 }
 
 type TelegramNotificationLog struct {

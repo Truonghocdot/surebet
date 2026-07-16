@@ -10,6 +10,8 @@ export const telegramRecipientSchema = z.object({
   chat_type: z.string(),
   telegram_username: z.string(),
   membership_status: z.string(),
+  receives_one_negative_one_positive: z.boolean(),
+  receives_two_negative: z.boolean(),
   last_seen_at: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string()
@@ -19,7 +21,9 @@ export const upsertTelegramRecipientSchema = z.object({
   name: z.string().trim().min(1, "Tên hiển thị là bắt buộc."),
   chat_id: z.string().trim().min(1, "Chat ID là bắt buộc."),
   is_active: z.boolean(),
-  notes: z.string()
+  notes: z.string(),
+  receives_one_negative_one_positive: z.boolean(),
+  receives_two_negative: z.boolean()
 });
 
 export type TelegramRecipient = z.infer<typeof telegramRecipientSchema>;

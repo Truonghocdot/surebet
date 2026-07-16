@@ -29,13 +29,17 @@ type FormState = {
   chat_id: string;
   is_active: boolean;
   notes: string;
+  receives_one_negative_one_positive: boolean;
+  receives_two_negative: boolean;
 };
 
 const emptyForm: FormState = {
   name: "",
   chat_id: "",
   is_active: true,
-  notes: ""
+  notes: "",
+  receives_one_negative_one_positive: true,
+  receives_two_negative: true
 };
 
 export function AdminTelegramRecipientsScreen() {
@@ -62,7 +66,10 @@ export function AdminTelegramRecipientsScreen() {
       name: selectedRecipient.name,
       chat_id: selectedRecipient.chat_id,
       is_active: selectedRecipient.is_active,
-      notes: selectedRecipient.notes
+      notes: selectedRecipient.notes,
+      receives_one_negative_one_positive:
+        selectedRecipient.receives_one_negative_one_positive,
+      receives_two_negative: selectedRecipient.receives_two_negative
     });
   }, [selectedRecipient]);
 
@@ -262,6 +269,7 @@ export function AdminTelegramRecipientsScreen() {
                           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
                             <span>{item.chat_type || "chat?"}</span>
                             <span>{item.membership_status || "membership?"}</span>
+                            <span>{formatRecipientTypes(item)}</span>
                             <span>{formatRelative(item.updated_at)}</span>
                           </div>
                         </button>
@@ -319,6 +327,63 @@ export function AdminTelegramRecipientsScreen() {
                           type="checkbox"
                         />
                       </label>
+                    </div>
+
+                    <div className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4">
+                      <div className="space-y-3">
+                        <div>
+                          <p className="font-semibold text-[var(--ink)]">Loại kèo được nhận</p>
+                          <p className="text-sm text-[var(--muted)]">
+                            Chọn cho từng Telegram nhận kèo `1 âm 1 dương`, `2 âm`, hoặc bật cả hai.
+                          </p>
+                        </div>
+
+                        <label className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-[var(--ink)]">1 âm 1 dương</p>
+                            <p className="text-sm text-[var(--muted)]">
+                              Một leg odds âm và một leg odds dương.
+                            </p>
+                          </div>
+                          <input
+                            checked={form.receives_one_negative_one_positive}
+                            className="mt-1 size-5 shrink-0 accent-[var(--accent)]"
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                receives_one_negative_one_positive: event.target.checked
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                        </label>
+
+                        <label className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-[var(--ink)]">2 âm</p>
+                            <p className="text-sm text-[var(--muted)]">
+                              Cả hai leg đều là odds âm.
+                            </p>
+                          </div>
+                          <input
+                            checked={form.receives_two_negative}
+                            className="mt-1 size-5 shrink-0 accent-[var(--accent)]"
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                receives_two_negative: event.target.checked
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                        </label>
+
+                        {!form.receives_one_negative_one_positive && !form.receives_two_negative ? (
+                          <p className="text-sm text-[var(--danger)]">
+                            Recipient này sẽ không nhận loại surebet nào cho tới khi bật lại ít nhất một lựa chọn.
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div>
@@ -400,4 +465,18 @@ function formatRelative(value: string) {
     return `${Math.floor(seconds / 60)} phút trước`;
   }
   return `${Math.floor(seconds / 3600)} giờ trước`;
+}
+
+function formatRecipientTypes(recipient: TelegramRecipient) {
+  const labels: string[] = [];
+  if (recipient.receives_one_negative_one_positive) {
+    labels.push("1 am 1 duong");
+  }
+  if (recipient.receives_two_negative) {
+    labels.push("2 am");
+  }
+  if (labels.length === 0) {
+    return "khong gui";
+  }
+  return labels.join(" + ");
 }

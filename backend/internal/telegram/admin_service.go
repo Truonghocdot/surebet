@@ -41,11 +41,13 @@ func (s AdminService) CreateRecipient(
 	request dto.UpsertTelegramRecipientRequest,
 ) (dto.TelegramRecipientView, error) {
 	recipient, err := s.recipients.Save(ctx, models.TelegramRecipient{
-		Name:     strings.TrimSpace(request.Name),
-		ChatID:   strings.TrimSpace(request.ChatID),
-		IsActive: request.IsActive,
-		Notes:    strings.TrimSpace(request.Notes),
-		Source:   "manual",
+		Name:                           strings.TrimSpace(request.Name),
+		ChatID:                         strings.TrimSpace(request.ChatID),
+		IsActive:                       request.IsActive,
+		Notes:                          strings.TrimSpace(request.Notes),
+		Source:                         "manual",
+		ReceivesOneNegativeOnePositive: request.ReceivesOneNegativeOnePositive,
+		ReceivesTwoNegative:            request.ReceivesTwoNegative,
 	})
 	if err != nil {
 		return dto.TelegramRecipientView{}, err
@@ -68,6 +70,8 @@ func (s AdminService) UpdateRecipient(
 	recipient.ChatID = strings.TrimSpace(request.ChatID)
 	recipient.IsActive = request.IsActive
 	recipient.Notes = strings.TrimSpace(request.Notes)
+	recipient.ReceivesOneNegativeOnePositive = request.ReceivesOneNegativeOnePositive
+	recipient.ReceivesTwoNegative = request.ReceivesTwoNegative
 	if strings.TrimSpace(recipient.Source) == "" {
 		recipient.Source = "manual"
 	}
@@ -86,17 +90,19 @@ func (s AdminService) DeleteRecipient(ctx context.Context, id uint64) error {
 
 func mapTelegramRecipientView(recipient models.TelegramRecipient) dto.TelegramRecipientView {
 	return dto.TelegramRecipientView{
-		ID:               recipient.ID,
-		Name:             recipient.Name,
-		ChatID:           recipient.ChatID,
-		IsActive:         recipient.IsActive,
-		Notes:            recipient.Notes,
-		Source:           recipient.Source,
-		ChatType:         recipient.ChatType,
-		TelegramUsername: recipient.TelegramUsername,
-		MembershipStatus: recipient.MembershipStatus,
-		LastSeenAt:       recipient.LastSeenAt,
-		CreatedAt:        recipient.CreatedAt,
-		UpdatedAt:        recipient.UpdatedAt,
+		ID:                             recipient.ID,
+		Name:                           recipient.Name,
+		ChatID:                         recipient.ChatID,
+		IsActive:                       recipient.IsActive,
+		Notes:                          recipient.Notes,
+		Source:                         recipient.Source,
+		ChatType:                       recipient.ChatType,
+		TelegramUsername:               recipient.TelegramUsername,
+		MembershipStatus:               recipient.MembershipStatus,
+		ReceivesOneNegativeOnePositive: recipient.ReceivesOneNegativeOnePositive,
+		ReceivesTwoNegative:            recipient.ReceivesTwoNegative,
+		LastSeenAt:                     recipient.LastSeenAt,
+		CreatedAt:                      recipient.CreatedAt,
+		UpdatedAt:                      recipient.UpdatedAt,
 	}
 }

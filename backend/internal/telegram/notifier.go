@@ -14,6 +14,14 @@ import (
 	"surebet/backend/internal/models"
 )
 
+type opportunityOddsProfile string
+
+const (
+	opportunityOddsProfileUnknown                opportunityOddsProfile = "unknown"
+	opportunityOddsProfileOneNegativeOnePositive opportunityOddsProfile = "one_negative_one_positive"
+	opportunityOddsProfileTwoNegative            opportunityOddsProfile = "two_negative"
+)
+
 type SurebetReader interface {
 	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
@@ -111,6 +119,10 @@ func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
 		message := formatSurebetMessage(item)
 
 		for _, recipient := range recipients {
+			if !recipientAcceptsOpportunity(recipient, item) {
+				continue
+			}
+
 			queuedOrSent, err := n.logs.HasPendingOrRecentSent(ctx, recipient.ID, item.ID, since)
 			if err != nil {
 				return err
@@ -149,4 +161,38 @@ func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func recipientAcceptsOpportunity(recipient models.TelegramRecipient, item dto.SurebetView) bool {
+	switch classifyOpportunityOddsProfile(item) {
+	case opportunityOddsProfileOneNegativeOnePositive:
+		return recipient.ReceivesOneNegativeOnePositive
+	case opportunityOddsProfileTwoNegative:
+		return recipient.ReceivesTwoNegative
+	default:
+		return recipient.ReceivesOneNegativeOnePositive || recipient.ReceivesTwoNegative
+	}
+}
+
+func classifyOpportunityOddsProfile(item dto.SurebetView) opportunityOddsProfile {
+	negativeCount := 0
+	positiveCount := 0
+
+	for _, leg := range item.Legs {
+		switch {
+		case leg.Odds < 0:
+			negativeCount += 1
+		case leg.Odds > 0:
+			positiveCount += 1
+		}
+	}
+
+	switch {
+	case negativeCount >= 2 && positiveCount == 0:
+		return opportunityOddsProfileTwoNegative
+	case negativeCount >= 1 && positiveCount >= 1:
+		return opportunityOddsProfileOneNegativeOnePositive
+	default:
+		return opportunityOddsProfileUnknown
+	}
 }
