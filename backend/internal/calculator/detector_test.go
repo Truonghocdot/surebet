@@ -147,6 +147,26 @@ func TestDetectMatchesTeamsWithAliasesAndStripsParentheticalAnnotations(t *testi
 			t.Fatalf("expected handicap aliases and annotations to match, got %+v", items)
 		}
 	})
+
+	t.Run("fk sk and team alias", func(t *testing.T) {
+		quotes := []models.OddsQuote{
+			testQuote(now, "over", "8xbet", "default", "Amedspor", "FC Dinamo Batumi", "", "Over 2.5", -0.5),
+			testQuote(now, "under", "jun88", "cmd", "Amed SK (N)", "Dinamo Batumi", "", "Under 2.5", -0.5),
+		}
+		if items := detect(t, detector, quotes); len(items) != 1 {
+			t.Fatalf("expected FK/SK affixes and Amed alias to match, got %+v", items)
+		}
+	})
+
+	t.Run("fk affix with puskas", func(t *testing.T) {
+		quotes := []models.OddsQuote{
+			testQuote(now, "over", "8xbet", "default", "Puskas Akademia FC", "Istanbul Basaksehir FK", "", "Over 2.5", -0.5),
+			testQuote(now, "under", "jun88", "cmd", "Puskas Academy FC (N)", "Istanbul Basaksehir", "", "Under 2.5", -0.5),
+		}
+		if items := detect(t, detector, quotes); len(items) != 1 {
+			t.Fatalf("expected Puskas alias and FK affix to match, got %+v", items)
+		}
+	})
 }
 
 func TestDetectMatchesTeamsWithNeutralVenueAnnotation(t *testing.T) {

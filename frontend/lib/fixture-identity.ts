@@ -22,10 +22,10 @@ function canonicalParticipantName(value: string) {
     .split(" ")
     .filter(Boolean)
     .map(normalizeParticipantAliasToken);
-  while (tokens[0] === "fc") {
+  while (isGenericClubToken(tokens[0])) {
     tokens.shift();
   }
-  while (tokens[tokens.length - 1] === "fc") {
+  while (isGenericClubToken(tokens[tokens.length - 1])) {
     tokens.pop();
   }
   return tokens.length > 0 ? tokens.join(" ") : canonical;
@@ -39,11 +39,17 @@ function normalizeParticipantAliasToken(value: string) {
   switch (value) {
     case "akademia":
       return "academy";
+    case "amedspor":
+      return "amed";
     case "kobenhavn":
       return "copenhagen";
     default:
       return value;
   }
+}
+
+function isGenericClubToken(value: string | undefined) {
+  return value === "fc" || value === "fk" || value === "sk";
 }
 
 function canonicalText(value: string) {

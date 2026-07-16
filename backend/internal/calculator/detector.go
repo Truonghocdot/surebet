@@ -706,6 +706,8 @@ func normalizeParticipantAliasToken(value string) string {
 	switch value {
 	case "akademia":
 		return "academy"
+	case "amedspor":
+		return "amed"
 	case "kobenhavn":
 		return "copenhagen"
 	default:
@@ -724,7 +726,7 @@ func isGenericParticipantLabel(value string) bool {
 
 func isGenericClubToken(value string) bool {
 	switch value {
-	case "fc":
+	case "fc", "fk", "sk":
 		return true
 	default:
 		return false
