@@ -39,6 +39,9 @@ type StreamService struct {
 	log       logger.Logger
 	upgrader  websocket.Upgrader
 	sessions  collectorSessionRegistry
+	batchMu   sync.Mutex
+	batches   map[string]*pendingSourcePublish
+	debounce  time.Duration
 }
 
 func NewStreamService(
@@ -60,6 +63,8 @@ func NewStreamService(
 		sessions: collectorSessionRegistry{
 			active: make(map[string]string),
 		},
+		batches:  make(map[string]*pendingSourcePublish),
+		debounce: 250 * time.Millisecond,
 	}
 }
 
@@ -323,15 +328,7 @@ func (s *StreamService) bufferOrPublish(
 		return
 	}
 
-	if err := s.publishQuotes(ctx, source, []models.OddsQuote{quote}); err != nil && s.log != nil {
-		s.log.Warn(
-			"collector stream publish failed",
-			"collector_id", source.CollectorID,
-			"bookmaker_id", source.BookmakerID,
-			"lobby_id", source.LobbyID,
-			"error", err.Error(),
-		)
-	}
+	s.enqueueDeltaPublish(source, quote)
 }
 
 func (s *StreamService) publishQuotes(
@@ -424,4 +421,55 @@ func dedupeQuotesByID(items []models.OddsQuote) []models.OddsQuote {
 	}
 
 	return deduped
+}
+
+type pendingSourcePublish struct {
+	source dto.CollectorSource
+	quotes []models.OddsQuote
+	timer  *time.Timer
+}
+
+func (s *StreamService) enqueueDeltaPublish(source dto.CollectorSource, quote models.OddsQuote) {
+	key := repository.OddsSourceKey(source.BookmakerID, source.LobbyID)
+
+	s.batchMu.Lock()
+	pending := s.batches[key]
+	if pending == nil {
+		pending = &pendingSourcePublish{
+			source: source,
+		}
+		s.batches[key] = pending
+		pending.timer = time.AfterFunc(s.debounce, func() {
+			s.flushDeltaPublish(key)
+		})
+	}
+	pending.quotes = append(pending.quotes, quote)
+	s.batchMu.Unlock()
+}
+
+func (s *StreamService) flushDeltaPublish(key string) {
+	s.batchMu.Lock()
+	pending := s.batches[key]
+	if pending == nil {
+		s.batchMu.Unlock()
+		return
+	}
+	delete(s.batches, key)
+	source := pending.source
+	quotes := dedupeQuotesByID(append([]models.OddsQuote(nil), pending.quotes...))
+	s.batchMu.Unlock()
+
+	if len(quotes) == 0 {
+		return
+	}
+
+	if err := s.publishQuotes(context.Background(), source, quotes); err != nil && s.log != nil {
+		s.log.Warn(
+			"collector stream publish failed",
+			"collector_id", source.CollectorID,
+			"bookmaker_id", source.BookmakerID,
+			"lobby_id", source.LobbyID,
+			"error", err.Error(),
+		)
+	}
 }

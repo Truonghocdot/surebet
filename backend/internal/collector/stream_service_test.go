@@ -178,6 +178,102 @@ func TestStreamServicePublishesBufferedSnapshotOnceOnCommit(t *testing.T) {
 	t.Fatalf("expected one aggregated publish after snapshot_commit, got %d", publisher.count())
 }
 
+func TestStreamServiceCoalescesDirectQuotePublishes(t *testing.T) {
+	publisher := &recordingEventPublisher{}
+	service := NewStreamService(
+		streamStoreStub{
+			upsertChanged: true,
+			upsertQuote: models.OddsQuote{
+				ID:          "quote-a",
+				BookmakerID: "8xbet",
+				LobbyID:     "default",
+				FixtureID:   "fixture-a",
+				MarketID:    "market-a",
+				OutcomeID:   "outcome-a",
+				CollectedAt: time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC),
+			},
+		},
+		publisher,
+		nil,
+		nil,
+	)
+	service.debounce = 20 * time.Millisecond
+
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+
+	hello := dto.CollectorStreamHello{
+		Type:            "hello",
+		ProtocolVersion: dto.CollectorStreamProtocolVersion,
+		SessionID:       "session-1",
+		Source: dto.CollectorSource{
+			CollectorID: "8xbet",
+			BookmakerID: "8xbet",
+			LobbyID:     "default",
+		},
+		StartedAt: time.Now().UTC(),
+	}
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read hello_ack: %v", err)
+	}
+
+	writeUpsert := func(seq int64, outcomeID string) {
+		t.Helper()
+		err := conn.WriteJSON(dto.CollectorStreamQuoteUpsert{
+			Type:       "quote_upsert",
+			SessionID:  hello.SessionID,
+			Seq:        seq,
+			OccurredAt: time.Now().UTC(),
+			Source:     hello.Source,
+			RawIDs: dto.CollectorStreamRawIDs{
+				FixtureID: "fixture-a",
+				MarketID:  "market-a",
+				OutcomeID: outcomeID,
+			},
+			Markers: dto.CollectorStreamMarkers{
+				FixtureMarker: "fixture-a-marker",
+				MarketMarker:  "handicap",
+				OutcomeMarker: outcomeID + "-marker",
+			},
+			Quote: dto.CollectorStreamQuote{
+				Sport:          "football",
+				HomeTeam:       "A",
+				AwayTeam:       "B",
+				LeagueName:     "League",
+				MatchState:     "live",
+				EventStartAt:   time.Now().UTC().Format(time.RFC3339),
+				OutcomeName:    "Outcome " + outcomeID,
+				Odds:           0.95,
+				AvailableStake: 100,
+				Suspended:      false,
+			},
+		})
+		if err != nil {
+			t.Fatalf("write quote_upsert: %v", err)
+		}
+	}
+
+	writeUpsert(1, "outcome-a")
+	writeUpsert(2, "outcome-b")
+
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if publisher.count() == 1 {
+			event := publisher.latest()
+			if len(event.Payload.Quotes) != 1 {
+				t.Fatalf("expected coalesced direct publish to dedupe by quote id in this stub, got %+v", event.Payload.Quotes)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatalf("expected one coalesced publish, got %d", publisher.count())
+}
+
 func openCollectorStreamConnection(t *testing.T, service *StreamService) *websocket.Conn {
 	t.Helper()
 
@@ -244,4 +340,13 @@ func (p *recordingEventPublisher) count() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return len(p.events)
+}
+
+func (p *recordingEventPublisher) latest() eventbus.OddsUpdatedEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.events) == 0 {
+		return eventbus.OddsUpdatedEvent{}
+	}
+	return p.events[len(p.events)-1]
 }

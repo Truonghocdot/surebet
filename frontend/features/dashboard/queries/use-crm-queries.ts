@@ -59,12 +59,26 @@ export function useRealtimeWebSocket() {
     let closed = false;
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastRefreshAt = 0;
 
-    const refreshRealtimeQueries = () => {
+    const flushRealtimeQueries = () => {
+      refreshTimer = null;
+      lastRefreshAt = Date.now();
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunities });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunityBoard });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.matchedFixtures });
+    };
+
+    const scheduleRealtimeRefresh = () => {
+      if (refreshTimer || closed) {
+        return;
+      }
+
+      const elapsed = Date.now() - lastRefreshAt;
+      const delay = elapsed >= 300 ? 0 : 300 - elapsed;
+      refreshTimer = setTimeout(flushRealtimeQueries, delay);
     };
 
     const connect = () => {
@@ -76,7 +90,7 @@ export function useRealtimeWebSocket() {
 
       socket.onopen = () => {
         setStatus("live");
-        refreshRealtimeQueries();
+        scheduleRealtimeRefresh();
       };
 
       socket.onmessage = (event) => {
@@ -87,7 +101,7 @@ export function useRealtimeWebSocket() {
             return;
           }
           if (message.type === "odds_updated") {
-            refreshRealtimeQueries();
+            scheduleRealtimeRefresh();
             setStatus("live");
           }
         } catch {
@@ -114,6 +128,9 @@ export function useRealtimeWebSocket() {
       closed = true;
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
+      }
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
       }
       socket?.close();
     };
