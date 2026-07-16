@@ -32,6 +32,7 @@ async function main() {
     throw new Error("8xbet incomingplay parser should extract eventStartAt from stage labels.");
   }
   assertNoPartialMarkets(snapshot, "incomingplay");
+  assertNoExoticMarkets(snapshot, "incomingplay");
 
   const firstHalfHandicap = snapshot.selections.find(
     (selection) => selection.marketId === "cu-o-c-cha-p-ah-1st"
@@ -55,6 +56,7 @@ async function main() {
     );
   }
   assertNoPartialMarkets(inplaySnapshot, "inplay");
+  assertNoExoticMarkets(inplaySnapshot, "inplay");
 
   const stageFixture = parseEightXBetIncomingSnapshot(
     `
@@ -113,6 +115,25 @@ function assertNoPartialMarkets(
         `8xbet ${label} parser should not emit partial markets, got ${count}/${expected} for ${marketKey}`
       );
     }
+  }
+}
+
+function assertNoExoticMarkets(
+  snapshot: ReturnType<typeof parseEightXBetIncomingSnapshot>,
+  label: string
+) {
+  const unsupported = snapshot.selections.filter((selection) =>
+    selection.marketId.includes("h-ou") ||
+    selection.marketId.includes("a-ou") ||
+    selection.marketId.includes("btts")
+  );
+
+  if (unsupported.length > 0) {
+    throw new Error(
+      `8xbet ${label} parser should drop exotic markets, got ${unsupported
+        .map((selection) => selection.marketId)
+        .join(", ")}`
+    );
   }
 }
 

@@ -42,6 +42,38 @@ func TestNormalizeViewMarketTypeRecognizesEightXBetLiveMarketCodes(t *testing.T)
 	}
 }
 
+func TestNormalizeViewMarketTypeRejectsEightXBetExoticOverUnderMarkets(t *testing.T) {
+	tests := []struct {
+		name       string
+		marketID   string
+		marketName string
+	}{
+		{
+			name:       "home team goals over under",
+			marketID:   "ba-n-tha-ng-do-i-nha-ta-i-xi-u-h-ou",
+			marketName: "ba-n-tha-ng-do-i-nha-ta-i-xi-u-h-ou",
+		},
+		{
+			name:       "away team goals over under",
+			marketID:   "ba-n-tha-ng-do-i-kha-ch-ta-i-xi-u-a-ou",
+			marketName: "ba-n-tha-ng-do-i-kha-ch-ta-i-xi-u-a-ou",
+		},
+		{
+			name:       "both teams to score",
+			marketID:   "ca-hai-do-i-de-u-ghi-ba-n-btts",
+			marketName: "ca-hai-do-i-de-u-ghi-ba-n-btts",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := normalizeViewMarketType(test.marketID, test.marketName); got != "" {
+				t.Fatalf("expected exotic market to be ignored, got %q", got)
+			}
+		})
+	}
+}
+
 func TestNormalizeViewPeriodRecognizesFirstHalfMarketCodeToken(t *testing.T) {
 	if got := normalizeViewPeriod("o-u-ou-1st", "o-u-ou-1st"); got != "1H" {
 		t.Fatalf("expected 1H period, got %q", got)

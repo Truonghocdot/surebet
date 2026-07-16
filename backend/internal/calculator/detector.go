@@ -349,23 +349,44 @@ func normalizeQuote(
 }
 
 func normalizeMarketKind(marketID, marketName string) marketKind {
-	combined := canonicalText(marketID + " " + marketName)
+	canonicalID := canonicalText(marketID)
+	canonicalName := canonicalText(marketName)
 	switch {
-	case strings.Contains(combined, "over under"),
-		strings.Contains(combined, "ta i xi u"),
-		strings.Contains(combined, "tai xiu"),
-		strings.Contains(combined, "o u"),
-		hasCanonicalToken(combined, "ou"):
+	case isSupportedOverUnderMarket(canonicalID, canonicalName):
 		return marketKindOverUnder
-	case strings.Contains(combined, "handicap"),
-		strings.Contains(combined, "cu o c cha p"),
-		strings.Contains(combined, "cuoc chap"),
-		strings.Contains(combined, "chap chau a"),
-		hasCanonicalToken(combined, "ah"):
+	case isSupportedHandicapMarket(canonicalID, canonicalName):
 		return marketKindHandicap
 	default:
 		return marketKindUnknown
 	}
+}
+
+func isSupportedOverUnderMarket(canonicalID, canonicalName string) bool {
+	switch canonicalID {
+	case "o u ou", "o u ou 1st", "ta i xi u ou", "ta i xi u ou 1st", "ft over under", "1h over under":
+		return true
+	}
+
+	switch canonicalName {
+	case "over under", "ft over under", "1h over under":
+		return true
+	}
+
+	return false
+}
+
+func isSupportedHandicapMarket(canonicalID, canonicalName string) bool {
+	switch canonicalID {
+	case "hdp ah", "hdp ah 1st", "cu o c cha p ah", "cu o c cha p ah 1st", "ft handicap", "1h handicap":
+		return true
+	}
+
+	switch canonicalName {
+	case "handicap", "ft handicap", "1h handicap":
+		return true
+	}
+
+	return false
 }
 
 func groupQuotes(quotes []normalizedQuote) map[string]*quoteBucket {

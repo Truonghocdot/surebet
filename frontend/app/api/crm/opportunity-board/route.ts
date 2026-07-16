@@ -92,7 +92,12 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
     }
 
     const sourceID = sourceKey(item.bookmaker_id, item.lobby_id);
-    const marketID = `${item.period || "FT"}\u0000${item.line || ""}`;
+    const marketID = [
+      item.period || "FT",
+      item.market_type || "unknown",
+      item.market_id || "unknown",
+      item.line || ""
+    ].join("\u0000");
     const existingFixture = fixtures.get(fixtureID);
     const fixture = existingFixture ?? {
       id: fixtureID,

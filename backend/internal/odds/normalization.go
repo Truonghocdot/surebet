@@ -69,18 +69,13 @@ func normalizeViewPeriod(marketID, marketName string) string {
 }
 
 func normalizeViewMarketType(marketID, marketName string) string {
-	combined := canonicalViewText(marketID + " " + marketName)
+	canonicalID := canonicalViewText(marketID)
+	canonicalName := canonicalViewText(marketName)
+	combined := strings.TrimSpace(canonicalID + " " + canonicalName)
 	switch {
-	case strings.Contains(combined, "over under"),
-		strings.Contains(combined, "ta i xi u"),
-		strings.Contains(combined, "tai xiu"),
-		hasCanonicalViewToken(combined, "ou"):
+	case isSupportedViewOverUnderMarket(canonicalID, canonicalName):
 		return viewMarketOverUnder
-	case strings.Contains(combined, "handicap"),
-		strings.Contains(combined, "cu o c cha p"),
-		strings.Contains(combined, "run line"),
-		hasCanonicalViewToken(combined, "ah"),
-		hasCanonicalViewToken(combined, "hdp"):
+	case isSupportedViewHandicapMarket(canonicalID, canonicalName):
 		return viewMarketHandicap
 	case strings.Contains(combined, "1x2"),
 		strings.Contains(combined, "winner"),
@@ -89,6 +84,34 @@ func normalizeViewMarketType(marketID, marketName string) string {
 	default:
 		return ""
 	}
+}
+
+func isSupportedViewOverUnderMarket(canonicalID, canonicalName string) bool {
+	switch canonicalID {
+	case "o u ou", "o u ou 1st", "ta i xi u ou", "ta i xi u ou 1st", "ft over under", "1h over under":
+		return true
+	}
+
+	switch canonicalName {
+	case "over under", "ft over under", "1h over under":
+		return true
+	}
+
+	return false
+}
+
+func isSupportedViewHandicapMarket(canonicalID, canonicalName string) bool {
+	switch canonicalID {
+	case "hdp ah", "hdp ah 1st", "cu o c cha p ah", "cu o c cha p ah 1st", "ft handicap", "1h handicap":
+		return true
+	}
+
+	switch canonicalName {
+	case "handicap", "ft handicap", "1h handicap":
+		return true
+	}
+
+	return false
 }
 
 func normalizeViewSide(quote models.OddsQuote, marketType string) string {

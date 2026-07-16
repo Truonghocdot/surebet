@@ -349,6 +349,19 @@ func TestDetectRecognizesEightXBetStyleFirstHalfMarketCodes(t *testing.T) {
 	}
 }
 
+func TestDetectIgnoresEightXBetExoticMarketsEvenWhenLinesMatch(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuoteWithMarket(now, "left", "8xbet", "default", "Arsenal", "Milan", "ba-n-tha-ng-do-i-nha-ta-i-xi-u-h-ou", "Over 2.5", -0.5),
+		testQuoteWithMarket(now, "right", "jun88", "cmd", "Arsenal", "Milan", "ba-n-tha-ng-do-i-kha-ch-ta-i-xi-u-a-ou", "Under 2.5", -0.5),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected exotic markets to be ignored by detector, got %+v", items)
+	}
+}
+
 func TestDetectLogsRejectCountersBySource(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	log := &recordingDetectorLogger{}

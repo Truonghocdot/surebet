@@ -316,6 +316,13 @@ func (s streamStoreStub) ApplyQuoteUpsert(context.Context, dto.CollectorStreamQu
 	return s.upsertChanged, s.upsertQuote, nil
 }
 
+func (s streamStoreStub) ApplyQuoteUpsertBatch(context.Context, []dto.CollectorStreamQuoteUpsert) ([]models.OddsQuote, error) {
+	if !s.upsertChanged {
+		return nil, nil
+	}
+	return []models.OddsQuote{s.upsertQuote}, nil
+}
+
 func (s streamStoreStub) ApplyQuoteRemove(context.Context, dto.CollectorStreamQuoteRemove) (bool, models.OddsQuote, error) {
 	return false, models.OddsQuote{}, nil
 }

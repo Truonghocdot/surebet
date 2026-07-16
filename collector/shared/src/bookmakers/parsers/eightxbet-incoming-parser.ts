@@ -122,6 +122,15 @@ function parseMarketColumn(
   const firstTestID = buttons[0]?.getAttribute("data-testid") || "";
   const firstParts = firstTestID.replace(/^oddsBtn-/, "").split("|");
   const marketCode = firstParts[2] || "";
+
+  if (!isSupportedEightXBetMarketCode(marketCode)) {
+    recordPartialMarket(
+      diagnostics,
+      `${context.fixtureId}|${normalizeToken(context.marketName)}|unsupported=${marketCode}`
+    );
+    return [];
+  }
+
   const expectedSelections = expectedSelectionCount(marketCode);
 
   if (buttons.length < expectedSelections) {
@@ -473,6 +482,18 @@ function expectedSelectionCount(marketCode: string) {
   }
 
   return 2;
+}
+
+function isSupportedEightXBetMarketCode(marketCode: string) {
+  switch (marketCode) {
+    case "ah":
+    case "ah_1st":
+    case "ou":
+    case "ou_1st":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function recordPartialMarket(
