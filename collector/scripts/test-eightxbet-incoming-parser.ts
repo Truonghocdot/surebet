@@ -1,6 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parseEightXBetIncomingSnapshot } from "@surebet/collector-shared";
+import {
+  parseEightXBetExhaustiveSnapshot,
+  parseEightXBetIncomingSnapshot
+} from "@surebet/collector-shared";
 
 async function main() {
   const incomingPlayPath = path.resolve("../docs/lobbby/8xbet/incomingplay.html");
@@ -57,6 +60,35 @@ async function main() {
   }
   assertNoPartialMarkets(inplaySnapshot, "inplay");
   assertNoExoticMarkets(inplaySnapshot, "inplay");
+
+  const exhaustivePath = path.resolve("../docs/lobbby/8xbet/exhautscontent.html");
+  const exhaustiveHTML = await readFile(exhaustivePath, "utf8");
+  const exhaustiveSnapshot = parseEightXBetExhaustiveSnapshot(
+    exhaustiveHTML,
+    "https://8x4455.com/sportEvents/inplay/football",
+    "8xbet",
+    "4811846"
+  );
+  if (exhaustiveSnapshot.selections.length !== 8) {
+    throw new Error(
+      `8xbet exhaustive parser should keep exactly 8 supported selections, got ${exhaustiveSnapshot.selections.length}`
+    );
+  }
+  if (exhaustiveSnapshot.selections.some((selection) => selection.matchState !== "live")) {
+    throw new Error("8xbet exhaustive parser should classify selections as live.");
+  }
+  const exhaustiveMarketIDs = [...new Set(exhaustiveSnapshot.selections.map((selection) => selection.marketId))];
+  const expectedMarkets = new Set([
+    "cu-o-c-cha-p-ah",
+    "cu-o-c-cha-p-hie-p-1-ah-1st",
+    "to-ng-so-ba-n-tha-ng-ta-i-xi-u-ou",
+    "to-ng-so-ba-n-tha-ng-ta-i-xi-u-hie-p-1-ou-1st"
+  ]);
+  for (const marketID of exhaustiveMarketIDs) {
+    if (!expectedMarkets.has(marketID)) {
+      throw new Error(`8xbet exhaustive parser should ignore unsupported market ${marketID}`);
+    }
+  }
 
   const stageFixture = parseEightXBetIncomingSnapshot(
     `

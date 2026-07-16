@@ -19,7 +19,7 @@ export class EightXBetCollector implements Collector {
       pageURL: this.inplayPageURL
     });
 
-    return normalizeEightXBetInplaySnapshot(inplay);
+    return inplay;
   }
 
   async stream(sink: CollectorSink) {
@@ -29,7 +29,7 @@ export class EightXBetCollector implements Collector {
     let lastHeartbeatAt = 0;
 
     const flushSnapshot = async (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => {
-      const nextSnapshot = normalizeEightXBetInplaySnapshot(snapshot);
+      const nextSnapshot = snapshot;
       const previousSummary = currentSnapshot ? summarizeSnapshot(currentSnapshot) : null;
       const nextSummary = summarizeSnapshot(nextSnapshot);
       logEightXBetSnapshotTelemetry(mode, previousSummary, nextSummary);
@@ -95,32 +95,6 @@ export class EightXBetCollector implements Collector {
       await this.inplayRuntime.close();
     }
   }
-}
-
-function normalizeEightXBetInplaySnapshot(inplay: OddsSnapshot): OddsSnapshot {
-  return {
-    source: {
-      collectorId: "8xbet",
-      bookmakerId: "8xbet",
-      lobbyId: "default"
-    },
-    collectedAt: new Date().toISOString(),
-    selections: inplay.selections.map((selection) => ({
-      fixtureId: selection.fixtureId,
-      sport: selection.sport,
-      homeTeam: selection.homeTeam,
-      awayTeam: selection.awayTeam,
-      leagueName: selection.leagueName,
-      matchState: "live",
-      eventStartAt: selection.eventStartAt,
-      marketId: selection.marketId,
-      outcomeId: selection.outcomeId,
-      outcomeName: selection.outcomeName,
-      odds: selection.odds,
-      availableStake: selection.availableStake,
-      suspended: selection.suspended
-    }))
-  };
 }
 
 function selectionMap(snapshot: OddsSnapshot) {

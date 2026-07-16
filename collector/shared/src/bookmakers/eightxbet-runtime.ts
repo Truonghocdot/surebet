@@ -3,10 +3,7 @@ import { collectorLaunchOptions } from "../core/browser.js";
 import { writeDebugArtifacts } from "../core/debug.js";
 import { envBool, envInt } from "../core/env.js";
 import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
-import {
-  parseEightXBetIncomingSnapshot,
-  type EightXBetParseDiagnostics
-} from "./parsers/eightxbet-incoming-parser.js";
+import { parseEightXBetExhaustiveSnapshot } from "./parsers/eightxbet-exhaustive-parser.js";
 import {
   browserRecycleIntervalMs,
   pageReloadIntervalMs,
@@ -24,10 +21,11 @@ import stealth from "puppeteer-extra-plugin-stealth";
 
 const EIGHTXBET_INCOMING_PATH = "/sportEvents/incoming/football?hour=6";
 const EIGHTXBET_PREFERENCES_PATH = "/mine";
-const EIGHTXBET_READY_SELECTOR = '[data-testid^="v4-sport-asia-simple-handicap-unit-"]';
+const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_CARD_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_ODDS_BUTTON_SELECTOR = 'button[data-testid^="oddsBtn-"]';
 const EIGHTXBET_TEAM_SELECTOR = `${EIGHTXBET_CARD_SELECTOR} small.text-text-2`;
+const EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR = '[data-testid="ExhaustiveContentV4"]';
 
 chromium.use(stealth());
 
@@ -230,43 +228,48 @@ export class EightXBetRuntime implements CollectorRuntime {
     }
   }
 
-  private async readSnapshot(page: Page, targetURL: string) {
+  private async readSnapshot(page: Page, targetURL: string): Promise<OddsSnapshot> {
     await this.reloadPageIfDue(page);
     await waitForEightXBetReady(page, targetURL);
 
-    const renderState = await stabilizeIncomingList(page);
-    if (renderState.oddsButtonCount === 0 || renderState.teamLabelCount < 2) {
-      await writeDebugArtifacts(page, `${this.collectorId}-incoming-not-hydrated`);
-      throw new Error(
-        "8xbet incoming list rendered shell rows, but odds buttons did not hydrate in time."
+    const fixtureIds = await readEightXBetFixtureIDs(page);
+    const selections: OddsSnapshot["selections"] = [];
+
+    for (const fixtureId of fixtureIds) {
+      await openEightXBetExhaustiveContent(page, fixtureId);
+
+      const html = await page.content();
+      const snapshot = parseEightXBetExhaustiveSnapshot(
+        html,
+        page.url(),
+        this.collectorId,
+        fixtureId
       );
+      if (snapshot.selections.length === 0) {
+        logEightXBetTelemetry(
+          this.collectorId,
+          "exhaustive_empty",
+          `fixture=${fixtureId}`
+        );
+        continue;
+      }
+      selections.push(...snapshot.selections);
     }
 
-    const html = await page.content();
-    const diagnostics: EightXBetParseDiagnostics = {
-      partialMarketsDropped: 0,
-      partialMarketKeys: []
+    if (selections.length === 0) {
+      await writeDebugArtifacts(page, `${this.collectorId}-exhaustive-empty`);
+      throw new Error("8xbet exhaustive content did not yield any supported selections.");
+    }
+
+    return {
+      source: {
+        collectorId: this.collectorId,
+        bookmakerId: "8xbet",
+        lobbyId: "default"
+      },
+      collectedAt: new Date().toISOString(),
+      selections
     };
-    const snapshot = parseEightXBetIncomingSnapshot(
-      html,
-      page.url(),
-      this.collectorId,
-      diagnostics
-    );
-    if (isRawFallbackSnapshot(snapshot)) {
-      await writeDebugArtifacts(page, `${this.collectorId}-raw-fallback`);
-      throw new Error(
-        "8xbet parser returned only raw-card fallback; live odds buttons were not extracted."
-      );
-    }
-    if (diagnostics.partialMarketsDropped > 0) {
-      logEightXBetTelemetry(
-        this.collectorId,
-        "partial_markets",
-        `dropped=${diagnostics.partialMarketsDropped} samples=${diagnostics.partialMarketKeys.slice(0, 10).join(",")}`
-      );
-    }
-    return snapshot;
   }
 }
 
@@ -395,6 +398,32 @@ function resolveEightXBetTargetURL(value: string) {
   }
 
   return new URL(EIGHTXBET_INCOMING_PATH, parsed).toString();
+}
+
+async function readEightXBetFixtureIDs(page: Page) {
+  return page.evaluate((cardSelector) => {
+    const ids = Array.from(document.querySelectorAll(cardSelector))
+      .map((node) => node.getAttribute("data-testid") || "")
+      .map((value) => {
+        const match = value.match(/football-(\d+)/i);
+        return match?.[1] || "";
+      })
+      .filter(Boolean);
+
+    return Array.from(new Set(ids));
+  }, EIGHTXBET_CARD_SELECTOR);
+}
+
+async function openEightXBetExhaustiveContent(page: Page, fixtureId: string) {
+  const card = page.locator(`[data-testid="simple-handicap-layout-football-${fixtureId}"]`).first();
+  await card.waitFor({ state: "visible", timeout: 15_000 });
+  await card.click();
+  await page.waitForSelector(EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR, { timeout: 10_000 });
+  await page.waitForSelector(
+    `${EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR} button[data-testid^="oddsBtn-1|${fixtureId}|"]`,
+    { timeout: 10_000 }
+  );
+  await waitForPageSettle(page);
 }
 
 async function installEightXBetObserver(page: Page) {

@@ -2,6 +2,7 @@ export * from "./contracts.js";
 export * from "./backend/backend-collector-stream-sink.js";
 export * from "./bookmakers/jun88-lobbies.js";
 export * from "./bookmakers/eightxbet-runtime.js";
+export * from "./bookmakers/parsers/eightxbet-exhaustive-parser.js";
 export * from "./bookmakers/parsers/eightxbet-incoming-parser.js";
 export * from "./bookmakers/create-jun88-lobby-collector.js";
 export * from "./bookmakers/jun88-cmd-runtime.js";
