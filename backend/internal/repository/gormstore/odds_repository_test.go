@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"surebet/backend/internal/models"
+	"surebet/backend/internal/repository"
 )
 
 func TestOddsSnapshotRepositoryListCurrentUsesSnapshotQuery(t *testing.T) {
@@ -131,7 +132,7 @@ func TestOddsSnapshotRepositoryDetectorSourceQueryFiltersSingleSource(t *testing
 	sql := db.ToSQL(func(tx *gorm.DB) *gorm.DB {
 		query := repo.listCurrentDetectorSourceQuery(
 			tx.WithContext(context.Background()),
-			detectorSource{BookmakerID: "8xbet", LobbyID: "default"},
+			repository.OddsSource{BookmakerID: "8xbet", LobbyID: "default"},
 			time.Date(2026, 7, 1, 15, 0, 0, 0, time.UTC),
 		)
 		return query.Find(&[]models.OddsQuote{})

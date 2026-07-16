@@ -1,6 +1,6 @@
 export type BookmakerCode = "8xbet" | "jun88";
 
-export type LobbyCode = "default" | "saba" | "bti" | "cmd" | "m9bet";
+export type LobbyCode = "default" | "cmd";
 
 export type CollectorSource = {
   collectorId: string;

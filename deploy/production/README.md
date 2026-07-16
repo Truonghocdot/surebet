@@ -7,7 +7,7 @@ Stack production nay dung:
 - `telegram-worker` -> worker Go gui Telegram tu queue
 - `admin.tykfk.site` -> Laravel Filament admin
 - PostgreSQL cho du lieu
-- 5 collector worker rieng cho 8xbet va Jun88
+- 2 collector worker rieng cho 8xbet va Jun88 CMD
 - `Caddy` de reverse proxy va tu cap TLS
 
 ## Chuan bi server
@@ -38,7 +38,6 @@ Can doi toi thieu:
 - `SEED_SUPER_ADMIN_PASSWORD`
 - `TELEGRAM_BOT_TOKEN` neu bat thong bao Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
-- `BTI_COLLECTOR_PROXY_SERVER` neu BTI bi geo-block va can ep dung proxy tinh rieng
 
 Mac dinh production dang de:
 
@@ -85,8 +84,7 @@ docker compose -f deploy/production/docker-compose.yml --env-file deploy/product
 Restart rieng collector:
 
 ```bash
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-8xbet
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-jun88-bti collector-jun88-saba collector-jun88-cmd collector-jun88-m9bet
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-8xbet collector-jun88-cmd
 ```
 
 Webhook Telegram:

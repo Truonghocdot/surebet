@@ -16,18 +16,11 @@ const emptyConfig: CollectorConfig = {
   eightxbet_base_url: "",
   eightxbet_inplay_page_url: "",
   jun88_base_url: "",
-  jun88_bti_page_url: "",
-  jun88_saba_page_url: "",
   jun88_cmd_page_url: "",
-  jun88_m9bet_page_url: "",
   collector_proxy_enabled: false,
   collector_proxy_protocol: "http",
   collector_proxy_server: "",
-  collector_proxy_bypass: "",
-  bti_proxy_enabled: false,
-  bti_proxy_protocol: "http",
-  bti_proxy_server: "",
-  bti_proxy_bypass: ""
+  collector_proxy_bypass: ""
 };
 
 export function CollectorConfigScreen() {
@@ -145,31 +138,10 @@ export function CollectorConfigScreen() {
                     }
                   />
                   <ConfigField
-                    label="JUN88_BTI_PAGE_URL"
-                    value={form.jun88_bti_page_url}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, jun88_bti_page_url: value }))
-                    }
-                  />
-                  <ConfigField
-                    label="JUN88_SABA_PAGE_URL"
-                    value={form.jun88_saba_page_url}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, jun88_saba_page_url: value }))
-                    }
-                  />
-                  <ConfigField
                     label="JUN88_CMD_PAGE_URL"
                     value={form.jun88_cmd_page_url}
                     onChange={(value) =>
                       setForm((current) => ({ ...current, jun88_cmd_page_url: value }))
-                    }
-                  />
-                  <ConfigField
-                    label="JUN88_M9BET_PAGE_URL"
-                    value={form.jun88_m9bet_page_url}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, jun88_m9bet_page_url: value }))
                     }
                   />
                 </div>
@@ -181,8 +153,7 @@ export function CollectorConfigScreen() {
                     Proxy collector mặc định
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Áp dụng cho toàn bộ collector mặc định, trừ những collector có
-                    override riêng.
+                    Áp dụng chung cho eightxbet và jun88-cmd.
                   </p>
                 </div>
 
@@ -214,50 +185,6 @@ export function CollectorConfigScreen() {
                     value={form.collector_proxy_bypass}
                     onChange={(value) =>
                       setForm((current) => ({ ...current, collector_proxy_bypass: value }))
-                    }
-                  />
-                </div>
-              </section>
-
-              <section className="grid gap-4">
-                <div>
-                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-                    Proxy riêng cho BTI
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Dùng khi BTI bị geo-block và cần ép collector BTI đi một proxy tĩnh
-                    riêng.
-                  </p>
-                </div>
-
-                <ProxyToggleField
-                  checked={form.bti_proxy_enabled}
-                  description="Bật hoặc tắt proxy riêng chỉ dành cho collector BTI."
-                  label="Bật proxy riêng cho BTI"
-                  onChange={(checked) =>
-                    setForm((current) => ({ ...current, bti_proxy_enabled: checked }))
-                  }
-                />
-                <div className="grid gap-4 md:grid-cols-3">
-                  <ConfigField
-                    label="BTI_PROXY_PROTOCOL"
-                    value={form.bti_proxy_protocol}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, bti_proxy_protocol: value }))
-                    }
-                  />
-                  <ConfigField
-                    label="BTI_PROXY_SERVER"
-                    value={form.bti_proxy_server}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, bti_proxy_server: value }))
-                    }
-                  />
-                  <ConfigField
-                    label="BTI_PROXY_BYPASS"
-                    value={form.bti_proxy_bypass}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, bti_proxy_bypass: value }))
                     }
                   />
                 </div>

@@ -1,11 +1,10 @@
 import {
   applyCollectorProxyProfile,
-  BackendCollectorSink,
+  BackendCollectorStreamSink,
   createJun88LobbyCollector,
   envString,
   logCollectorProxyDebug,
   syncCollectorRuntimeConfig,
-  type LobbyCode,
   type OddsDelta,
   type OddsSelection,
   type OddsSnapshot
@@ -15,20 +14,18 @@ const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
 const intervalMs = Number.parseInt(envString("COLLECT_INTERVAL_MS", "5000"), 10);
 const heartbeatMs = Number.parseInt(envString("COLLECT_HEARTBEAT_MS", "15000"), 10);
 
-const lobbyCollectorIDs: Record<Exclude<LobbyCode, "default">, string> = {
-  bti: "jun88-bti",
-  saba: "jun88-saba",
-  cmd: "jun88-cmd",
-  m9bet: "jun88-m9bet"
-};
+const collectorId = "jun88-cmd";
 
-export async function runJun88LobbyWorker(lobbyId: Exclude<LobbyCode, "default">) {
-  const sink = new BackendCollectorSink(backendURL);
-  const collectorId = lobbyCollectorIDs[lobbyId];
+export async function runJun88LobbyWorker(lobbyId: "cmd") {
+  const sink = new BackendCollectorStreamSink(backendURL, {
+    collectorId,
+    bookmakerId: "jun88",
+    lobbyId
+  });
 
   while (true) {
     try {
-      await runWorker(lobbyId, collectorId, sink);
+      await runWorker(lobbyId, sink);
     } catch (error) {
       console.error(`[${collectorId}-worker] fatal loop error:`, error);
       await sleep(2_000);
@@ -105,9 +102,8 @@ function buildDeltas(
 }
 
 async function runWorker(
-  lobbyId: Exclude<LobbyCode, "default">,
-  collectorId: string,
-  sink: BackendCollectorSink
+  lobbyId: "cmd",
+  sink: BackendCollectorStreamSink
 ) {
   const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch((error) => {
     console.warn(`[${collectorId}-worker] collector runtime config sync failed:`, error);
@@ -115,7 +111,7 @@ async function runWorker(
   });
 
   if (runtimeConfig) {
-    applyCollectorProxyProfile(runtimeConfig, lobbyId === "bti" ? "bti" : "default");
+    applyCollectorProxyProfile(runtimeConfig);
   }
 
   const collector = createJun88LobbyCollector(collectorId, lobbyId);

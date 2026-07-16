@@ -1,10 +1,12 @@
 import type {
+  CollectorSource,
   CollectorHeartbeat,
   CollectorSink,
   OddsDelta,
   OddsSnapshot
 } from "../contracts.js";
 import { formatError } from "../core/debug.js";
+import { normalizeSourceEventStartAt } from "./source-event-start-at.js";
 
 export class BackendCollectorSink implements CollectorSink {
   constructor(private readonly backendURL: string) {}
@@ -65,7 +67,11 @@ function serializeSnapshot(snapshot: OddsSnapshot) {
       away_team: selection.awayTeam ?? "",
       league_name: selection.leagueName ?? "",
       match_state: selection.matchState ?? "unknown",
-      event_start_at: selection.eventStartAt ?? "",
+      event_start_at: normalizeSourceEventStartAt(
+        snapshot.source,
+        selection.eventStartAt,
+        snapshot.collectedAt
+      ),
       market_id: selection.marketId,
       outcome_id: selection.outcomeId,
       outcome_name: selection.outcomeName,
@@ -90,7 +96,11 @@ function serializeDelta(delta: OddsDelta) {
     away_team: delta.awayTeam ?? "",
     league_name: delta.leagueName ?? "",
     match_state: delta.matchState ?? "unknown",
-    event_start_at: delta.eventStartAt ?? "",
+    event_start_at: normalizeSourceEventStartAt(
+      delta.source as CollectorSource,
+      delta.eventStartAt,
+      delta.collectedAt
+    ),
     market_id: delta.marketId,
     outcome_id: delta.outcomeId,
     outcome_name: delta.outcomeName,

@@ -22,6 +22,10 @@ type CollectorIngestService interface {
 	Heartbeat(ctx context.Context, request dto.CollectorHeartbeatRequest) error
 }
 
+type CollectorStreamService interface {
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
+}
+
 type AuthLoginService interface {
 	Login(ctx context.Context, request dto.LoginRequest) (dto.LoginResponse, error)
 }
@@ -70,6 +74,9 @@ func (s *Server) registerRoutes() {
 	v1.DELETE("/admin/telegram-recipients/:id", s.handleAdminTelegramRecipientByID)
 	v1.GET("/admin/collector-config", s.handleAdminCollectorConfig)
 	v1.PUT("/admin/collector-config", s.handleAdminCollectorConfig)
+
+	v2 := s.engine.Group("/v2")
+	v2.GET("/collector/stream", s.handleCollectorStream)
 }
 
 func (s *Server) handleHealth(ctx *gin.Context) {
@@ -216,6 +223,15 @@ func (s *Server) handleCollectorRuntimeConfig(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"data": configValue})
+}
+
+func (s *Server) handleCollectorStream(ctx *gin.Context) {
+	if s.deps.CollectorStream == nil {
+		placeholder(ctx, "collector stream service is not wired yet")
+		return
+	}
+
+	s.deps.CollectorStream.ServeHTTP(ctx.Writer, ctx.Request)
 }
 
 func placeholder(ctx *gin.Context, message string) {

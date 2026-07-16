@@ -89,15 +89,7 @@ function jun88DirectPageEnvKeys(lobbyId: LobbyCode) {
     return ["JUN88_PAGE_URL"];
   }
 
-  if (lobbyId === "saba") {
-    return ["JUN88_SABA_PAGE_URL", "JUN88_IBC_PAGE_URL"];
-  }
-
-  if (lobbyId === "m9bet") {
-    return ["JUN88_M9BET_PAGE_URL", "JUN88_M8_PAGE_URL"];
-  }
-
-  return [`JUN88_${lobbyId.toUpperCase()}_PAGE_URL`];
+  return ["JUN88_CMD_PAGE_URL"];
 }
 
 function jun88LobbyPath(lobbyId: LobbyCode) {
@@ -105,15 +97,7 @@ function jun88LobbyPath(lobbyId: LobbyCode) {
     return "/";
   }
 
-  if (lobbyId === "saba") {
-    return "/vi-vn/sports-landing/ibc";
-  }
-
-  if (lobbyId === "m9bet") {
-    return "/vi-vn/sports-landing/m8";
-  }
-
-  return `/vi-vn/sports-landing/${lobbyId}`;
+  return "/vi-vn/sports-landing/cmd";
 }
 
 function ensureTrailingSlash(value: string) {

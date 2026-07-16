@@ -5,14 +5,19 @@ import (
 
 	"surebet/backend/internal/dto"
 	"surebet/backend/internal/models"
-	"surebet/backend/internal/repository"
 )
 
-type QueryService struct {
-	repo repository.OddsSnapshotRepository
+type OddsReader interface {
+	ListByFixture(ctx context.Context, fixtureID string) ([]models.OddsQuote, error)
+	ListCurrent(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
+	ListCurrentLive(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
 }
 
-func NewQueryService(repo repository.OddsSnapshotRepository) QueryService {
+type QueryService struct {
+	repo OddsReader
+}
+
+func NewQueryService(repo OddsReader) QueryService {
 	return QueryService{repo: repo}
 }
 
@@ -30,25 +35,13 @@ func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter
 	}
 
 	if filter.FixtureID == "" {
-		usedOptimizedLiveQuery := false
 		if !filter.IncludeSuspended {
-			repo, ok := s.repo.(interface {
-				ListCurrentLive(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
-			})
-			if ok {
-				usedOptimizedLiveQuery = true
-				items, err = repo.ListCurrentLive(ctx, filter.BookmakerID, filter.LobbyID, filter.FixtureID)
-				if err != nil {
-					return nil, err
-				}
+			items, err = s.repo.ListCurrentLive(ctx, filter.BookmakerID, filter.LobbyID, filter.FixtureID)
+			if err != nil {
+				return nil, err
 			}
-		}
-
-		repo, ok := s.repo.(interface {
-			ListCurrent(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
-		})
-		if ok && (filter.IncludeSuspended || !usedOptimizedLiveQuery) {
-			items, err = repo.ListCurrent(ctx, filter.BookmakerID, filter.LobbyID, filter.FixtureID)
+		} else {
+			items, err = s.repo.ListCurrent(ctx, filter.BookmakerID, filter.LobbyID, filter.FixtureID)
 			if err != nil {
 				return nil, err
 			}

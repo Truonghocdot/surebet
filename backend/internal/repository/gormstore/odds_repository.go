@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"surebet/backend/internal/models"
+	"surebet/backend/internal/repository"
 )
 
 type OddsSnapshotRepository struct {
@@ -18,18 +19,7 @@ type OddsSnapshotRepository struct {
 const oddsUpsertBatchSize = 250
 const defaultCurrentOddsWindow = 12 * time.Hour
 
-var defaultDetectorSources = []detectorSource{
-	{BookmakerID: "8xbet", LobbyID: "default"},
-	{BookmakerID: "jun88", LobbyID: "bti"},
-	{BookmakerID: "jun88", LobbyID: "saba"},
-	{BookmakerID: "jun88", LobbyID: "cmd"},
-	{BookmakerID: "jun88", LobbyID: "m9bet"},
-}
-
-type detectorSource struct {
-	BookmakerID string
-	LobbyID     string
-}
+var defaultDetectorSources = repository.ActiveOddsSources()
 
 func NewOddsSnapshotRepository(db *gorm.DB) *OddsSnapshotRepository {
 	return &OddsSnapshotRepository{db: db}
@@ -164,7 +154,7 @@ func (r *OddsSnapshotRepository) listCurrentQuery(
 
 func (r *OddsSnapshotRepository) listCurrentDetectorSourceQuery(
 	db *gorm.DB,
-	source detectorSource,
+	source repository.OddsSource,
 	minCollectedAt time.Time,
 ) *gorm.DB {
 	subquery := buildLatestOddsSnapshotSubquery(

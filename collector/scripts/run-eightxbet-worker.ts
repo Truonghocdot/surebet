@@ -1,5 +1,5 @@
 import {
-  BackendCollectorSink,
+  BackendCollectorStreamSink,
   envString,
   applyCollectorProxyProfile,
   logCollectorProxyDebug,
@@ -16,7 +16,11 @@ const intervalMs = Number.parseInt(envString("COLLECT_INTERVAL_MS", "5000"), 10)
 const heartbeatMs = Number.parseInt(envString("COLLECT_HEARTBEAT_MS", "15000"), 10);
 
 async function main() {
-  const sink = new BackendCollectorSink(backendURL);
+  const sink = new BackendCollectorStreamSink(backendURL, {
+    collectorId: "8xbet",
+    bookmakerId: "8xbet",
+    lobbyId: "default"
+  });
   await runWorkerSafely(sink);
 }
 
@@ -88,18 +92,24 @@ function buildDeltas(
   return deltas;
 }
 
-async function runWorker(sink: BackendCollectorSink) {
+async function runWorker(sink: BackendCollectorStreamSink) {
   const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch((error) => {
     console.warn("[8xbet-worker] collector runtime config sync failed:", error);
     return null;
   });
   if (runtimeConfig) {
-    applyCollectorProxyProfile(runtimeConfig, "default");
+    applyCollectorProxyProfile(runtimeConfig);
   }
 
   logCollectorProxyDebug("8xbet");
 
   const collector = new EightXBetCollector();
+  if ("stream" in collector && typeof collector.stream === "function") {
+    console.log("[8xbet-worker] starting in streaming mode");
+    await collector.stream(sink);
+    return;
+  }
+
   let previous = new Map<string, OddsSelection>();
   let initialized = false;
   let lastHeartbeatAt = 0;
@@ -166,7 +176,7 @@ async function runWorker(sink: BackendCollectorSink) {
   }
 }
 
-async function runWorkerSafely(sink: BackendCollectorSink) {
+async function runWorkerSafely(sink: BackendCollectorStreamSink) {
   while (true) {
     try {
       await runWorker(sink);

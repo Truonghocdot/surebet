@@ -3,11 +3,11 @@ import path from "node:path";
 import { parseEightXBetIncomingSnapshot } from "@surebet/collector-shared";
 
 async function main() {
-  const htmlPath = path.resolve("../docs/lobbby/8xbet/incoming6h.html");
-  const html = await readFile(htmlPath, "utf8");
+  const incomingPlayPath = path.resolve("../docs/lobbby/8xbet/incomingplay.html");
+  const incomingPlayHTML = await readFile(incomingPlayPath, "utf8");
   const snapshot = parseEightXBetIncomingSnapshot(
-    html,
-    "https://8x282.com/sportEvents/incoming/football?hour=6"
+    incomingPlayHTML,
+    "https://8x4455.com/sportEvents/incoming/football?hour=6"
   );
 
   console.log(
@@ -25,28 +25,25 @@ async function main() {
     throw new Error("8xbet incoming parser returned an empty snapshot.");
   }
 
-  const awayHandicap = snapshot.selections.find(
-    (selection) =>
-      selection.fixtureId === "4658513" &&
-      selection.marketId === "cu-o-c-cha-p-ah" &&
-      selection.outcomeName.includes("RoPS Rovaniemi")
-  );
-  if (!awayHandicap?.outcomeName.includes("-1/1.5")) {
-    throw new Error(
-      `8xbet incoming parser should preserve away handicap sign, got ${awayHandicap?.outcomeName ?? "missing"}`
-    );
+  if (snapshot.selections.some((selection) => selection.matchState !== "upcoming")) {
+    throw new Error("8xbet incomingplay parser should classify scheduled fixtures as upcoming.");
   }
+  if (snapshot.selections.some((selection) => !selection.eventStartAt)) {
+    throw new Error("8xbet incomingplay parser should extract eventStartAt from stage labels.");
+  }
+  assertNoPartialMarkets(snapshot, "incomingplay");
 
   const firstHalfHandicap = snapshot.selections.find(
-    (selection) =>
-      selection.fixtureId === "4658513" && selection.marketId === "cu-o-c-cha-p-ah-1st"
+    (selection) => selection.marketId === "cu-o-c-cha-p-ah-1st"
   );
   if (!firstHalfHandicap) {
     throw new Error("8xbet parser should keep marketCode in first-half market ids.");
   }
 
+  const inplayPath = path.resolve("../docs/lobbby/8xbet/inplay.html");
+  const inplayHTML = await readFile(inplayPath, "utf8");
   const inplaySnapshot = parseEightXBetIncomingSnapshot(
-    html,
+    inplayHTML,
     "https://8x4455.com/sportEvents/inplay/football"
   );
   const nonLiveSelection = inplaySnapshot.selections.find(
@@ -57,6 +54,7 @@ async function main() {
       `8xbet inplay parser should force live match state, got ${nonLiveSelection.matchState}`
     );
   }
+  assertNoPartialMarkets(inplaySnapshot, "inplay");
 
   const stageFixture = parseEightXBetIncomingSnapshot(
     `
@@ -94,6 +92,27 @@ async function main() {
     throw new Error(
       `8xbet parser should ignore stage labels when reading teams, got ${stageSelection.homeTeam} vs ${stageSelection.awayTeam}`
     );
+  }
+}
+
+function assertNoPartialMarkets(
+  snapshot: ReturnType<typeof parseEightXBetIncomingSnapshot>,
+  label: string
+) {
+  const counts = new Map<string, number>();
+  for (const selection of snapshot.selections) {
+    const marketKey = `${selection.fixtureId}|${selection.marketId}`;
+    counts.set(marketKey, (counts.get(marketKey) ?? 0) + 1);
+  }
+
+  for (const [marketKey, count] of counts.entries()) {
+    const [, marketId] = marketKey.split("|");
+    const expected = marketId.includes("1x2") ? 3 : 2;
+    if (count !== expected) {
+      throw new Error(
+        `8xbet ${label} parser should not emit partial markets, got ${count}/${expected} for ${marketKey}`
+      );
+    }
   }
 }
 

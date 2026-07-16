@@ -5,18 +5,11 @@ type CollectorRuntimeConfigView struct {
 	EightXBetBaseURL       string `json:"eightxbet_base_url"`
 	EightXBetInplayPageURL string `json:"eightxbet_inplay_page_url"`
 	Jun88BaseURL           string `json:"jun88_base_url"`
-	Jun88BtiPageURL        string `json:"jun88_bti_page_url"`
-	Jun88SabaPageURL       string `json:"jun88_saba_page_url"`
 	Jun88CmdPageURL        string `json:"jun88_cmd_page_url"`
-	Jun88M9BetPageURL      string `json:"jun88_m9bet_page_url"`
 	CollectorProxyEnabled  bool   `json:"collector_proxy_enabled"`
 	CollectorProxyProtocol string `json:"collector_proxy_protocol"`
 	CollectorProxyServer   string `json:"collector_proxy_server"`
 	CollectorProxyBypass   string `json:"collector_proxy_bypass"`
-	BtiProxyEnabled        bool   `json:"bti_proxy_enabled"`
-	BtiProxyProtocol       string `json:"bti_proxy_protocol"`
-	BtiProxyServer         string `json:"bti_proxy_server"`
-	BtiProxyBypass         string `json:"bti_proxy_bypass"`
 }
 
 type UpdateCollectorRuntimeConfigRequest struct {
@@ -24,16 +17,9 @@ type UpdateCollectorRuntimeConfigRequest struct {
 	EightXBetBaseURL       string `json:"eightxbet_base_url"`
 	EightXBetInplayPageURL string `json:"eightxbet_inplay_page_url"`
 	Jun88BaseURL           string `json:"jun88_base_url"`
-	Jun88BtiPageURL        string `json:"jun88_bti_page_url"`
-	Jun88SabaPageURL       string `json:"jun88_saba_page_url"`
 	Jun88CmdPageURL        string `json:"jun88_cmd_page_url"`
-	Jun88M9BetPageURL      string `json:"jun88_m9bet_page_url"`
 	CollectorProxyEnabled  bool   `json:"collector_proxy_enabled"`
 	CollectorProxyProtocol string `json:"collector_proxy_protocol"`
 	CollectorProxyServer   string `json:"collector_proxy_server"`
 	CollectorProxyBypass   string `json:"collector_proxy_bypass"`
-	BtiProxyEnabled        bool   `json:"bti_proxy_enabled"`
-	BtiProxyProtocol       string `json:"bti_proxy_protocol"`
-	BtiProxyServer         string `json:"bti_proxy_server"`
-	BtiProxyBypass         string `json:"bti_proxy_bypass"`
 }

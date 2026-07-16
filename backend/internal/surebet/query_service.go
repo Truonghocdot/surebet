@@ -12,7 +12,7 @@ import (
 const detectorQuoteFreshnessWindow = 45 * time.Second
 
 type OddsReader interface {
-	ListCurrent(ctx context.Context, bookmakerID, lobbyID, fixtureID string) ([]models.OddsQuote, error)
+	ListCurrentDetectorCandidatesBySource(ctx context.Context, minCollectedAt time.Time) ([]models.OddsQuote, error)
 }
 
 type QueryService struct {
@@ -33,17 +33,10 @@ func (s QueryService) ListCurrentSurebets(ctx context.Context) ([]dto.SurebetVie
 		err    error
 	)
 
-	if repo, ok := s.reader.(interface {
-		ListCurrentDetectorCandidatesBySource(ctx context.Context, minCollectedAt time.Time) ([]models.OddsQuote, error)
-	}); ok {
-		quotes, err = repo.ListCurrentDetectorCandidatesBySource(ctx, time.Now().UTC().Add(-detectorQuoteFreshnessWindow))
-	} else if repo, ok := s.reader.(interface {
-		ListCurrentDetectorCandidates(ctx context.Context, minCollectedAt time.Time) ([]models.OddsQuote, error)
-	}); ok {
-		quotes, err = repo.ListCurrentDetectorCandidates(ctx, time.Now().UTC().Add(-detectorQuoteFreshnessWindow))
-	} else {
-		quotes, err = s.reader.ListCurrent(ctx, "", "", "")
-	}
+	quotes, err = s.reader.ListCurrentDetectorCandidatesBySource(
+		ctx,
+		time.Now().UTC().Add(-detectorQuoteFreshnessWindow),
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -2,22 +2,23 @@ import crypto from "node:crypto";
 import { JSDOM } from "jsdom";
 import type { OddsSelection, OddsSnapshot } from "../../contracts.js";
 
-type EightXBetMarket = {
-  marketName: string;
-  selections: OddsSelection[];
+export type EightXBetParseDiagnostics = {
+  partialMarketsDropped: number;
+  partialMarketKeys: string[];
 };
 
 export function parseEightXBetIncomingSnapshot(
   html: string,
   pageUrl: string,
-  collectorId = "8xbet"
+  collectorId = "8xbet",
+  diagnostics?: EightXBetParseDiagnostics
 ): OddsSnapshot {
   const dom = new JSDOM(html);
   const document = dom.window.document;
   const cards = Array.from(document.querySelectorAll('[data-testid^="simple-handicap-layout-football-"]'));
   const forceLive = isEightXBetInplayPage(pageUrl);
   const selections = cards.flatMap((card) =>
-    parseMatchCard(card as HTMLElement, { forceLive })
+    parseMatchCard(card as HTMLElement, { forceLive }, diagnostics)
   );
 
   return {
@@ -32,7 +33,11 @@ export function parseEightXBetIncomingSnapshot(
   };
 }
 
-function parseMatchCard(cardNode: HTMLElement, options: { forceLive: boolean }) {
+function parseMatchCard(
+  cardNode: HTMLElement,
+  options: { forceLive: boolean },
+  diagnostics?: EightXBetParseDiagnostics
+) {
   const leagueName =
     textContent(
       cardNode
@@ -72,7 +77,7 @@ function parseMatchCard(cardNode: HTMLElement, options: { forceLive: boolean }) 
         awayTeam,
         matchState,
         eventStartAt
-      })
+      }, diagnostics)
     );
   }
 
@@ -106,13 +111,40 @@ function parseMarketColumn(
     awayTeam: string;
     matchState: "upcoming" | "live" | "finished" | "unknown";
     eventStartAt?: string;
-  }
+  },
+  diagnostics?: EightXBetParseDiagnostics
 ) {
   const buttons = Array.from(columnNode.querySelectorAll('button[data-testid^="oddsBtn-"]')) as HTMLElement[];
-  return buttons.flatMap((buttonNode) => {
-    const info = parseOddsButton(buttonNode, context);
-    return info ? [info] : [];
-  });
+  if (buttons.length === 0) {
+    return [];
+  }
+
+  const firstTestID = buttons[0]?.getAttribute("data-testid") || "";
+  const firstParts = firstTestID.replace(/^oddsBtn-/, "").split("|");
+  const marketCode = firstParts[2] || "";
+  const expectedSelections = expectedSelectionCount(marketCode);
+
+  if (buttons.length < expectedSelections) {
+    recordPartialMarket(
+      diagnostics,
+      `${context.fixtureId}|${normalizeToken(context.marketName)}|expected=${expectedSelections}|actual=${buttons.length}`
+    );
+    return [];
+  }
+
+  const selections: Array<OddsSelection | null> = buttons
+    .slice(0, expectedSelections)
+    .map((buttonNode) => parseOddsButton(buttonNode, context));
+
+  const completeSelections = selections.filter(isOddsSelection);
+  if (completeSelections.length !== expectedSelections) {
+    recordPartialMarket(
+      diagnostics,
+      `${context.fixtureId}|${normalizeToken(context.marketName)}|expected=${expectedSelections}|parsed=${completeSelections.length}`
+    );
+    return [];
+  }
+  return completeSelections;
 }
 
 function parseOddsButton(
@@ -126,7 +158,7 @@ function parseOddsButton(
     matchState: "upcoming" | "live" | "finished" | "unknown";
     eventStartAt?: string;
   }
-) {
+): OddsSelection | null {
   const testID = buttonNode.getAttribute("data-testid") || "";
   const parts = testID.replace(/^oddsBtn-/, "").split("|");
   if (parts.length < 4) {
@@ -168,6 +200,10 @@ function parseOddsButton(
   } satisfies OddsSelection;
 }
 
+function isOddsSelection(value: OddsSelection | null): value is OddsSelection {
+  return value !== null;
+}
+
 function extractMarketHeader(node: HTMLElement) {
   const visibleLabel =
     textContent(node.querySelector(".line-clamp-1")) ||
@@ -202,6 +238,24 @@ function resolveOutcomeName(
     }
     if (sideCode === "ud") {
       return formatOutcome("Under", sanitizeOuLine(line));
+    }
+  }
+
+  if (marketCode === "h-ou" || marketCode === "a-ou") {
+    if (sideCode === "ov") {
+      return formatOutcome("Over", sanitizeOuLine(line));
+    }
+    if (sideCode === "ud") {
+      return formatOutcome("Under", sanitizeOuLine(line));
+    }
+  }
+
+  if (marketCode === "btts") {
+    if (sideCode === "y") {
+      return "Yes";
+    }
+    if (sideCode === "n") {
+      return "No";
     }
   }
 
@@ -267,7 +321,7 @@ function extractFixtureId(value: string) {
 }
 
 function classifyEightXBetGameStage(value: string) {
-  const normalized = normalizeRawText(value);
+  const normalized = normalizeEightXBetStage(value);
   if (!normalized) {
     return "unknown" as const;
   }
@@ -277,18 +331,33 @@ function classifyEightXBetGameStage(value: string) {
   if (/(^|\\s)(ft|ended|finished|final)(\\s|$)/i.test(normalized)) {
     return "finished" as const;
   }
-  if (/\\d{1,2}:\\d{2}|am|pm|today|tomorrow/i.test(normalized)) {
+  if (
+    /\d{1,2}:\d{2}|am|pm|today|tomorrow/i.test(normalized) ||
+    /^\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{2}$/i.test(normalized)
+  ) {
+    return "upcoming" as const;
+  }
+  if (/^\d{1,2}[-/]\d{1,2}\d{1,2}:\d{2}$/i.test(normalizeRawText(value))) {
     return "upcoming" as const;
   }
   return "unknown" as const;
 }
 
 function extractEightXBetEventStartAt(value: string) {
-  const normalized = normalizeRawText(value);
-  if (/\\d{1,2}:\\d{2}|am|pm/i.test(normalized)) {
+  const normalized = normalizeEightXBetStage(value);
+  if (
+    /\d{1,2}:\d{2}|am|pm/i.test(normalized) ||
+    /^\d{1,2}[-/]\d{1,2}\s+\d{1,2}:\d{2}$/i.test(normalized)
+  ) {
     return normalized;
   }
   return undefined;
+}
+
+function normalizeEightXBetStage(value: string) {
+  return normalizeRawText(value)
+    .replace(/(\d{1,2}[-/]\d{1,2})(\d{1,2}:\d{2})/g, "$1 $2")
+    .trim();
 }
 
 function normalizeHandicapLine(line: string, side: "home" | "away") {
@@ -396,4 +465,26 @@ function dedupeRepeatedLabel(value: string) {
   }
 
   return normalized;
+}
+
+function expectedSelectionCount(marketCode: string) {
+  if (marketCode.startsWith("1x2")) {
+    return 3;
+  }
+
+  return 2;
+}
+
+function recordPartialMarket(
+  diagnostics: EightXBetParseDiagnostics | undefined,
+  key: string
+) {
+  if (!diagnostics) {
+    return;
+  }
+
+  diagnostics.partialMarketsDropped += 1;
+  if (!diagnostics.partialMarketKeys.includes(key)) {
+    diagnostics.partialMarketKeys.push(key);
+  }
 }

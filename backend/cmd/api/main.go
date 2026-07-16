@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/realtime"
 	"surebet/backend/internal/repository/gormstore"
+	"surebet/backend/internal/repository/redisstore"
 	"surebet/backend/internal/runtimeconfig"
 	"surebet/backend/internal/surebet"
 	"surebet/backend/internal/telegram"
@@ -29,23 +31,34 @@ func main() {
 		log.Error("failed to open postgres", "error", err.Error())
 		os.Exit(1)
 	}
+	redisClient, err := redisstore.Open(cfg.Redis)
+	if err != nil {
+		log.Error("failed to open redis", "error", err.Error())
+		os.Exit(1)
+	}
 
 	passwordHasher := auth.NewSHA256Hasher()
 	tokenManager := auth.NewHMACTokenManager(cfg.Auth.TokenSecret, cfg.Auth.TokenTTL)
 
 	userRepository := gormstore.NewUserRepository(db)
 	oddsSnapshotRepository := gormstore.NewOddsSnapshotRepository(db)
+	oddsStateRepository := redisstore.NewOddsStateRepository(redisClient)
 	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
 	telegramRecipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	telegramLogRepository := gormstore.NewTelegramNotificationLogRepository(db)
 	realtimeHub := realtime.NewHub(log)
 	go realtimeHub.Run()
+	go func() {
+		if err := oddsStateRepository.RunJanitor(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("redis odds janitor stopped", "error", err.Error())
+		}
+	}()
 	collectorConfigService := runtimeconfig.NewService(
 		runtimeSettingRepository,
 		cfg.Collector,
 	)
 	surebetQuery := surebet.NewQueryService(
-		oddsSnapshotRepository,
+		oddsStateRepository,
 		calculator.NewDetectorWithLogger(log),
 	)
 	telegramNotifier := telegram.NewNotifier(
@@ -71,9 +84,18 @@ func main() {
 		),
 		AuthTokens:      tokenManager,
 		CollectorConfig: collectorConfigService,
-		OddsQuery:       odds.NewQueryService(oddsSnapshotRepository),
+		OddsQuery:       odds.NewQueryService(oddsStateRepository),
 		CollectorIngest: collector.NewAPIService(
 			oddsSnapshotRepository,
+			collector.NewMultiEventPublisher(
+				collector.NewLoggingEventPublisher(log),
+				collector.NewRealtimeEventPublisher(realtimeHub),
+			),
+			telegramNotifier,
+			log,
+		),
+		CollectorStream: collector.NewStreamService(
+			oddsStateRepository,
 			collector.NewMultiEventPublisher(
 				collector.NewLoggingEventPublisher(log),
 				collector.NewRealtimeEventPublisher(realtimeHub),

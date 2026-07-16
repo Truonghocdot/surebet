@@ -5,22 +5,13 @@
   "workspaces": [
     "shared",
     "eightxbet",
-    "jun88-ibc",
-    "jun88-bti",
-    "jun88-cmd",
-    "jun88-m8"
+    "jun88-cmd"
   ],
   "scripts": {
     "run:8xbet-worker": "tsx scripts/run-eightxbet-worker.ts",
-    "run:jun88-bti-worker": "tsx scripts/run-jun88-bti-worker.ts",
-    "run:jun88-saba-worker": "tsx scripts/run-jun88-ibc-worker.ts",
     "run:jun88-cmd-worker": "tsx scripts/run-jun88-cmd-worker.ts",
-    "run:jun88-m9bet-worker": "tsx scripts/run-jun88-m8-worker.ts",
-    "test:bti-parser": "tsx scripts/test-bti-parser.ts",
     "test:cmd-parser": "tsx scripts/test-cmd-parser.ts",
     "test:eightxbet-incoming-parser": "tsx scripts/test-eightxbet-incoming-parser.ts",
-    "test:saba-parser": "tsx scripts/test-ibc-parser.ts",
-    "test:m9bet-parser": "tsx scripts/test-m8-parser.ts",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces"
@@ -28,12 +19,14 @@
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
     "jsdom": "^26.1.0",
     "playwright": "1.61.1",
     "tsx": "^4.20.5"
   },
   "dependencies": {
     "playwright-extra": "^4.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ws": "^8.18.3"
   }
 }

@@ -182,7 +182,7 @@ func normalizeCollectorSport(source dto.CollectorSource, value string) string {
 	}
 
 	switch source.BookmakerID + "|" + source.LobbyID {
-	case "8xbet|default", "jun88|bti", "jun88|saba", "jun88|cmd", "jun88|m9bet":
+	case "8xbet|default", "jun88|cmd":
 		return "football"
 	default:
 		return ""

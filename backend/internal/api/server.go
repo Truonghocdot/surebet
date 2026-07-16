@@ -21,7 +21,8 @@ type Dependencies struct {
 	CollectorConfig CollectorConfigService
 	OddsQuery       OddsQueryService
 	CollectorIngest CollectorIngestService
-	TelegramAdmin   TelegramAdminService	
+	CollectorStream CollectorStreamService
+	TelegramAdmin   TelegramAdminService
 	TelegramWebhook TelegramWebhookService
 	Realtime        RealtimeService
 	SurebetQuery    SurebetQueryService
