@@ -243,14 +243,19 @@ async function installCmdObserver(
         return null;
       };
 
-      const parseMatch = (matchNode) => {
-        const matchID = (matchNode.id || "").replace(/^R_/, "");
-        const leagueName = text(precedingLeagueLabel(matchNode));
-        const homeTeam = text(matchNode.querySelector("#ht_" + matchID)) || text(matchNode.querySelector(".tableDiv-match-info__event div:first-child"));
-        const awayTeam = text(matchNode.querySelector("#at_" + matchID)) || text(matchNode.querySelector(".tableDiv-match-info__event div:nth-child(2)"));
-        const drawLabel = text(matchNode.querySelector(".drawcss")) || "Hòa";
+      const parseMatchGroup = (groupId) => {
+        const rows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))
+          .filter((node) => (node.getAttribute("groupid") || node.id || "") === groupId);
+        const baseRow = rows.find((node) => node.classList.contains("default-match")) || rows[0];
+        if (!baseRow) return [];
+
+        const matchID = (baseRow.id || "").replace(/^R_/, "");
+        const leagueName = text(precedingLeagueLabel(baseRow));
+        const homeTeam = text(baseRow.querySelector("#ht_" + matchID)) || text(baseRow.querySelector(".tableDiv-match-info__event div:first-child"));
+        const awayTeam = text(baseRow.querySelector("#at_" + matchID)) || text(baseRow.querySelector(".tableDiv-match-info__event div:nth-child(2)"));
+        const drawLabel = text(baseRow.querySelector(".drawcss")) || "Hòa";
         if (!homeTeam || !awayTeam) return [];
-        const fixtureId = matchNode.getAttribute("groupid") || [leagueName, homeTeam, awayTeam, matchID].filter(Boolean).join("|");
+        const fixtureId = baseRow.getAttribute("groupid") || [leagueName, homeTeam, awayTeam, matchID].filter(Boolean).join("|");
 
         const parseMarketRow = (rowNode, prefix) => {
           if (!rowNode) return [];
@@ -290,21 +295,30 @@ async function installCmdObserver(
           return selections;
         };
 
-        const fullTimeRows = Array.from(matchNode.querySelectorAll(":scope > .col.row:not(.halfmatchStats)"));
-        const halfTimeRows = Array.from(matchNode.querySelectorAll(":scope > .col.row.halfmatchStats"));
-        return [
-          ...fullTimeRows.flatMap((rowNode) => parseMarketRow(rowNode, "FT")),
-          ...halfTimeRows.flatMap((rowNode) => parseMarketRow(rowNode, "1H"))
-        ];
+        const selections = [];
+        const seenOutcomeIds = new Set();
+        for (const rowNode of rows) {
+          const fullTimeRows = Array.from(rowNode.querySelectorAll(":scope > .col.row:not(.halfmatchStats)"));
+          const halfTimeRows = Array.from(rowNode.querySelectorAll(":scope > .col.row.halfmatchStats"));
+          for (const item of [
+            ...fullTimeRows.flatMap((currentRow) => parseMarketRow(currentRow, "FT")),
+            ...halfTimeRows.flatMap((currentRow) => parseMarketRow(currentRow, "1H"))
+          ]) {
+            if (seenOutcomeIds.has(item.outcomeId)) continue;
+            seenOutcomeIds.add(item.outcomeId);
+            selections.push(item);
+          }
+        }
+
+        return selections;
       };
 
       const syncRow = (rowNode, emit) => {
-        const rowKey = rowNode.id || rowNode.getAttribute("groupid") || "";
+        const rowKey = rowNode.getAttribute("groupid") || rowNode.id || "";
         if (!rowKey) return;
-        const current = parseMatch(rowNode);
+        const current = parseMatchGroup(rowKey);
         const previous = state.byRow[rowKey] || [];
         const currentMap = Object.fromEntries(current.map((item) => [item.outcomeId, item]));
-        const previousMap = Object.fromEntries(previous.map((item) => [item.outcomeId, item]));
 
         if (emit) {
           for (const item of current) {
@@ -353,8 +367,14 @@ async function installCmdObserver(
       };
 
       const removeRow = (rowNode) => {
-        const rowKey = rowNode.id || rowNode.getAttribute("groupid") || "";
+        const rowKey = rowNode.getAttribute("groupid") || rowNode.id || "";
         if (!rowKey || !state.byRow[rowKey]) return;
+        const remainingRows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))
+          .filter((node) => (node.getAttribute("groupid") || node.id || "") === rowKey);
+        if (remainingRows.length > 0) {
+          syncRow(remainingRows[0], true);
+          return;
+        }
         for (const item of state.byRow[rowKey]) {
           delete state.seen[item.outcomeId];
           state.queue.push({
@@ -375,7 +395,7 @@ async function installCmdObserver(
         delete state.byRow[rowKey];
       };
 
-      for (const rowNode of Array.from(document.querySelectorAll(".match.default-match"))) {
+      for (const rowNode of Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))) {
         syncRow(rowNode, false);
       }
 
@@ -384,12 +404,12 @@ async function installCmdObserver(
         const removedRows = [];
         for (const mutation of mutations) {
           const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-          const row = target && target.closest ? target.closest(".match.default-match") : null;
+          const row = target && target.closest ? target.closest(".match.default-match, .match.copy-match") : null;
           if (row) rows.add(row);
           for (const removed of Array.from(mutation.removedNodes || [])) {
             if (removed instanceof Element) {
-              if (removed.matches(".match.default-match")) removedRows.push(removed);
-              for (const nested of Array.from(removed.querySelectorAll?.(".match.default-match") || [])) removedRows.push(nested);
+              if (removed.matches(".match.default-match, .match.copy-match")) removedRows.push(removed);
+              for (const nested of Array.from(removed.querySelectorAll?.(".match.default-match, .match.copy-match") || [])) removedRows.push(nested);
             }
           }
         }

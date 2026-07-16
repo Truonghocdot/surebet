@@ -21,8 +21,7 @@ export function parseJun88CmdSnapshot(
 ): OddsSnapshot {
   const dom = new JSDOM(html);
   const document = dom.window.document;
-  const selections = Array.from(document.querySelectorAll(".match.default-match"))
-    .flatMap((matchNode) => parseMatch(matchNode as HTMLElement));
+  const selections = groupJun88MatchRows(document).flatMap((rows) => parseMatchGroup(rows));
 
   return {
     source: {
@@ -36,58 +35,64 @@ export function parseJun88CmdSnapshot(
   };
 }
 
-function parseMatch(matchNode: HTMLElement) {
-  const matchID = matchNode.id.replace(/^R_/, "");
-  const leagueName = textContent(findPrecedingLeagueLabel(matchNode));
+function parseMatchGroup(rows: HTMLElement[]) {
+  const baseRow = rows.find((row) => row.classList.contains("default-match")) ?? rows[0];
+  const matchID = baseRow?.id.replace(/^R_/, "") || "";
+  const leagueName = baseRow ? textContent(findPrecedingLeagueLabel(baseRow)) : "";
   const homeTeam =
-    textContent(matchNode.querySelector(`#ht_${matchID}`)) ||
-    textContent(matchNode.querySelector(".tableDiv-match-info__event div:first-child")) ||
+    textContent(baseRow?.querySelector(`#ht_${matchID}`)) ||
+    textContent(baseRow?.querySelector(".tableDiv-match-info__event div:first-child")) ||
     "";
   const awayTeam =
-    textContent(matchNode.querySelector(`#at_${matchID}`)) ||
-    textContent(matchNode.querySelector(".tableDiv-match-info__event div:nth-child(2)")) ||
+    textContent(baseRow?.querySelector(`#at_${matchID}`)) ||
+    textContent(baseRow?.querySelector(".tableDiv-match-info__event div:nth-child(2)")) ||
     "";
-  const drawLabel = textContent(matchNode.querySelector(".drawcss")) || "Hòa";
+  const drawLabel = textContent(baseRow?.querySelector(".drawcss")) || "Hòa";
 
   if (!homeTeam || !awayTeam) {
     return [];
   }
 
   const fixtureId =
-    matchNode.getAttribute("groupid") ||
+    baseRow?.getAttribute("groupid") ||
     stableFixtureId(`${leagueName}|${homeTeam}|${awayTeam}|${matchID}`);
 
-  const fullTimeRows = Array.from(
-    matchNode.querySelectorAll(":scope > .col.row:not(.halfmatchStats)")
-  ) as HTMLElement[];
-  const halfTimeRows = Array.from(
-    matchNode.querySelectorAll(":scope > .col.row.halfmatchStats")
-  ) as HTMLElement[];
+  const selections = rows.flatMap((row) => {
+    const fullTimeRows = Array.from(
+      row.querySelectorAll(":scope > .col.row:not(.halfmatchStats)")
+    ) as HTMLElement[];
+    const halfTimeRows = Array.from(
+      row.querySelectorAll(":scope > .col.row.halfmatchStats")
+    ) as HTMLElement[];
+    const matchState = detectCmdMatchState(row);
 
-  return [
-    ...fullTimeRows.flatMap((rowNode) =>
-      parseMarketRow(rowNode, {
-        fixtureId,
-        leagueName,
-        homeTeam,
-        awayTeam,
-        drawLabel,
-        prefix: "FT",
-        matchState: detectCmdMatchState(matchNode)
-      })
-    ),
-    ...halfTimeRows.flatMap((rowNode) =>
-      parseMarketRow(rowNode, {
-        fixtureId,
-        leagueName,
-        homeTeam,
-        awayTeam,
-        drawLabel,
-        prefix: "1H",
-        matchState: detectCmdMatchState(matchNode)
-      })
-    )
-  ];
+    return [
+      ...fullTimeRows.flatMap((rowNode) =>
+        parseMarketRow(rowNode, {
+          fixtureId,
+          leagueName,
+          homeTeam,
+          awayTeam,
+          drawLabel,
+          prefix: "FT",
+          matchState
+        })
+      ),
+      ...halfTimeRows.flatMap((rowNode) =>
+        parseMarketRow(rowNode, {
+          fixtureId,
+          leagueName,
+          homeTeam,
+          awayTeam,
+          drawLabel,
+          prefix: "1H",
+          matchState
+        })
+      )
+    ];
+  });
+
+  return dedupeSelections(selections);
 }
 
 function findPrecedingLeagueLabel(matchNode: HTMLElement) {
@@ -105,6 +110,22 @@ function findPrecedingLeagueLabel(matchNode: HTMLElement) {
   }
 
   return null;
+}
+
+function groupJun88MatchRows(document: Document) {
+  const rows = Array.from(
+    document.querySelectorAll(".match.default-match, .match.copy-match")
+  ) as HTMLElement[];
+  const groups = new Map<string, HTMLElement[]>();
+
+  for (const row of rows) {
+    const groupId = row.getAttribute("groupid") || row.id || stableFixtureId(textContent(row));
+    const current = groups.get(groupId) ?? [];
+    current.push(row);
+    groups.set(groupId, current);
+  }
+
+  return Array.from(groups.values());
 }
 
 function parseMarketRow(
@@ -331,6 +352,14 @@ function formatOutcome(name: string, line: string) {
 
 function parseOddsValue(value: string) {
   return Number.parseFloat(value.replace(/[^\d./-]+/g, ""));
+}
+
+function dedupeSelections(items: OddsSelection[]) {
+  const byOutcomeId = new Map<string, OddsSelection>();
+  for (const item of items) {
+    byOutcomeId.set(item.outcomeId, item);
+  }
+  return Array.from(byOutcomeId.values());
 }
 
 function stableFixtureId(input: string) {
