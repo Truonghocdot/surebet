@@ -38,10 +38,10 @@ async function main() {
   assertNoExoticMarkets(snapshot, "incomingplay");
 
   const firstHalfHandicap = snapshot.selections.find(
-    (selection) => selection.marketId === "cu-o-c-cha-p-ah-1st"
+    (selection) => selection.marketId === "hdp-ah-1st"
   );
   if (!firstHalfHandicap) {
-    throw new Error("8xbet parser should keep marketCode in first-half market ids.");
+    throw new Error("8xbet parser should normalize first-half handicap market ids.");
   }
 
   const inplayPath = path.resolve("../docs/lobbby/8xbet/inplay.html");
@@ -79,10 +79,10 @@ async function main() {
   }
   const exhaustiveMarketIDs = [...new Set(exhaustiveSnapshot.selections.map((selection) => selection.marketId))];
   const expectedMarkets = new Set([
-    "cu-o-c-cha-p-ah",
-    "cu-o-c-cha-p-hie-p-1-ah-1st",
-    "to-ng-so-ba-n-tha-ng-ta-i-xi-u-ou",
-    "to-ng-so-ba-n-tha-ng-ta-i-xi-u-hie-p-1-ou-1st"
+    "hdp-ah",
+    "hdp-ah-1st",
+    "o-u-ou",
+    "o-u-ou-1st"
   ]);
   for (const marketID of exhaustiveMarketIDs) {
     if (!expectedMarkets.has(marketID)) {

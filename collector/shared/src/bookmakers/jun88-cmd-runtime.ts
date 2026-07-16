@@ -200,15 +200,22 @@ async function installCmdObserver(
       const normalizeToken = (value) =>
         value.normalize("NFKD").replace(/[^\\p{L}\\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase();
       const parseOdds = (value) => Number.parseFloat((value || "").replace(/[^\\d./-]+/g, ""));
-      const quoteId = (fixtureId, marketName, outcomeName) => fixtureId + ":" + normalizeToken(marketName) + ":" + normalizeToken(outcomeName);
+      const quoteId = (fixtureId, marketId, outcomeName) => fixtureId + ":" + marketId + ":" + normalizeToken(outcomeName);
       const normalizeHandicapLine = (line, side) => {
         if (!line) return "";
         if (side === "home") return line.startsWith("-") ? line : "+" + line;
         return line.startsWith("-") ? line.slice(1) : "-" + line;
       };
       const formatOutcome = (name, line) => [name, line].filter(Boolean).join(" ").trim();
+      const marketIdOf = (prefix, kind) => {
+        const isFirstHalf = String(prefix || "").trim().toUpperCase() === "1H";
+        if (kind === "handicap") return isFirstHalf ? "hdp-ah-1st" : "hdp-ah";
+        if (kind === "over_under") return isFirstHalf ? "o-u-ou-1st" : "o-u-ou";
+        if (kind === "one_x_two") return isFirstHalf ? "1x2-1st" : "1x2";
+        return normalizeToken(prefix + "-" + kind);
+      };
 
-      const selection = (node, fixtureId, homeTeam, awayTeam, marketName, outcomeName, suspended) => {
+      const selection = (node, fixtureId, homeTeam, awayTeam, marketId, outcomeName, suspended) => {
         if (!node) return null;
         const odds = parseOdds(text(node));
         if (!Number.isFinite(odds)) return null;
@@ -216,8 +223,8 @@ async function installCmdObserver(
           fixtureId,
           homeTeam,
           awayTeam,
-          marketId: normalizeToken(marketName),
-          outcomeId: quoteId(fixtureId, marketName, outcomeName),
+          marketId,
+          outcomeId: quoteId(fixtureId, marketId, outcomeName),
           outcomeName,
           odds,
           availableStake: 0,
@@ -249,32 +256,32 @@ async function installCmdObserver(
           if (!rowNode) return [];
           const selections = [];
 
-          const hdpNode = rowNode.querySelector(".w-hdp .tableDiv-match-odds");
-          if (hdpNode) {
+          for (const hdpNode of Array.from(rowNode.querySelectorAll(".w-hdp .tableDiv-match-odds"))) {
             const line = text(hdpNode.querySelector("b"));
             const buttons = Array.from(hdpNode.querySelectorAll(".tableDiv-match-odds__detail > a"));
-            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, prefix + " Handicap", formatOutcome(homeTeam, normalizeHandicapLine(line, "home")), false);
-            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, prefix + " Handicap", formatOutcome(awayTeam, normalizeHandicapLine(line, "away")), false);
+            const marketId = marketIdOf(prefix, "handicap");
+            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, marketId, formatOutcome(homeTeam, normalizeHandicapLine(line, "home")), false);
+            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, marketId, formatOutcome(awayTeam, normalizeHandicapLine(line, "away")), false);
             if (home) selections.push(home);
             if (away) selections.push(away);
           }
 
-          const ouNode = rowNode.querySelector(".w-ou .tableDiv-match-odds");
-          if (ouNode) {
+          for (const ouNode of Array.from(rowNode.querySelectorAll(".w-ou .tableDiv-match-odds"))) {
             const line = text(ouNode.querySelector("b"));
             const buttons = Array.from(ouNode.querySelectorAll(".tableDiv-match-odds__detail a"));
-            const over = selection(buttons[0], fixtureId, homeTeam, awayTeam, prefix + " Over/Under", formatOutcome("Over", line), false);
-            const under = selection(buttons[1], fixtureId, homeTeam, awayTeam, prefix + " Over/Under", formatOutcome("Under", line), false);
+            const marketId = marketIdOf(prefix, "over_under");
+            const over = selection(buttons[0], fixtureId, homeTeam, awayTeam, marketId, formatOutcome("Over", line), false);
+            const under = selection(buttons[1], fixtureId, homeTeam, awayTeam, marketId, formatOutcome("Under", line), false);
             if (over) selections.push(over);
             if (under) selections.push(under);
           }
 
-          const x12Node = rowNode.querySelector(".col-45 .tableDiv-match-odds__X12detail");
-          if (x12Node) {
+          for (const x12Node of Array.from(rowNode.querySelectorAll(".col-45 .tableDiv-match-odds__X12detail"))) {
             const buttons = Array.from(x12Node.querySelectorAll("a"));
-            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, prefix + " 1X2", homeTeam, false);
-            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, prefix + " 1X2", awayTeam, false);
-            const draw = selection(buttons[2], fixtureId, homeTeam, awayTeam, prefix + " 1X2", drawLabel, false);
+            const marketId = marketIdOf(prefix, "one_x_two");
+            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, marketId, homeTeam, false);
+            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, marketId, awayTeam, false);
+            const draw = selection(buttons[2], fixtureId, homeTeam, awayTeam, marketId, drawLabel, false);
             if (home) selections.push(home);
             if (away) selections.push(away);
             if (draw) selections.push(draw);
@@ -283,11 +290,11 @@ async function installCmdObserver(
           return selections;
         };
 
-        const fullTimeRow = matchNode.querySelector(":scope > .col.row:not(.halfmatchStats)");
-        const halfTimeRow = matchNode.querySelector(":scope > .col.row.halfmatchStats");
+        const fullTimeRows = Array.from(matchNode.querySelectorAll(":scope > .col.row:not(.halfmatchStats)"));
+        const halfTimeRows = Array.from(matchNode.querySelectorAll(":scope > .col.row.halfmatchStats"));
         return [
-          ...parseMarketRow(fullTimeRow, "FT"),
-          ...parseMarketRow(halfTimeRow, "1H")
+          ...fullTimeRows.flatMap((rowNode) => parseMarketRow(rowNode, "FT")),
+          ...halfTimeRows.flatMap((rowNode) => parseMarketRow(rowNode, "1H"))
         ];
       };
 

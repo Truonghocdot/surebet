@@ -644,6 +644,8 @@ func matchesCurrentOptions(
 func matchesDetectorMarket(marketMarker string) bool {
 	value := strings.ToLower(strings.TrimSpace(marketMarker))
 	return strings.Contains(value, "handicap") ||
+		strings.Contains(value, "hdp") ||
+		strings.Contains(value, "-ah") ||
 		strings.Contains(value, "cu-o-c-cha-p") ||
 		strings.Contains(value, "over-under") ||
 		strings.Contains(value, "ta-i-xi-u") ||

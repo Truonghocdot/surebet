@@ -4,6 +4,7 @@ import type { OddsSelection, OddsSnapshot } from "../../contracts.js";
 
 type MarketContext = {
   fixtureId: string;
+  marketId: string;
   marketName: string;
   leagueName: string;
   line: string;
@@ -56,28 +57,36 @@ function parseMatch(matchNode: HTMLElement) {
     matchNode.getAttribute("groupid") ||
     stableFixtureId(`${leagueName}|${homeTeam}|${awayTeam}|${matchID}`);
 
-  const fullTimeRow = matchNode.querySelector(":scope > .col.row:not(.halfmatchStats)");
-  const halfTimeRow = matchNode.querySelector(":scope > .col.row.halfmatchStats");
+  const fullTimeRows = Array.from(
+    matchNode.querySelectorAll(":scope > .col.row:not(.halfmatchStats)")
+  ) as HTMLElement[];
+  const halfTimeRows = Array.from(
+    matchNode.querySelectorAll(":scope > .col.row.halfmatchStats")
+  ) as HTMLElement[];
 
   return [
-    ...parseMarketRow(fullTimeRow as HTMLElement | null, {
-      fixtureId,
-      leagueName,
-      homeTeam,
-      awayTeam,
-      drawLabel,
-      prefix: "FT",
-      matchState: detectCmdMatchState(matchNode)
-    }),
-    ...parseMarketRow(halfTimeRow as HTMLElement | null, {
-      fixtureId,
-      leagueName,
-      homeTeam,
-      awayTeam,
-      drawLabel,
-      prefix: "1H",
-      matchState: detectCmdMatchState(matchNode)
-    })
+    ...fullTimeRows.flatMap((rowNode) =>
+      parseMarketRow(rowNode, {
+        fixtureId,
+        leagueName,
+        homeTeam,
+        awayTeam,
+        drawLabel,
+        prefix: "FT",
+        matchState: detectCmdMatchState(matchNode)
+      })
+    ),
+    ...halfTimeRows.flatMap((rowNode) =>
+      parseMarketRow(rowNode, {
+        fixtureId,
+        leagueName,
+        homeTeam,
+        awayTeam,
+        drawLabel,
+        prefix: "1H",
+        matchState: detectCmdMatchState(matchNode)
+      })
+    )
   ];
 }
 
@@ -115,10 +124,10 @@ function parseMarketRow(
   }
 
   return [
-    ...parseHdpMarket(
-      rowNode.querySelector(".w-hdp .tableDiv-match-odds") as HTMLElement | null,
-      {
+    ...Array.from(rowNode.querySelectorAll(".w-hdp .tableDiv-match-odds")).flatMap((node) =>
+      parseHdpMarket(node as HTMLElement, {
         fixtureId: options.fixtureId,
+        marketId: cmdMarketID(options.prefix, "handicap"),
         marketName: `${options.prefix} Handicap`,
         leagueName: options.leagueName,
         homeTeam: options.homeTeam,
@@ -126,12 +135,12 @@ function parseMarketRow(
         drawLabel: options.drawLabel,
         line: "",
         matchState: options.matchState
-      }
+      })
     ),
-    ...parseOuMarket(
-      rowNode.querySelector(".w-ou .tableDiv-match-odds") as HTMLElement | null,
-      {
+    ...Array.from(rowNode.querySelectorAll(".w-ou .tableDiv-match-odds")).flatMap((node) =>
+      parseOuMarket(node as HTMLElement, {
         fixtureId: options.fixtureId,
+        marketId: cmdMarketID(options.prefix, "over_under"),
         marketName: `${options.prefix} Over/Under`,
         leagueName: options.leagueName,
         homeTeam: options.homeTeam,
@@ -139,12 +148,12 @@ function parseMarketRow(
         drawLabel: options.drawLabel,
         line: "",
         matchState: options.matchState
-      }
+      })
     ),
-    ...parseOneXTwoMarket(
-      rowNode.querySelector(".col-45 .tableDiv-match-odds__X12detail") as HTMLElement | null,
-      {
+    ...Array.from(rowNode.querySelectorAll(".col-45 .tableDiv-match-odds__X12detail")).flatMap((node) =>
+      parseOneXTwoMarket(node as HTMLElement, {
         fixtureId: options.fixtureId,
+        marketId: cmdMarketID(options.prefix, "one_x_two"),
         marketName: `${options.prefix} 1X2`,
         leagueName: options.leagueName,
         homeTeam: options.homeTeam,
@@ -152,7 +161,7 @@ function parseMarketRow(
         drawLabel: options.drawLabel,
         line: "",
         matchState: options.matchState
-      }
+      })
     )
   ];
 }
@@ -243,8 +252,8 @@ function createSelection(
     awayTeam: context.awayTeam,
     leagueName: context.leagueName,
     matchState: context.matchState,
-    marketId: normalizeToken(context.marketName),
-    outcomeId: `${context.fixtureId}:${normalizeToken(context.marketName)}:${normalizeToken(
+    marketId: context.marketId,
+    outcomeId: `${context.fixtureId}:${context.marketId}:${normalizeToken(
       context.outcomeName
     )}`,
     outcomeName: context.outcomeName,
@@ -298,6 +307,22 @@ function normalizeHandicapLine(line: string, side: "home" | "away") {
   }
 
   return line.startsWith("-") ? line.slice(1) : `-${line}`;
+}
+
+function cmdMarketID(prefix: string, kind: "handicap" | "over_under" | "one_x_two") {
+  const normalizedPrefix = prefix.trim().toUpperCase();
+  const isFirstHalf = normalizedPrefix === "1H";
+
+  switch (kind) {
+    case "handicap":
+      return isFirstHalf ? "hdp-ah-1st" : "hdp-ah";
+    case "over_under":
+      return isFirstHalf ? "o-u-ou-1st" : "o-u-ou";
+    case "one_x_two":
+      return isFirstHalf ? "1x2-1st" : "1x2";
+    default:
+      return normalizeToken(`${prefix}-${kind}`);
+  }
 }
 
 function formatOutcome(name: string, line: string) {

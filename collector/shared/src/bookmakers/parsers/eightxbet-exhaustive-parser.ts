@@ -108,15 +108,47 @@ function parseExhaustiveMarket(
     wrapper.querySelectorAll(`button[data-testid^="oddsBtn-1|${fixtureId}|${marketCode}|"]`)
   ) as HTMLElement[];
 
-  const expectedSelections = marketCode.startsWith("ah") || marketCode.startsWith("ou") ? 2 : 0;
+  const expectedSelections = 2;
   if (buttons.length < expectedSelections) {
     return [];
   }
 
-  return buttons
-    .slice(0, expectedSelections)
-    .map((buttonNode) => parseExhaustiveOddsButton(buttonNode, fixtureId, marketCode, context))
-    .filter((value): value is OddsSelection => value !== null);
+  const groupedSelections = new Map<string, Map<string, OddsSelection>>();
+
+  for (const buttonNode of buttons) {
+    const parsed = parseExhaustiveOddsButton(buttonNode, fixtureId, marketCode, context);
+    if (!parsed) {
+      continue;
+    }
+
+    const group = groupedSelections.get(parsed.lineKey) ?? new Map<string, OddsSelection>();
+    group.set(parsed.sideKey, parsed.selection);
+    groupedSelections.set(parsed.lineKey, group);
+  }
+
+  const selections: OddsSelection[] = [];
+  for (const group of groupedSelections.values()) {
+    if (group.size !== expectedSelections) {
+      continue;
+    }
+
+    if (marketCode.startsWith("ah")) {
+      const home = group.get("home");
+      const away = group.get("away");
+      if (home && away) {
+        selections.push(home, away);
+      }
+      continue;
+    }
+
+    const over = group.get("over");
+    const under = group.get("under");
+    if (over && under) {
+      selections.push(over, under);
+    }
+  }
+
+  return selections;
 }
 
 function parseExhaustiveOddsButton(
@@ -130,7 +162,7 @@ function parseExhaustiveOddsButton(
     awayTeam: string;
     matchState: "live";
   }
-): OddsSelection | null {
+): { selection: OddsSelection; lineKey: string; sideKey: string } | null {
   const testID = buttonNode.getAttribute("data-testid") || "";
   const parts = testID.replace(/^oddsBtn-/, "").split("|");
   if (parts.length < 4) {
@@ -139,6 +171,12 @@ function parseExhaustiveOddsButton(
 
   const sideCode = parts[3] || "";
   const lineOrOutcome = extractPrimaryText(buttonNode);
+  const lineKey = resolveEightXBetLineKey(marketCode, lineOrOutcome);
+  const sideKey = resolveEightXBetSideKey(marketCode, sideCode);
+  if (!sideKey) {
+    return null;
+  }
+
   const oddsValue = extractOddsText(buttonNode);
   const odds = Number.parseFloat(oddsValue);
   if (!Number.isFinite(odds)) {
@@ -156,17 +194,21 @@ function parseExhaustiveOddsButton(
   const marketId = resolveMarketID(context.marketName, marketCode);
 
   return {
-    fixtureId,
-    homeTeam: context.homeTeam,
-    awayTeam: context.awayTeam,
-    leagueName: context.leagueName,
-    matchState: context.matchState,
-    marketId,
-    outcomeId: `${fixtureId}:${marketId}:${normalizeToken(outcomeName)}`,
-    outcomeName,
-    odds,
-    availableStake: 0,
-    suspended: buttonNode.className.includes("cursor-default")
+    lineKey,
+    sideKey,
+    selection: {
+      fixtureId,
+      homeTeam: context.homeTeam,
+      awayTeam: context.awayTeam,
+      leagueName: context.leagueName,
+      matchState: context.matchState,
+      marketId,
+      outcomeId: `${fixtureId}:${marketId}:${normalizeToken(outcomeName)}`,
+      outcomeName,
+      odds,
+      availableStake: 0,
+      suspended: buttonNode.className.includes("cursor-default")
+    }
   };
 }
 
@@ -273,6 +315,11 @@ function sanitizeOuLine(line: string) {
 }
 
 function resolveMarketID(marketName: string, marketCode: string) {
+  const canonicalMarketID = resolveCanonicalEightXBetMarketID(marketCode);
+  if (canonicalMarketID) {
+    return canonicalMarketID;
+  }
+
   const normalizedName = normalizeToken(dedupeRepeatedLabel(normalizeRawText(marketName)));
   const normalizedCode = normalizeToken(marketCode);
 
@@ -283,6 +330,55 @@ function resolveMarketID(marketName: string, marketCode: string) {
     return normalizedName;
   }
   return normalizedCode;
+}
+
+function resolveCanonicalEightXBetMarketID(marketCode: string) {
+  switch (marketCode) {
+    case "ah":
+      return "hdp-ah";
+    case "ah_1st":
+      return "hdp-ah-1st";
+    case "ou":
+      return "o-u-ou";
+    case "ou_1st":
+      return "o-u-ou-1st";
+    default:
+      return "";
+  }
+}
+
+function resolveEightXBetLineKey(marketCode: string, value: string) {
+  if (marketCode.startsWith("ah")) {
+    return normalizeAbsoluteLineKey(value);
+  }
+  if (marketCode.startsWith("ou")) {
+    return sanitizeOuLine(value);
+  }
+  return normalizeRawText(value);
+}
+
+function normalizeAbsoluteLineKey(value: string) {
+  return value.replace(/\s+/g, "").replace(/^[+-]/, "").trim();
+}
+
+function resolveEightXBetSideKey(marketCode: string, sideCode: string) {
+  if (marketCode.startsWith("ah")) {
+    if (sideCode === "h") {
+      return "home";
+    }
+    if (sideCode === "a") {
+      return "away";
+    }
+    return "";
+  }
+
+  if (sideCode === "ov") {
+    return "over";
+  }
+  if (sideCode === "ud") {
+    return "under";
+  }
+  return "";
 }
 
 function normalizeToken(value: string) {

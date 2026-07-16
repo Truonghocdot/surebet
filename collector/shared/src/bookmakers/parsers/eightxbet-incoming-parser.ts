@@ -401,6 +401,11 @@ function sanitizeOuLine(line: string) {
 }
 
 function resolveMarketID(marketName: string, marketCode: string) {
+  const canonicalMarketID = resolveCanonicalEightXBetMarketID(marketCode);
+  if (canonicalMarketID) {
+    return canonicalMarketID;
+  }
+
   const normalizedName = normalizeToken(dedupeRepeatedLabel(normalizeRawText(marketName)));
   const normalizedCode = normalizeToken(marketCode);
 
@@ -411,6 +416,21 @@ function resolveMarketID(marketName: string, marketCode: string) {
     return normalizedName;
   }
   return normalizedCode;
+}
+
+function resolveCanonicalEightXBetMarketID(marketCode: string) {
+  switch (marketCode) {
+    case "ah":
+      return "hdp-ah";
+    case "ah_1st":
+      return "hdp-ah-1st";
+    case "ou":
+      return "o-u-ou";
+    case "ou_1st":
+      return "o-u-ou-1st";
+    default:
+      return "";
+  }
 }
 
 function stableFixtureId(input: string) {
