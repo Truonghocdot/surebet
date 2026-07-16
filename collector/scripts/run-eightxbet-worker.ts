@@ -3,17 +3,11 @@ import {
   envString,
   applyCollectorProxyProfile,
   logCollectorProxyDebug,
-  pageReloadIntervalMs,
-  syncCollectorRuntimeConfig,
-  type OddsDelta,
-  type OddsSelection,
-  type OddsSnapshot
+  syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
 import { EightXBetCollector } from "../eightxbet/src/index.js";
 
 const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
-const intervalMs = Number.parseInt(envString("COLLECT_INTERVAL_MS", "5000"), 10);
-const heartbeatMs = Number.parseInt(envString("COLLECT_HEARTBEAT_MS", "15000"), 10);
 
 async function main() {
   const sink = new BackendCollectorStreamSink(backendURL, {
@@ -22,74 +16,6 @@ async function main() {
     lobbyId: "default"
   });
   await runWorkerSafely(sink);
-}
-
-function selectionMap(snapshot: OddsSnapshot) {
-  return new Map(snapshot.selections.map((selection) => [selection.outcomeId, selection]));
-}
-
-function buildDeltas(
-  snapshot: OddsSnapshot,
-  previous: Map<string, OddsSelection>,
-  next: Map<string, OddsSelection>
-) {
-  const deltas: OddsDelta[] = [];
-
-  for (const [outcomeId, selection] of next.entries()) {
-    const prev = previous.get(outcomeId);
-    if (
-      !prev ||
-      prev.odds !== selection.odds ||
-      prev.availableStake !== selection.availableStake ||
-      prev.suspended !== selection.suspended
-    ) {
-      deltas.push({
-        source: snapshot.source,
-        collectedAt: snapshot.collectedAt,
-        fixtureId: selection.fixtureId,
-        sport: selection.sport,
-        homeTeam: selection.homeTeam,
-        awayTeam: selection.awayTeam,
-        leagueName: selection.leagueName,
-        matchState: selection.matchState,
-        eventStartAt: selection.eventStartAt,
-        marketId: selection.marketId,
-        outcomeId: selection.outcomeId,
-        outcomeName: selection.outcomeName,
-        odds: selection.odds,
-        availableStake: selection.availableStake,
-        suspended: selection.suspended,
-        op: "upsert"
-      });
-    }
-  }
-
-  for (const [outcomeId, selection] of previous.entries()) {
-    if (next.has(outcomeId)) {
-      continue;
-    }
-
-    deltas.push({
-      source: snapshot.source,
-      collectedAt: snapshot.collectedAt,
-      fixtureId: selection.fixtureId,
-      sport: selection.sport,
-      homeTeam: selection.homeTeam,
-      awayTeam: selection.awayTeam,
-      leagueName: selection.leagueName,
-      matchState: selection.matchState,
-      eventStartAt: selection.eventStartAt,
-      marketId: selection.marketId,
-      outcomeId: selection.outcomeId,
-      outcomeName: selection.outcomeName,
-      odds: selection.odds,
-      availableStake: selection.availableStake,
-      suspended: true,
-      op: "remove"
-    });
-  }
-
-  return deltas;
 }
 
 async function runWorker(sink: BackendCollectorStreamSink) {
@@ -104,76 +30,8 @@ async function runWorker(sink: BackendCollectorStreamSink) {
   logCollectorProxyDebug("8xbet");
 
   const collector = new EightXBetCollector();
-  if ("stream" in collector && typeof collector.stream === "function") {
-    console.log("[8xbet-worker] starting in streaming mode");
-    await collector.stream(sink);
-    return;
-  }
-
-  let previous = new Map<string, OddsSelection>();
-  let initialized = false;
-  let lastHeartbeatAt = 0;
-  let lastBootstrapAt = 0;
-  const snapshotRefreshMs = pageReloadIntervalMs();
-
-  while (true) {
-    const startedAt = Date.now();
-
-    try {
-      const snapshot = await collector.collect();
-
-      const next = selectionMap(snapshot);
-      const shouldRefreshSnapshot =
-        !initialized || Date.now() - lastBootstrapAt >= snapshotRefreshMs;
-
-      if (!initialized) {
-        console.log("[8xbet-worker] pushing bootstrap...");
-        await sink.pushBootstrap(snapshot);
-        previous = next;
-        initialized = true;
-        lastBootstrapAt = Date.now();
-      } else if (shouldRefreshSnapshot) {
-        console.log("[8xbet-worker] refreshing snapshot after page reload interval...");
-        await sink.pushBootstrap(snapshot);
-
-        const removed = buildDeltas(snapshot, previous, next).filter(
-          (delta) => delta.op === "remove"
-        );
-        if (removed.length > 0) {
-          await sink.pushDelta(removed);
-        }
-
-        previous = next;
-        lastBootstrapAt = Date.now();
-      } else {
-        const deltas = buildDeltas(snapshot, previous, next);
-        if (deltas.length > 0) {
-          console.log(`[8xbet-worker] pushing ${deltas.length} deltas...`);
-          await sink.pushDelta(deltas);
-        } else {
-          console.log("[8xbet-worker] no changes detected.");
-        }
-        previous = next;
-      }
-
-      if (Date.now() - lastHeartbeatAt >= heartbeatMs) {
-        await sink.heartbeat({
-          collectorId: snapshot.source.collectorId,
-          bookmakerId: snapshot.source.bookmakerId,
-          lobbyId: snapshot.source.lobbyId,
-          sentAt: new Date().toISOString()
-        });
-        lastHeartbeatAt = Date.now();
-        console.log("[8xbet-worker] heartbeat sent.");
-      }
-    } catch (error) {
-      console.error("[8xbet-worker] collect failed:", error);
-    }
-
-    const elapsed = Date.now() - startedAt;
-    const waitMs = Math.max(intervalMs - elapsed, 500);
-    await sleep(waitMs);
-  }
+  console.log("[8xbet-worker] starting in streaming mode");
+  await collector.stream(sink);
 }
 
 async function runWorkerSafely(sink: BackendCollectorStreamSink) {

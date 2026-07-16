@@ -14,8 +14,8 @@ import (
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/realtime"
-	"surebet/backend/internal/repository/gormstore"
 	"surebet/backend/internal/repository/redisstore"
+	"surebet/backend/internal/repository/gormstore"
 	"surebet/backend/internal/runtimeconfig"
 	"surebet/backend/internal/surebet"
 	"surebet/backend/internal/telegram"
@@ -41,7 +41,6 @@ func main() {
 	tokenManager := auth.NewHMACTokenManager(cfg.Auth.TokenSecret, cfg.Auth.TokenTTL)
 
 	userRepository := gormstore.NewUserRepository(db)
-	oddsSnapshotRepository := gormstore.NewOddsSnapshotRepository(db)
 	oddsStateRepository := redisstore.NewOddsStateRepository(redisClient)
 	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
 	telegramRecipientRepository := gormstore.NewTelegramRecipientRepository(db)
@@ -85,15 +84,6 @@ func main() {
 		AuthTokens:      tokenManager,
 		CollectorConfig: collectorConfigService,
 		OddsQuery:       odds.NewQueryService(oddsStateRepository),
-		CollectorIngest: collector.NewAPIService(
-			oddsSnapshotRepository,
-			collector.NewMultiEventPublisher(
-				collector.NewLoggingEventPublisher(log),
-				collector.NewRealtimeEventPublisher(realtimeHub),
-			),
-			telegramNotifier,
-			log,
-		),
 		CollectorStream: collector.NewStreamService(
 			oddsStateRepository,
 			collector.NewMultiEventPublisher(

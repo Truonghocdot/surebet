@@ -5,33 +5,13 @@ type OddsSource struct {
 	LobbyID     string
 }
 
-var activeOddsSources = []OddsSource{
-	{BookmakerID: "8xbet", LobbyID: "default"},
-	{BookmakerID: "jun88", LobbyID: "cmd"},
-}
-
 var migratedOddsSources = []OddsSource{
 	{BookmakerID: "8xbet", LobbyID: "default"},
 	{BookmakerID: "jun88", LobbyID: "cmd"},
 }
 
-func ActiveOddsSources() []OddsSource {
-	return append([]OddsSource(nil), activeOddsSources...)
-}
-
 func MigratedOddsSources() []OddsSource {
 	return append([]OddsSource(nil), migratedOddsSources...)
-}
-
-func LegacyOddsSources() []OddsSource {
-	legacy := make([]OddsSource, 0, len(activeOddsSources))
-	for _, source := range activeOddsSources {
-		if ContainsOddsSource(migratedOddsSources, source.BookmakerID, source.LobbyID) {
-			continue
-		}
-		legacy = append(legacy, source)
-	}
-	return legacy
 }
 
 func MatchOddsSources(bookmakerID, lobbyID string, sources []OddsSource) []OddsSource {

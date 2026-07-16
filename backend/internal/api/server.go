@@ -20,7 +20,6 @@ type Dependencies struct {
 	AuthTokens      auth.TokenManager
 	CollectorConfig CollectorConfigService
 	OddsQuery       OddsQueryService
-	CollectorIngest CollectorIngestService
 	CollectorStream CollectorStreamService
 	TelegramAdmin   TelegramAdminService
 	TelegramWebhook TelegramWebhookService

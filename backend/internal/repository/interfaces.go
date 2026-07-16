@@ -15,11 +15,6 @@ type UserRepository interface {
 	UpdateLastLogin(ctx context.Context, id string, loggedAt time.Time) error
 }
 
-type OddsSnapshotRepository interface {
-	Upsert(ctx context.Context, quotes []models.OddsQuote) error
-	ListByFixture(ctx context.Context, fixtureID string) ([]models.OddsQuote, error)
-}
-
 type TelegramRecipientRepository interface {
 	ListActive(ctx context.Context) ([]models.TelegramRecipient, error)
 	ListAll(ctx context.Context) ([]models.TelegramRecipient, error)

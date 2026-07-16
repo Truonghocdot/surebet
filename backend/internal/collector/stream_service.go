@@ -28,6 +28,10 @@ type StreamOddsStateStore interface {
 	) ([]models.OddsQuote, error)
 }
 
+type SurebetNotifier interface {
+	Trigger()
+}
+
 type StreamService struct {
 	store     StreamOddsStateStore
 	publisher EventPublisher

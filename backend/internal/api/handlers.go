@@ -16,12 +16,6 @@ type OddsQueryService interface {
 	ListCurrentOdds(ctx context.Context, filter dto.OddsFilter) ([]dto.OddsView, error)
 }
 
-type CollectorIngestService interface {
-	IngestBootstrap(ctx context.Context, request dto.CollectorBootstrapRequest) error
-	IngestDelta(ctx context.Context, request dto.CollectorDeltaRequest) error
-	Heartbeat(ctx context.Context, request dto.CollectorHeartbeatRequest) error
-}
-
 type CollectorStreamService interface {
 	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
@@ -64,9 +58,6 @@ func (s *Server) registerRoutes() {
 	v1.GET("/ws", s.handleRealtimeWebSocket)
 	v1.GET("/odds", s.handleOdds)
 	v1.GET("/surebets", s.handleSurebets)
-	v1.POST("/collector/bootstrap", s.handleCollectorBootstrap)
-	v1.POST("/collector/delta", s.handleCollectorDelta)
-	v1.POST("/collector/heartbeat", s.handleCollectorHeartbeat)
 	v1.GET("/collector/runtime-config", s.handleCollectorRuntimeConfig)
 	v1.GET("/admin/telegram-recipients", s.handleAdminTelegramRecipients)
 	v1.POST("/admin/telegram-recipients", s.handleAdminTelegramRecipients)
@@ -148,66 +139,6 @@ func (s *Server) handleSurebets(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"data": items})
-}
-
-func (s *Server) handleCollectorBootstrap(ctx *gin.Context) {
-	if s.deps.CollectorIngest == nil {
-		placeholder(ctx, "collector ingest service is not wired yet")
-		return
-	}
-
-	var request dto.CollectorBootstrapRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := s.deps.CollectorIngest.IngestBootstrap(ctx.Request.Context(), request); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusAccepted, gin.H{"status": "accepted"})
-}
-
-func (s *Server) handleCollectorDelta(ctx *gin.Context) {
-	if s.deps.CollectorIngest == nil {
-		placeholder(ctx, "collector ingest service is not wired yet")
-		return
-	}
-
-	var request dto.CollectorDeltaRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := s.deps.CollectorIngest.IngestDelta(ctx.Request.Context(), request); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusAccepted, gin.H{"status": "accepted"})
-}
-
-func (s *Server) handleCollectorHeartbeat(ctx *gin.Context) {
-	if s.deps.CollectorIngest == nil {
-		placeholder(ctx, "collector ingest service is not wired yet")
-		return
-	}
-
-	var request dto.CollectorHeartbeatRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := s.deps.CollectorIngest.Heartbeat(ctx.Request.Context(), request); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	ctx.JSON(http.StatusAccepted, gin.H{"status": "accepted"})
 }
 
 func (s *Server) handleCollectorRuntimeConfig(ctx *gin.Context) {

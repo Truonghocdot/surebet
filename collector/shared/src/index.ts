@@ -1,5 +1,4 @@
 export * from "./contracts.js";
-export * from "./backend/backend-collector-sink.js";
 export * from "./backend/backend-collector-stream-sink.js";
 export * from "./backend/backend-collector-stream.js";
 export * from "./backend/source-event-start-at.js";
@@ -18,4 +17,3 @@ export * from "./core/env.js";
 export * from "./core/page-url-resolver.js";
 export * from "./core/proxy.js";
 export * from "./core/resource-blocking.js";
-export * from "./core/with-public-page.js";
