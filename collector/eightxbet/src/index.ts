@@ -32,6 +32,7 @@ export class EightXBetCollector implements Collector {
     let latestIncoming: OddsSnapshot | null = null;
     let latestInplay: OddsSnapshot | null = null;
     let mergedSnapshot: OddsSnapshot | null = null;
+    let mergedSnapshotMap = new Map<string, OddsSelection>();
     let bootstrapSent = false;
     let lastHeartbeatAt = 0;
 
@@ -57,20 +58,23 @@ export class EightXBetCollector implements Collector {
       if (!bootstrapSent || mode === "bootstrap" || !mergedSnapshot) {
         await sink.pushBootstrap(nextMerged);
         mergedSnapshot = nextMerged;
+        mergedSnapshotMap = selectionMap(nextMerged);
         bootstrapSent = true;
         await maybeHeartbeat(nextMerged);
         return;
       }
 
+      const nextMergedMap = selectionMap(nextMerged);
       const deltas = buildDeltas(
         nextMerged,
-        selectionMap(mergedSnapshot),
-        selectionMap(nextMerged)
+        mergedSnapshotMap,
+        nextMergedMap
       );
       if (deltas.length > 0) {
         await sink.pushDelta(deltas);
       }
       mergedSnapshot = nextMerged;
+      mergedSnapshotMap = nextMergedMap;
       await maybeHeartbeat(nextMerged);
     };
 
@@ -129,10 +133,22 @@ function mergeEightXBetSnapshots(incoming: OddsSnapshot, inplay: OddsSnapshot): 
   for (const selection of incoming.selections) {
     selectionsByOutcome.set(selection.outcomeId, selection);
   }
-  for (const selection of inplay.selections) {
+  for (let i = 0; i < inplay.selections.length; i++) {
+    const selection = inplay.selections[i];
     selectionsByOutcome.set(selection.outcomeId, {
-      ...selection,
-      matchState: "live"
+      fixtureId: selection.fixtureId,
+      sport: selection.sport,
+      homeTeam: selection.homeTeam,
+      awayTeam: selection.awayTeam,
+      leagueName: selection.leagueName,
+      matchState: "live",
+      eventStartAt: selection.eventStartAt,
+      marketId: selection.marketId,
+      outcomeId: selection.outcomeId,
+      outcomeName: selection.outcomeName,
+      odds: selection.odds,
+      availableStake: selection.availableStake,
+      suspended: selection.suspended
     });
   }
 
@@ -148,16 +164,24 @@ function mergeEightXBetSnapshots(incoming: OddsSnapshot, inplay: OddsSnapshot): 
 }
 
 function selectionMap(snapshot: OddsSnapshot) {
-  return new Map(snapshot.selections.map((selection) => [selection.outcomeId, selection]));
+  const map = new Map<string, OddsSelection>();
+  for (let i = 0; i < snapshot.selections.length; i++) {
+    const selection = snapshot.selections[i];
+    map.set(selection.outcomeId, selection);
+  }
+  return map;
 }
 
 function summarizeSnapshot(snapshot: OddsSnapshot) {
-  const fixtures = new Set(snapshot.selections.map((selection) => selection.fixtureId)).size;
-  const markets = new Set(
-    snapshot.selections.map((selection) => `${selection.fixtureId}|${selection.marketId}`)
-  ).size;
+  const fixtures = new Set<string>();
+  const markets = new Set<string>();
+  for (let i = 0; i < snapshot.selections.length; i++) {
+    const sel = snapshot.selections[i];
+    fixtures.add(sel.fixtureId);
+    markets.add(`${sel.fixtureId}|${sel.marketId}`);
+  }
   const outcomes = snapshot.selections.length;
-  return { fixtures, markets, outcomes };
+  return { fixtures: fixtures.size, markets: markets.size, outcomes };
 }
 
 function logEightXBetMergeTelemetry(

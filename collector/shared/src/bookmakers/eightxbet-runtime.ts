@@ -53,7 +53,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     const page = await this.ensurePage(targetURL);
 
     try {
-      return this.readSnapshot(page, targetURL);
+      return this.readSnapshot(page, targetURL, "bootstrap");
     } catch (error) {
       if (this.shutdownRequested) {
         return emptyEightXBetSnapshot(this.collectorId);
@@ -104,7 +104,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     page.on("websocket", handleWebSocket);
 
     try {
-      let snapshot = await this.readSnapshot(page, targetURL);
+      let snapshot = await this.readSnapshot(page, targetURL, "bootstrap");
       await onSnapshot(snapshot, "bootstrap");
 
       await installEightXBetObserver(page);
@@ -124,7 +124,7 @@ export class EightXBetRuntime implements CollectorRuntime {
           await page.reload({ waitUntil: "domcontentloaded" });
           this.lastPageReloadAt = Date.now();
 
-          snapshot = await this.readSnapshot(page, targetURL);
+          snapshot = await this.readSnapshot(page, targetURL, "bootstrap");
           await onSnapshot(snapshot, "bootstrap");
           await installEightXBetObserver(page);
           lastVersion = await readEightXBetObserverVersion(page);
@@ -141,7 +141,7 @@ export class EightXBetRuntime implements CollectorRuntime {
               `kind=dom_mutation version=${lastVersion}->${currentVersion}`
             );
           }
-          snapshot = await this.readSnapshot(page, targetURL);
+          snapshot = await this.readSnapshot(page, targetURL, "delta");
           await onSnapshot(snapshot, "delta");
           lastVersion = currentVersion;
           lastSignalVersion = signalVersion;
@@ -233,10 +233,14 @@ export class EightXBetRuntime implements CollectorRuntime {
     }
   }
 
-  private async readSnapshot(page: Page, targetURL: string) {
+  private async readSnapshot(page: Page, targetURL: string, mode: "bootstrap" | "delta" = "bootstrap") {
     await this.reloadPageIfDue(page);
     await waitForEightXBetReady(page, targetURL);
-    await autoScrollIncomingList(page);
+    
+    if (mode === "bootstrap") {
+      await autoScrollIncomingList(page);
+    }
+    
     const renderState = await stabilizeIncomingList(page);
     if (renderState.oddsButtonCount === 0 || renderState.teamLabelCount < 2) {
       await writeDebugArtifacts(page, `${this.collectorId}-incoming-not-hydrated`);
