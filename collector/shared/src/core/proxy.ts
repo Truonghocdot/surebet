@@ -5,6 +5,7 @@ import { envBool, envInt, envString } from "./env.js";
 
 const proxyXoayEndpoint = "https://proxyxoay.shop/api/get.php";
 const defaultProxyCachePath = path.resolve("tmp/collector/proxyxoay-cache.json");
+const proxyXoayRefreshIntervalMs = 60_000;
 const proxyCacheExpirySkewMs = 15_000;
 const proxyCacheFallbackGraceMs = 3 * 60_000;
 
@@ -182,7 +183,7 @@ async function resolveProxyXoayProxy(): Promise<CollectorProxySettings> {
     whitelist: envString("COLLECTOR_PROXYXOAY_WHITELIST", "").trim()
   });
   const cachedProxy = await readProxyXoayCache(cacheKey);
-  if (cachedProxy && isProxyCacheUsable(cachedProxy)) {
+  if (cachedProxy && isProxyCacheFresh(cachedProxy) && isProxyCacheUsable(cachedProxy)) {
     console.log(
       `[collector-proxy] reusing cached ${protocol.toUpperCase()} proxy ${cachedProxy.settings.server} ` +
         `(network=${cachedProxy.providerNetwork || "unknown"} region=${cachedProxy.providerRegion || "unknown"})`
@@ -425,6 +426,15 @@ function isProxyCacheUsable(cache: ProxyXoayCache) {
   }
 
   return Date.now() + proxyCacheExpirySkewMs < expiresAt;
+}
+
+function isProxyCacheFresh(cache: ProxyXoayCache) {
+  const acquiredAt = Date.parse(cache.acquiredAt);
+  if (!Number.isFinite(acquiredAt)) {
+    return false;
+  }
+
+  return Date.now() - acquiredAt < proxyXoayRefreshIntervalMs;
 }
 
 function canReuseCachedProxyAfterFailure(cache: ProxyXoayCache, message: string) {

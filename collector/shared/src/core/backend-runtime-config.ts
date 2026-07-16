@@ -5,10 +5,7 @@ type BackendCollectorRuntimeConfigResponse = {
     eightxbet_inplay_page_url?: string;
     jun88_base_url?: string;
     jun88_cmd_page_url?: string;
-    collector_proxy_enabled?: boolean;
-    collector_proxy_protocol?: string;
-    collector_proxy_server?: string;
-    collector_proxy_bypass?: string;
+    collector_proxyxoay_token?: string;
   };
 };
 
@@ -40,10 +37,7 @@ export async function syncCollectorRuntimeConfig(
   applySetting("JUN88_CMD_PAGE_URL", payload.data.jun88_cmd_page_url);
 
   applyProxySettings({
-    enabled: payload.data.collector_proxy_enabled,
-    protocol: payload.data.collector_proxy_protocol,
-    server: payload.data.collector_proxy_server,
-    bypass: payload.data.collector_proxy_bypass
+    token: payload.data.collector_proxyxoay_token
   });
 
   return payload.data;
@@ -54,22 +48,24 @@ function applySetting(key: string, value?: string) {
 }
 
 function applyProxySettings(options: {
-  enabled?: boolean;
-  protocol?: string;
-  server?: string;
-  bypass?: string;
+  token?: string;
 }) {
-  applySetting("COLLECTOR_PROXY_MODE", options.enabled ? "static" : "off");
-  applySetting("COLLECTOR_PROXY_PROTOCOL", options.protocol);
-  applySetting("COLLECTOR_PROXY_SERVER", options.server);
-  applySetting("COLLECTOR_PROXY_BYPASS", options.bypass);
+  const token = (options.token ?? "").trim();
+  applySetting("COLLECTOR_PROXY_MODE", token ? "proxyxoay" : "off");
+  applySetting("COLLECTOR_PROXY_PROTOCOL", token ? "http" : "");
+  applySetting("COLLECTOR_PROXYXOAY_KEY", token);
+  applySetting("COLLECTOR_PROXYXOAY_NHAMANG", token ? "random" : "");
+  applySetting("COLLECTOR_PROXYXOAY_TINHTHANH", token ? "0" : "");
+  applySetting("COLLECTOR_PROXYXOAY_WHITELIST", "");
+  applySetting("COLLECTOR_PROXY_SERVER", "");
+  applySetting("COLLECTOR_PROXY_BYPASS", "");
+  applySetting("COLLECTOR_PROXY_CACHE_ENABLED", token ? "true" : "");
+  applySetting("COLLECTOR_PROXY_CACHE_FILE", token ? "tmp/collector/proxyxoay-cache.json" : "");
+  applySetting("COLLECT_BROWSER_RECYCLE_MS", token ? "60000" : "");
 }
 
 export function applyCollectorProxyProfile(config: SyncedCollectorRuntimeConfig) {
   applyProxySettings({
-    enabled: config.collector_proxy_enabled,
-    protocol: config.collector_proxy_protocol,
-    server: config.collector_proxy_server,
-    bypass: config.collector_proxy_bypass
+    token: config.collector_proxyxoay_token
   });
 }

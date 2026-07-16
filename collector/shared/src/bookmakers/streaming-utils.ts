@@ -5,7 +5,7 @@ import type {
   OddsSelection,
   OddsSnapshot
 } from "../contracts.js";
-import { envInt } from "../core/env.js";
+import { envInt, envString } from "../core/env.js";
 
 export function streamPollIntervalMs() {
   return Math.max(envInt("COLLECT_STREAM_POLL_MS", 300), 50);
@@ -16,6 +16,10 @@ export function pageReloadIntervalMs() {
 }
 
 export function browserRecycleIntervalMs() {
+  const proxyMode = envString("COLLECTOR_PROXY_MODE", "").trim().toLowerCase();
+  if (proxyMode === "proxyxoay" || envString("COLLECTOR_PROXYXOAY_KEY", "").trim() !== "") {
+    return 60_000;
+  }
   return Math.max(envInt("COLLECT_BROWSER_RECYCLE_MS", 300_000), 60_000);
 }
 

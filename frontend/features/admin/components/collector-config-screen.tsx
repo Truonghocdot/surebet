@@ -17,10 +17,7 @@ const emptyConfig: CollectorConfig = {
   eightxbet_inplay_page_url: "",
   jun88_base_url: "",
   jun88_cmd_page_url: "",
-  collector_proxy_enabled: false,
-  collector_proxy_protocol: "http",
-  collector_proxy_server: "",
-  collector_proxy_bypass: ""
+  collector_proxyxoay_token: ""
 };
 
 export function CollectorConfigScreen() {
@@ -84,14 +81,14 @@ export function CollectorConfigScreen() {
       <SectionHeader
         eyebrow="Super Admin"
         title="Cấu hình URL scrape collector"
-        description="Các collector sẽ lấy cấu hình URL và proxy từ backend cache thay vì đọc trực tiếp từ env cục bộ."
+        description="Các collector sẽ lấy cấu hình URL và token proxy xoay từ backend cache thay vì đọc trực tiếp từ env cục bộ."
       />
 
       <QueryShell<CollectorConfig> {...query}>
         {() => (
           <DataPanel
             title="Biến cấu hình collector"
-            description="Lưu xong ở đây, worker collector sẽ dùng backend làm nguồn cấu hình tập trung. Nếu collector đang chạy lâu, hãy restart collector để nhận URL/proxy mới ngay."
+            description="Lưu xong ở đây, worker collector sẽ dùng backend làm nguồn cấu hình tập trung. Với proxy xoay, collector sẽ recycle browser mỗi 60 giây để lấy proxy mới từ cache/API."
           >
             <form className="grid gap-5" onSubmit={handleSubmit}>
               <section className="grid gap-4">
@@ -150,44 +147,20 @@ export function CollectorConfigScreen() {
               <section className="grid gap-4">
                 <div>
                   <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-                    Proxy collector mặc định
+                    Proxy xoay mặc định
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Áp dụng chung cho eightxbet và jun88-cmd.
+                    Áp dụng chung cho eightxbet và jun88-cmd. Collector sẽ gọi ProxyXoay tối đa mỗi 60 giây, ghi vào cache, rồi dùng cache đó ở lần recycle browser kế tiếp.
                   </p>
                 </div>
 
-                <ProxyToggleField
-                  checked={form.collector_proxy_enabled}
-                  description="Bật hoặc tắt proxy tĩnh mặc định cho luồng collector."
-                  label="Bật proxy tĩnh mặc định"
-                  onChange={(checked) =>
-                    setForm((current) => ({ ...current, collector_proxy_enabled: checked }))
+                <ConfigField
+                  label="COLLECTOR_PROXYXOAY_KEY"
+                  value={form.collector_proxyxoay_token}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, collector_proxyxoay_token: value }))
                   }
                 />
-                <div className="grid gap-4 md:grid-cols-3">
-                  <ConfigField
-                    label="COLLECTOR_PROXY_PROTOCOL"
-                    value={form.collector_proxy_protocol}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, collector_proxy_protocol: value }))
-                    }
-                  />
-                  <ConfigField
-                    label="COLLECTOR_PROXY_SERVER"
-                    value={form.collector_proxy_server}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, collector_proxy_server: value }))
-                    }
-                  />
-                  <ConfigField
-                    label="COLLECTOR_PROXY_BYPASS"
-                    value={form.collector_proxy_bypass}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, collector_proxy_bypass: value }))
-                    }
-                  />
-                </div>
               </section>
 
               {message ? <p className="text-sm text-[var(--accent)]">{message}</p> : null}
@@ -241,35 +214,6 @@ function ConfigField({
         placeholder={`Nhập ${label}`}
         value={value}
       />
-    </div>
-  );
-}
-
-function ProxyToggleField({
-  checked,
-  label,
-  description,
-  onChange
-}: {
-  checked: boolean;
-  label: string;
-  description: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <div className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4">
-      <label className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-[var(--ink)]">{label}</p>
-          <p className="text-sm text-[var(--muted)]">{description}</p>
-        </div>
-        <input
-          checked={checked}
-          className="mt-1 size-5 shrink-0 accent-[var(--accent)]"
-          onChange={(event) => onChange(event.target.checked)}
-          type="checkbox"
-        />
-      </label>
     </div>
   );
 }
