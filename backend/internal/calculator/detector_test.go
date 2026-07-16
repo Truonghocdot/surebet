@@ -114,14 +114,39 @@ func TestDetectMatchesCanonicalTeamsAndAllowsMissingOptionalMetadata(t *testing.
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })
 	quotes := []models.OddsQuote{
-		testQuote(now, "over", "book-a", "bti", "Atletico Madrid", "Croatia (Fernando)", "Premier League", "Over 3.5", -0.5),
-		testQuote(now, "under", "book-b", "cmd", "Croatia Fernando", "Atlético Madrid", "", "Under 3.5", -0.5),
+		testQuote(now, "over", "book-a", "bti", "Atletico Madrid", "Croatia (U23)", "Premier League", "Over 3.5", -0.5),
+		testQuote(now, "under", "book-b", "cmd", "Croatia", "Atlético Madrid", "", "Under 3.5", -0.5),
 	}
 
 	items := detect(t, detector, quotes)
 	if len(items) != 1 {
 		t.Fatalf("expected canonical team names to match, got %d", len(items))
 	}
+}
+
+func TestDetectMatchesTeamsWithAliasesAndStripsParentheticalAnnotations(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+
+	t.Run("over under", func(t *testing.T) {
+		quotes := []models.OddsQuote{
+			testQuote(now, "over", "8xbet", "default", "Puskas Akademia FC", "FC Kobenhavn", "", "Over 2.5", -0.5),
+			testQuote(now, "under", "jun88", "cmd", "FC Copenhagen (N)", "Puskas Academy FC (N)", "", "Under 2.5", -0.5),
+		}
+		if items := detect(t, detector, quotes); len(items) != 1 {
+			t.Fatalf("expected team aliases and annotations to match, got %+v", items)
+		}
+	})
+
+	t.Run("handicap", func(t *testing.T) {
+		quotes := []models.OddsQuote{
+			testHandicapQuote(now, "puskas", "8xbet", "default", "Puskas Akademia FC", "FC Kobenhavn", "Puskas Akademia FC -0.5", -0.5),
+			testHandicapQuote(now, "copenhagen", "jun88", "cmd", "FC Copenhagen (N)", "Puskas Academy FC (N)", "FC Copenhagen (N) +0.5", -0.5),
+		}
+		if items := detect(t, detector, quotes); len(items) != 1 {
+			t.Fatalf("expected handicap aliases and annotations to match, got %+v", items)
+		}
+	})
 }
 
 func TestDetectMatchesTeamsWithNeutralVenueAnnotation(t *testing.T) {

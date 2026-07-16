@@ -236,7 +236,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     const selections: OddsSnapshot["selections"] = [];
 
     for (const fixtureId of fixtureIds) {
-      await openEightXBetExhaustiveContent(page, fixtureId);
+      await openEightXBetExhaustiveContent(page, fixtureId, targetURL, this.collectorId);
 
       const html = await page.content();
       const snapshot = parseEightXBetExhaustiveSnapshot(
@@ -414,16 +414,121 @@ async function readEightXBetFixtureIDs(page: Page) {
   }, EIGHTXBET_CARD_SELECTOR);
 }
 
-async function openEightXBetExhaustiveContent(page: Page, fixtureId: string) {
-  const card = page.locator(`[data-testid="simple-handicap-layout-football-${fixtureId}"]`).first();
-  await card.waitFor({ state: "visible", timeout: 15_000 });
-  await card.click();
-  await page.waitForSelector(EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR, { timeout: 10_000 });
-  await page.waitForSelector(
-    `${EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR} button[data-testid^="oddsBtn-1|${fixtureId}|"]`,
-    { timeout: 10_000 }
-  );
-  await waitForPageSettle(page);
+async function openEightXBetExhaustiveContent(
+  page: Page,
+  fixtureId: string,
+  targetURL: string,
+  collectorId: string
+) {
+  const cardSelector = `[data-testid="simple-handicap-layout-football-${fixtureId}"]`;
+  const attempts: Array<
+    | {
+        name: string;
+        kind: "locator";
+        selector: string;
+      }
+    | {
+        name: string;
+        kind: "position";
+        xRatio: number;
+        yRatio: number;
+      }
+  > = [
+    {
+      name: "inplay_timer",
+      kind: "locator",
+      selector: `${cardSelector} [data-testid="sport-inplay-timer"]`
+    },
+    {
+      name: "game_stage",
+      kind: "locator",
+      selector: `${cardSelector} [data-testid="simple-game-stage"]`
+    },
+    {
+      name: "team_label",
+      kind: "locator",
+      selector: `${cardSelector} small.line-clamp-1.text-ellipsis.text-text-2`
+    },
+    {
+      name: "card_top_left",
+      kind: "position",
+      xRatio: 0.14,
+      yRatio: 0.18
+    },
+    {
+      name: "card_left_body",
+      kind: "position",
+      xRatio: 0.18,
+      yRatio: 0.56
+    }
+  ];
+
+  for (const attempt of attempts) {
+    const card = page.locator(cardSelector).first();
+    await card.waitFor({ state: "visible", timeout: 15_000 });
+
+    try {
+      if (attempt.kind === "locator") {
+        await page.locator(attempt.selector).first().click({ timeout: 3_000 });
+      } else {
+        const box = await card.boundingBox();
+        if (!box) {
+          throw new Error("fixture card is not measurable");
+        }
+
+        const x = clampClickOffset(box.width, attempt.xRatio);
+        const y = clampClickOffset(box.height, attempt.yRatio);
+        await card.click({
+          timeout: 3_000,
+          position: { x, y }
+        });
+      }
+    } catch {}
+
+    if (await waitForEightXBetExhaustiveOpen(page, fixtureId)) {
+      await waitForPageSettle(page);
+      return;
+    }
+
+    if (isEightXBetLoginURL(page.url())) {
+      await recoverEightXBetInplayPage(page, targetURL);
+      continue;
+    }
+  }
+
+  await writeDebugArtifacts(page, `${collectorId}-exhaustive-open-failed-${fixtureId}`);
+  throw new Error(`8xbet exhaustive content did not open for fixture ${fixtureId}.`);
+}
+
+async function waitForEightXBetExhaustiveOpen(page: Page, fixtureId: string) {
+  const contentReady = await page
+    .waitForSelector(EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR, { timeout: 2_500 })
+    .then(() => true, () => false);
+  if (!contentReady) {
+    return false;
+  }
+
+  return page
+    .waitForSelector(
+      `${EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR} button[data-testid^="oddsBtn-1|${fixtureId}|"]`,
+      { timeout: 2_500 }
+    )
+    .then(() => true, () => false);
+}
+
+async function recoverEightXBetInplayPage(page: Page, targetURL: string) {
+  await page.goto(targetURL, { waitUntil: "domcontentloaded" }).catch(() => undefined);
+  await waitForEightXBetReady(page, targetURL);
+}
+
+function clampClickOffset(size: number, ratio: number) {
+  const raw = Math.round(size * ratio);
+  return Math.max(12, Math.min(raw, Math.max(Math.round(size) - 12, 12)));
+}
+
+function isEightXBetLoginURL(value: string) {
+  const url = value.toLowerCase();
+  return url.includes("login") || url.includes("/signin") || url.includes("/auth");
 }
 
 async function installEightXBetObserver(page: Page) {

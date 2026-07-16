@@ -24,11 +24,12 @@ const (
 )
 
 var (
-	linePattern         = regexp.MustCompile(`([+-]?\d+(?:\.\d+)?(?:/[+-]?\d+(?:\.\d+)?)?)\s*$`)
-	shortTagPattern     = regexp.MustCompile(`(?i)\s+\((h|a)\)\s*$`)
-	neutralVenuePattern = regexp.MustCompile(`(?i)\s*\(\s*n\s*\)\s*$`)
-	whitespacePattern   = regexp.MustCompile(`\s+`)
-	separatorNormalizer = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+	linePattern                = regexp.MustCompile(`([+-]?\d+(?:\.\d+)?(?:/[+-]?\d+(?:\.\d+)?)?)\s*$`)
+	shortTagPattern            = regexp.MustCompile(`(?i)\s+\((h|a)\)\s*$`)
+	parentheticalPattern       = regexp.MustCompile(`\s*\([^)]*\)`)
+	danglingParenthesisPattern = regexp.MustCompile(`\s*\(.*$`)
+	whitespacePattern          = regexp.MustCompile(`\s+`)
+	separatorNormalizer        = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 )
 
 type detector struct {
@@ -679,8 +680,11 @@ func participantCandidate(outcomeName string) string {
 }
 
 func canonicalParticipantText(value string) string {
-	canonical := canonicalText(neutralVenuePattern.ReplaceAllString(value, ""))
+	canonical := canonicalText(stripParticipantAnnotations(value))
 	tokens := strings.Fields(canonical)
+	for index, token := range tokens {
+		tokens[index] = normalizeParticipantAliasToken(token)
+	}
 	for len(tokens) > 0 && isGenericClubToken(tokens[0]) {
 		tokens = tokens[1:]
 	}
@@ -691,6 +695,22 @@ func canonicalParticipantText(value string) string {
 		return canonical
 	}
 	return strings.Join(tokens, " ")
+}
+
+func stripParticipantAnnotations(value string) string {
+	withoutBalanced := parentheticalPattern.ReplaceAllString(value, "")
+	return danglingParenthesisPattern.ReplaceAllString(withoutBalanced, "")
+}
+
+func normalizeParticipantAliasToken(value string) string {
+	switch value {
+	case "akademia":
+		return "academy"
+	case "kobenhavn":
+		return "copenhagen"
+	default:
+		return value
+	}
 }
 
 func isGenericParticipantLabel(value string) bool {
