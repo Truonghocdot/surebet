@@ -43,11 +43,10 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
         let target = await resolveCmdContentTarget(page);
-        const initialSnapshot = parseJun88CmdSnapshot(
-          await target.content(),
-          target.url(),
-          this.collectorId
-        );
+
+        // Phase B: extract only match table HTML instead of full page dump
+        const initialHtml = await extractCmdMatchHtml(target);
+        const initialSnapshot = parseJun88CmdSnapshot(initialHtml, target.url(), this.collectorId);
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
@@ -61,6 +60,11 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         const reloadIntervalMs = pageReloadIntervalMs();
         const recycleIntervalMs = browserRecycleIntervalMs();
 
+        // Phase A: signal-driven wake-up — resolve as soon as the in-browser
+        // queue has items, so we don't wait a full poll interval unnecessarily.
+        let wakeUpPoll: (() => void) | null = null;
+        let cancelWatcher = installCmdQueueWatcher(target, () => wakeUpPoll?.());
+
         while (!page.isClosed()) {
           if (Date.now() - sessionStartedAt >= recycleIntervalMs) {
             console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
@@ -70,11 +74,10 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
           if (Date.now() - lastReloadAt >= reloadIntervalMs) {
             await page.reload({ waitUntil: "domcontentloaded" });
             target = await resolveCmdContentTarget(page);
-            const reloadedSnapshot = parseJun88CmdSnapshot(
-              await target.content(),
-              target.url(),
-              this.collectorId
-            );
+
+            // Phase B: same optimisation on reload path
+            const reloadedHtml = await extractCmdMatchHtml(target);
+            const reloadedSnapshot = parseJun88CmdSnapshot(reloadedHtml, target.url(), this.collectorId);
             assertSnapshotHasSelections(reloadedSnapshot, this.collectorId);
             await sink.pushBootstrap(reloadedSnapshot);
 
@@ -88,6 +91,8 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
             }
 
             await installCmdObserver(target, reloadedSnapshot);
+            cancelWatcher();
+            cancelWatcher = installCmdQueueWatcher(target, () => wakeUpPoll?.());
             activeSnapshot = reloadedSnapshot;
             lastReloadAt = Date.now();
             continue;
@@ -103,7 +108,13 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
             lastHeartbeatAt = Date.now();
           }
 
-          await page.waitForTimeout(pollIntervalMs);
+          // Phase A: wait for poll interval OR early wake-up from queue watcher
+          const earlyWake = new Promise<void>((resolve) => { wakeUpPoll = resolve; });
+          await Promise.race([
+            page.waitForTimeout(pollIntervalMs),
+            earlyWake
+          ]);
+          wakeUpPoll = null;
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
@@ -439,4 +450,57 @@ async function readCmdDeltas(target: Page | Frame) {
     }
     return queue;
   }) as Promise<import("../contracts.js").OddsDelta[]>;
+}
+
+/**
+ * Phase B: Extract only the match table HTML that parseJun88CmdSnapshot needs.
+ * Avoids serialising the full page (~500KB+) via target.content() and sending
+ * it back over CDP. The parser only uses .tableDiv rows so we grab those containers.
+ */
+async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
+  const partial = await target.evaluate(() => {
+    const containers = Array.from(document.querySelectorAll(".tableDiv"));
+    if (containers.length > 0) {
+      return `<div class="surebet-partial">${containers.map((el) => el.outerHTML).join("")}</div>`;
+    }
+    // fallback: whole body (triggers parseFallbackMatches in the parser)
+    return document.body?.outerHTML ?? "";
+  });
+  return partial;
+}
+
+/**
+ * Phase A: Pure Node-side queue watcher — polls the in-browser delta queue
+ * length via target.evaluate() every 16 ms and calls onWake() as soon as
+ * there are items. Works for both Page and Frame (no exposeFunction needed).
+ * Returns a cancel function to stop the loop when the session ends.
+ */
+function installCmdQueueWatcher(
+  target: Page | Frame,
+  onWake: () => void
+): () => void {
+  let cancelled = false;
+
+  const poll = async () => {
+    while (!cancelled) {
+      try {
+        const hasItems = await target.evaluate(() => {
+          const win = window as typeof window & {
+            __surebet_cmd_stream__?: { queue: unknown[] };
+          };
+          return (win.__surebet_cmd_stream__?.queue?.length ?? 0) > 0;
+        });
+        if (hasItems) {
+          onWake();
+        }
+      } catch {
+        break; // target closed / navigated
+      }
+      // ~1 frame tick: fast enough to react quickly without burning CPU
+      await new Promise<void>((r) => setTimeout(r, 16));
+    }
+  };
+
+  void poll();
+  return () => { cancelled = true; };
 }
