@@ -22,8 +22,8 @@ function canonicalParticipantName(value: string) {
     .split(" ")
     .filter(Boolean)
     .map(normalizeParticipantAliasToken);
-  trimGenericClubAffixes(tokens);
-  return tokens.length > 0 ? tokens.join(" ") : canonical;
+  const normalizedTokens = canonicalParticipantTokens(tokens);
+  return normalizedTokens.length > 0 ? normalizedTokens.join(" ") : canonical;
 }
 
 function stripParticipantAnnotations(value: string) {
@@ -68,6 +68,23 @@ function trimGenericClubAffixes(tokens: string[]) {
   while (isGenericClubToken(tokens[tokens.length - 1])) {
     tokens.pop();
   }
+}
+
+function canonicalParticipantTokens(tokens: string[]) {
+  trimGenericClubAffixes(tokens);
+  const normalizedTokens: string[] = [];
+  const seen = new Set<string>();
+
+  for (const token of tokens) {
+    if (!token.trim() || seen.has(token)) {
+      continue;
+    }
+    seen.add(token);
+    normalizedTokens.push(token);
+  }
+
+  normalizedTokens.sort((left, right) => left.localeCompare(right));
+  return normalizedTokens;
 }
 
 function canonicalText(value: string) {

@@ -685,11 +685,34 @@ func canonicalParticipantText(value string) string {
 	for index, token := range tokens {
 		tokens[index] = normalizeParticipantAliasToken(token)
 	}
-	tokens = trimGenericClubAffixes(tokens)
+	tokens = canonicalParticipantTokens(tokens)
 	if len(tokens) == 0 {
 		return canonical
 	}
 	return strings.Join(tokens, " ")
+}
+
+func canonicalParticipantTokens(tokens []string) []string {
+	tokens = trimGenericClubAffixes(tokens)
+	if len(tokens) == 0 {
+		return tokens
+	}
+
+	unique := make([]string, 0, len(tokens))
+	seen := make(map[string]struct{}, len(tokens))
+	for _, token := range tokens {
+		if strings.TrimSpace(token) == "" {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		unique = append(unique, token)
+	}
+
+	sort.Strings(unique)
+	return unique
 }
 
 func trimGenericClubAffixes(tokens []string) []string {
