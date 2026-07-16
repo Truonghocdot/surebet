@@ -71,6 +71,8 @@ export class BackendCollectorStreamSink implements CollectorSink {
       await this.ensureConnected();
       await this.replayLatestBootstrapIfNeeded();
 
+      const upserts: any[] = [];
+      
       for (const delta of deltas) {
         logEventStartAtNormalization(delta.source, delta.collectedAt, [delta]);
         if (delta.op === "remove") {
@@ -86,12 +88,8 @@ export class BackendCollectorStreamSink implements CollectorSink {
           continue;
         }
 
-        await this.sendFrame({
-          type: "quote_upsert",
-          session_id: this.sessionId,
-          seq: this.nextSeq(),
+        upserts.push({
           occurred_at: delta.collectedAt,
-          source: serializeSource(delta.source),
           raw_ids: serializeRawIDs(delta),
           markers: serializeMarkers(delta),
           quote: {
@@ -110,6 +108,17 @@ export class BackendCollectorStreamSink implements CollectorSink {
             available_stake: delta.availableStake,
             suspended: delta.suspended
           }
+        });
+      }
+
+      for (let i = 0; i < upserts.length; i += 200) {
+        const batch = upserts.slice(i, i + 200);
+        await this.sendFrame({
+          type: "quote_upsert_batch",
+          session_id: this.sessionId,
+          seq: this.nextSeq(),
+          source: serializeSource(deltas[0].source),
+          items: batch
         });
       }
     });
@@ -246,36 +255,41 @@ export class BackendCollectorStreamSink implements CollectorSink {
       sent_at: snapshot.collectedAt
     });
 
-    for (const selection of snapshot.selections) {
+    const upserts = snapshot.selections.map((selection) => ({
+      occurred_at: snapshot.collectedAt,
+      raw_ids: {
+        fixture_id: selection.fixtureId,
+        market_id: selection.marketId,
+        outcome_id: selection.outcomeId
+      },
+      markers: serializeMarkers(selection),
+      quote: {
+        sport: selection.sport ?? "",
+        home_team: selection.homeTeam ?? "",
+        away_team: selection.awayTeam ?? "",
+        league_name: selection.leagueName ?? "",
+        match_state: selection.matchState ?? "unknown",
+        event_start_at: normalizeSourceEventStartAt(
+          snapshot.source,
+          selection.eventStartAt,
+          snapshot.collectedAt
+        ),
+        outcome_name: selection.outcomeName,
+        odds: selection.odds,
+        available_stake: selection.availableStake,
+        suspended: selection.suspended
+      }
+    }));
+
+    for (let i = 0; i < upserts.length; i += 200) {
+      const batch = upserts.slice(i, i + 200);
       await this.sendFrame({
-        type: "quote_upsert",
+        type: "quote_upsert_batch",
         session_id: this.sessionId,
         snapshot_id: snapshotId,
         seq: this.nextSeq(),
-        occurred_at: snapshot.collectedAt,
         source: serializeSource(snapshot.source),
-        raw_ids: {
-          fixture_id: selection.fixtureId,
-          market_id: selection.marketId,
-          outcome_id: selection.outcomeId
-        },
-        markers: serializeMarkers(selection),
-        quote: {
-          sport: selection.sport ?? "",
-          home_team: selection.homeTeam ?? "",
-          away_team: selection.awayTeam ?? "",
-          league_name: selection.leagueName ?? "",
-          match_state: selection.matchState ?? "unknown",
-          event_start_at: normalizeSourceEventStartAt(
-            snapshot.source,
-            selection.eventStartAt,
-            snapshot.collectedAt
-          ),
-          outcome_name: selection.outcomeName,
-          odds: selection.odds,
-          available_stake: selection.availableStake,
-          suspended: selection.suspended
-        }
+        items: batch
       });
     }
 

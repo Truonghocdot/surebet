@@ -155,6 +155,69 @@ func (r *OddsStateRepository) ApplyQuoteUpsert(
 	return true, next, nil
 }
 
+func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
+	ctx context.Context,
+	events []dto.CollectorStreamQuoteUpsert,
+) ([]models.OddsQuote, error) {
+	if len(events) == 0 {
+		return nil, nil
+	}
+
+	source := events[0].Source
+	logicKeys := make([]string, len(events))
+	nextQuotes := make([]models.OddsQuote, len(events))
+
+	for i, event := range events {
+		next := buildStreamOddsQuoteFromUpsert(event)
+		logicKeys[i] = logicQuoteKey(next)
+		nextQuotes[i] = next
+	}
+
+	currentValues, err := r.client.HMGet(ctx, currentKey(source), logicKeys...).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+
+	pipe := r.client.TxPipeline()
+	changedQuotes := make([]models.OddsQuote, 0, len(events))
+
+	for i, event := range events {
+		next := nextQuotes[i]
+		logicKey := logicKeys[i]
+
+		var current models.OddsQuote
+		found := false
+		if currentValues[i] != nil {
+			if strVal, ok := currentValues[i].(string); ok {
+				current, err = decodeOddsQuote(strVal)
+				if err == nil {
+					found = true
+				}
+			}
+		}
+
+		if event.SnapshotID != "" {
+			pipe.SAdd(ctx, snapshotSetKey(source, event.SessionID, event.SnapshotID), logicKey)
+			pipe.Expire(ctx, snapshotSetKey(source, event.SessionID, event.SnapshotID), r.snapshotTTL)
+		}
+
+		if found && !shouldPersistQuote(current, next) {
+			continue
+		}
+
+		if err := storeQuotePipeline(ctx, pipe, source, next, r.historyTTL, r.historyMaxEntries); err != nil {
+			return nil, err
+		}
+		changedQuotes = append(changedQuotes, next)
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, err
+	}
+
+	return changedQuotes, nil
+}
+
 func (r *OddsStateRepository) ApplyQuoteRemove(
 	ctx context.Context,
 	event dto.CollectorStreamQuoteRemove,

@@ -61,6 +61,22 @@ type CollectorStreamQuoteUpsert struct {
 	Quote      CollectorStreamQuote   `json:"quote"`
 }
 
+type CollectorStreamQuoteUpsertBatch struct {
+	Type       string                           `json:"type"`
+	SessionID  string                           `json:"session_id"`
+	SnapshotID string                           `json:"snapshot_id,omitempty"`
+	Seq        int64                            `json:"seq"`
+	Source     CollectorSource                  `json:"source"`
+	Items      []CollectorStreamQuoteUpsertItem `json:"items"`
+}
+
+type CollectorStreamQuoteUpsertItem struct {
+	OccurredAt time.Time              `json:"occurred_at"`
+	RawIDs     CollectorStreamRawIDs  `json:"raw_ids"`
+	Markers    CollectorStreamMarkers `json:"markers"`
+	Quote      CollectorStreamQuote   `json:"quote"`
+}
+
 type CollectorStreamQuoteRemove struct {
 	Type       string                 `json:"type"`
 	SessionID  string                 `json:"session_id"`

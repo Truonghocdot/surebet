@@ -19,6 +19,7 @@ import (
 type StreamOddsStateStore interface {
 	BeginSnapshot(ctx context.Context, source dto.CollectorSource, sessionID, snapshotID string) error
 	ApplyQuoteUpsert(ctx context.Context, event dto.CollectorStreamQuoteUpsert) (bool, models.OddsQuote, error)
+	ApplyQuoteUpsertBatch(ctx context.Context, events []dto.CollectorStreamQuoteUpsert) ([]models.OddsQuote, error)
 	ApplyQuoteRemove(ctx context.Context, event dto.CollectorStreamQuoteRemove) (bool, models.OddsQuote, error)
 	CommitSnapshot(
 		ctx context.Context,
@@ -168,6 +169,43 @@ func (s *StreamService) handleMessage(
 		}
 		if changed {
 			s.bufferOrPublish(ctx, state, event.SnapshotID, event.Source, quote)
+		}
+		return nil
+	case "quote_upsert_batch":
+		var batch dto.CollectorStreamQuoteUpsertBatch
+		if err := json.Unmarshal(payload, &batch); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_quote_upsert_batch",
+				Message:   "quote_upsert_batch frame is invalid",
+			})
+		}
+		if err := s.requireEventSource(conn, state, batch.SessionID, batch.Source); err != nil {
+			return err
+		}
+		
+		events := make([]dto.CollectorStreamQuoteUpsert, len(batch.Items))
+		for i, item := range batch.Items {
+			events[i] = dto.CollectorStreamQuoteUpsert{
+				Type:       "quote_upsert",
+				SessionID:  batch.SessionID,
+				SnapshotID: batch.SnapshotID,
+				Seq:        batch.Seq,
+				OccurredAt: item.OccurredAt,
+				Source:     batch.Source,
+				RawIDs:     item.RawIDs,
+				Markers:    item.Markers,
+				Quote:      item.Quote,
+			}
+		}
+
+		changedQuotes, err := s.store.ApplyQuoteUpsertBatch(ctx, events)
+		if err != nil {
+			return err
+		}
+		for _, quote := range changedQuotes {
+			s.bufferOrPublish(ctx, state, batch.SnapshotID, batch.Source, quote)
 		}
 		return nil
 	case "quote_remove":
