@@ -685,16 +685,31 @@ func canonicalParticipantText(value string) string {
 	for index, token := range tokens {
 		tokens[index] = normalizeParticipantAliasToken(token)
 	}
-	for len(tokens) > 0 && isGenericClubToken(tokens[0]) {
-		tokens = tokens[1:]
-	}
-	for len(tokens) > 0 && isGenericClubToken(tokens[len(tokens)-1]) {
-		tokens = tokens[:len(tokens)-1]
-	}
+	tokens = trimGenericClubAffixes(tokens)
 	if len(tokens) == 0 {
 		return canonical
 	}
 	return strings.Join(tokens, " ")
+}
+
+func trimGenericClubAffixes(tokens []string) []string {
+	for len(tokens) > 0 {
+		if isGenericClubToken(tokens[0]) {
+			tokens = tokens[1:]
+			continue
+		}
+		if len(tokens) > 1 && isNumericClubPrefix(tokens[0]) && isGenericClubToken(tokens[1]) {
+			tokens = tokens[2:]
+			continue
+		}
+		break
+	}
+
+	for len(tokens) > 0 && isGenericClubToken(tokens[len(tokens)-1]) {
+		tokens = tokens[:len(tokens)-1]
+	}
+
+	return tokens
 }
 
 func stripParticipantAnnotations(value string) string {
@@ -726,7 +741,16 @@ func isGenericParticipantLabel(value string) bool {
 
 func isGenericClubToken(value string) bool {
 	switch value {
-	case "fc", "fk", "sk":
+	case "fc", "fk", "sk", "sc", "if":
+		return true
+	default:
+		return false
+	}
+}
+
+func isNumericClubPrefix(value string) bool {
+	switch value {
+	case "1":
 		return true
 	default:
 		return false
