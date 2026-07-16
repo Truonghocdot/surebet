@@ -25,12 +25,9 @@ import stealth from "puppeteer-extra-plugin-stealth";
 const EIGHTXBET_INCOMING_PATH = "/sportEvents/incoming/football?hour=6";
 const EIGHTXBET_PREFERENCES_PATH = "/mine";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="v4-sport-asia-simple-handicap-unit-"]';
-const EIGHTXBET_INFINITE_SCROLL_BOTTOM = '[data-testid="v4-sport-simple-handicap-infinite-scroll-bottom"]';
 const EIGHTXBET_CARD_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_ODDS_BUTTON_SELECTOR = 'button[data-testid^="oddsBtn-"]';
 const EIGHTXBET_TEAM_SELECTOR = `${EIGHTXBET_CARD_SELECTOR} small.text-text-2`;
-const EIGHTXBET_HUMAN_SCROLL_PATTERN = [110, 140, 155, 175];
-const EIGHTXBET_HUMAN_SCROLL_PAUSES_MS = [180, 260, 220, 320];
 
 chromium.use(stealth());
 
@@ -53,7 +50,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     const page = await this.ensurePage(targetURL);
 
     try {
-      return this.readSnapshot(page, targetURL, "bootstrap");
+      return this.readSnapshot(page, targetURL);
     } catch (error) {
       if (this.shutdownRequested) {
         return emptyEightXBetSnapshot(this.collectorId);
@@ -104,7 +101,7 @@ export class EightXBetRuntime implements CollectorRuntime {
     page.on("websocket", handleWebSocket);
 
     try {
-      let snapshot = await this.readSnapshot(page, targetURL, "bootstrap");
+      let snapshot = await this.readSnapshot(page, targetURL);
       await onSnapshot(snapshot, "bootstrap");
 
       await installEightXBetObserver(page);
@@ -124,7 +121,7 @@ export class EightXBetRuntime implements CollectorRuntime {
           await page.reload({ waitUntil: "domcontentloaded" });
           this.lastPageReloadAt = Date.now();
 
-          snapshot = await this.readSnapshot(page, targetURL, "bootstrap");
+          snapshot = await this.readSnapshot(page, targetURL);
           await onSnapshot(snapshot, "bootstrap");
           await installEightXBetObserver(page);
           lastVersion = await readEightXBetObserverVersion(page);
@@ -141,7 +138,7 @@ export class EightXBetRuntime implements CollectorRuntime {
               `kind=dom_mutation version=${lastVersion}->${currentVersion}`
             );
           }
-          snapshot = await this.readSnapshot(page, targetURL, "delta");
+          snapshot = await this.readSnapshot(page, targetURL);
           await onSnapshot(snapshot, "delta");
           lastVersion = currentVersion;
           lastSignalVersion = signalVersion;
@@ -233,14 +230,10 @@ export class EightXBetRuntime implements CollectorRuntime {
     }
   }
 
-  private async readSnapshot(page: Page, targetURL: string, mode: "bootstrap" | "delta" = "bootstrap") {
+  private async readSnapshot(page: Page, targetURL: string) {
     await this.reloadPageIfDue(page);
     await waitForEightXBetReady(page, targetURL);
-    
-    if (mode === "bootstrap") {
-      await autoScrollIncomingList(page);
-    }
-    
+
     const renderState = await stabilizeIncomingList(page);
     if (renderState.oddsButtonCount === 0 || renderState.teamLabelCount < 2) {
       await writeDebugArtifacts(page, `${this.collectorId}-incoming-not-hydrated`);
@@ -535,44 +528,12 @@ function truncateURL(value: string) {
   return value.length <= 180 ? value : `${value.slice(0, 177)}...`;
 }
 
-async function autoScrollIncomingList(page: Page) {
-  await page.evaluate(() => {
-    window.scrollTo(0, 0);
-  }).catch(() => undefined);
-  await page.waitForTimeout(250);
-
-  let previousState = await readIncomingListState(page);
-
-  for (let cycle = 0; cycle < 5; cycle += 1) {
-    await performHumanScrollCycle(page, cycle);
-
-    const nextState = await waitForHydrationProgress(page, previousState);
-    const countsAdvanced =
-      nextState.cardCount > previousState.cardCount ||
-      nextState.oddsButtonCount > previousState.oddsButtonCount ||
-      nextState.teamLabelCount > previousState.teamLabelCount;
-
-    previousState = nextState;
-    if (countsAdvanced) {
-      await page.waitForTimeout(450);
-    } else if (nextState.bottomVisible || nextState.atEnd) {
-      await page.waitForTimeout(650);
-    } else {
-      await page.waitForTimeout(300);
-    }
-
-    if ((nextState.bottomVisible || nextState.atEnd) && nextState.oddsButtonCount > 0) {
-      return;
-    }
-  }
-}
-
 async function stabilizeIncomingList(page: Page) {
   let previousState = await readIncomingListState(page);
   let stableRounds = 0;
 
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.waitForTimeout(550);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await page.waitForTimeout(450);
 
     const currentState = await readIncomingListState(page);
     const countsStable =
@@ -590,10 +551,6 @@ async function stabilizeIncomingList(page: Page) {
       return currentState;
     }
 
-    if (!currentState.atEnd && !currentState.bottomVisible) {
-      await performHumanScrollCycle(page, attempt + 20, 1);
-    }
-
     previousState = currentState;
   }
 
@@ -604,87 +561,21 @@ type EightXBetIncomingListState = {
   cardCount: number;
   oddsButtonCount: number;
   teamLabelCount: number;
-  bottomVisible: boolean;
-  atEnd: boolean;
 };
 
 async function readIncomingListState(page: Page): Promise<EightXBetIncomingListState> {
   return page.evaluate(
-    ({ bottomSelector, cardSelector, oddsSelector, teamSelector }) => {
-      const bottomNode = document.querySelector(bottomSelector);
-      const bottomRect = bottomNode?.getBoundingClientRect();
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-      const scrollElement = document.scrollingElement || document.documentElement;
-      const scrollTop = scrollElement?.scrollTop ?? window.scrollY ?? 0;
-      const scrollHeight = scrollElement?.scrollHeight ?? 0;
-
+    ({ cardSelector, oddsSelector, teamSelector }) => {
       return {
         cardCount: document.querySelectorAll(cardSelector).length,
         oddsButtonCount: document.querySelectorAll(oddsSelector).length,
-        teamLabelCount: document.querySelectorAll(teamSelector).length,
-        bottomVisible: !!bottomRect && bottomRect.top <= viewportHeight + 24,
-        atEnd: scrollTop + viewportHeight >= scrollHeight - 24
+        teamLabelCount: document.querySelectorAll(teamSelector).length
       };
     },
     {
-      bottomSelector: EIGHTXBET_INFINITE_SCROLL_BOTTOM,
       cardSelector: EIGHTXBET_CARD_SELECTOR,
       oddsSelector: EIGHTXBET_ODDS_BUTTON_SELECTOR,
       teamSelector: EIGHTXBET_TEAM_SELECTOR
     }
   );
-}
-
-async function performHumanScrollCycle(
-  page: Page,
-  cycle: number,
-  steps = EIGHTXBET_HUMAN_SCROLL_PATTERN.length
-) {
-  for (let stepIndex = 0; stepIndex < steps; stepIndex += 1) {
-    const patternIndex = (cycle + stepIndex) % EIGHTXBET_HUMAN_SCROLL_PATTERN.length;
-    const scrollDelta = EIGHTXBET_HUMAN_SCROLL_PATTERN[patternIndex];
-    const pauseMs = EIGHTXBET_HUMAN_SCROLL_PAUSES_MS[patternIndex];
-
-    const wheeled = await page.mouse.wheel(0, scrollDelta).then(
-      () => true,
-      () => false
-    );
-    if (!wheeled) {
-      await page.evaluate((delta) => {
-        window.scrollBy(0, delta);
-      }, scrollDelta).catch(() => undefined);
-    }
-    await page.waitForTimeout(pauseMs);
-  }
-}
-
-async function waitForHydrationProgress(
-  page: Page,
-  baseline: EightXBetIncomingListState
-) {
-  let best = baseline;
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    await page.waitForTimeout(240 + attempt * 120);
-    const current = await readIncomingListState(page);
-    if (
-      current.cardCount > best.cardCount ||
-      current.oddsButtonCount > best.oddsButtonCount ||
-      current.teamLabelCount > best.teamLabelCount
-    ) {
-      best = current;
-    } else if (current.bottomVisible || current.atEnd) {
-      best = current;
-    }
-
-    if (best.oddsButtonCount > baseline.oddsButtonCount && best.teamLabelCount >= 2) {
-      return best;
-    }
-
-    if ((best.bottomVisible || best.atEnd) && best.oddsButtonCount > 0) {
-      return best;
-    }
-  }
-
-  return best;
 }
