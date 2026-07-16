@@ -61,7 +61,12 @@ export class EightXBetRuntime implements CollectorRuntime {
 
   async streamSnapshots(
     context: CollectContext,
-    onSnapshot: (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => Promise<void>
+    onSnapshot: (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => Promise<void>,
+    onFixtureSnapshot?: (
+      snapshot: OddsSnapshot,
+      mode: "bootstrap" | "delta",
+      fixtureId: string
+    ) => Promise<void>
   ) {
     this.shutdownRequested = false;
     const targetURL = resolveEightXBetTargetURL(context.pageURL);
@@ -136,7 +141,10 @@ export class EightXBetRuntime implements CollectorRuntime {
               `kind=dom_mutation version=${lastVersion}->${currentVersion}`
             );
           }
-          snapshot = await this.readSnapshot(page, targetURL);
+          snapshot = await this.readSnapshot(page, targetURL, {
+            mode: "delta",
+            onFixtureSnapshot
+          });
           await onSnapshot(snapshot, "delta");
           lastVersion = currentVersion;
           lastSignalVersion = signalVersion;
@@ -228,7 +236,18 @@ export class EightXBetRuntime implements CollectorRuntime {
     }
   }
 
-  private async readSnapshot(page: Page, targetURL: string): Promise<OddsSnapshot> {
+  private async readSnapshot(
+    page: Page,
+    targetURL: string,
+    options?: {
+      mode?: "bootstrap" | "delta";
+      onFixtureSnapshot?: (
+        snapshot: OddsSnapshot,
+        mode: "bootstrap" | "delta",
+        fixtureId: string
+      ) => Promise<void>;
+    }
+  ): Promise<OddsSnapshot> {
     await this.reloadPageIfDue(page);
     await waitForEightXBetReady(page, targetURL);
 
@@ -252,6 +271,9 @@ export class EightXBetRuntime implements CollectorRuntime {
           `fixture=${fixtureId}`
         );
         continue;
+      }
+      if (options?.onFixtureSnapshot && options.mode) {
+        await options.onFixtureSnapshot(snapshot, options.mode, fixtureId);
       }
       selections.push(...snapshot.selections);
     }

@@ -27,6 +27,11 @@ export class EightXBetCollector implements Collector {
     let currentSnapshotMap = new Map<string, OddsSelection>();
     let bootstrapSent = false;
     let lastHeartbeatAt = 0;
+    let activeDeltaScan:
+      | {
+          seenFixtureIds: Set<string>;
+        }
+      | null = null;
 
     const flushSnapshot = async (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => {
       const nextSnapshot = snapshot;
@@ -38,22 +43,50 @@ export class EightXBetCollector implements Collector {
         currentSnapshot = nextSnapshot;
         currentSnapshotMap = selectionMap(nextSnapshot);
         bootstrapSent = true;
+        activeDeltaScan = null;
         await maybeHeartbeat(nextSnapshot);
         return;
       }
 
       const nextSnapshotMap = selectionMap(nextSnapshot);
-      const deltas = buildDeltas(
+      const deltas = buildDisappearedFixtureDeltas(
         nextSnapshot,
         currentSnapshotMap,
-        nextSnapshotMap
+        nextSnapshotMap,
+        activeDeltaScan?.seenFixtureIds ?? new Set<string>()
       );
       if (deltas.length > 0) {
         await sink.pushDelta(deltas);
       }
       currentSnapshot = nextSnapshot;
       currentSnapshotMap = nextSnapshotMap;
+      activeDeltaScan = null;
       await maybeHeartbeat(nextSnapshot);
+    };
+
+    const flushFixtureSnapshot = async (
+      snapshot: OddsSnapshot,
+      mode: "bootstrap" | "delta",
+      fixtureId: string
+    ) => {
+      if (mode !== "delta" || !bootstrapSent || !currentSnapshot) {
+        return;
+      }
+
+      if (!activeDeltaScan) {
+        activeDeltaScan = {
+          seenFixtureIds: new Set<string>()
+        };
+      }
+
+      activeDeltaScan.seenFixtureIds.add(fixtureId);
+      const previousFixtureMap = selectFixtureOutcomes(currentSnapshotMap, fixtureId);
+      const nextFixtureMap = selectionMap(snapshot);
+      const deltas = buildDeltas(snapshot, previousFixtureMap, nextFixtureMap);
+      if (deltas.length > 0) {
+        await sink.pushDelta(deltas);
+      }
+      await maybeHeartbeat(snapshot);
     };
 
     const maybeHeartbeat = async (snapshot: OddsSnapshot) => {
@@ -85,6 +118,9 @@ export class EightXBetCollector implements Collector {
       },
       async (snapshot, mode) => {
         await flushSnapshot(snapshot, mode);
+      },
+      async (snapshot, mode, fixtureId) => {
+        await flushFixtureSnapshot(snapshot, mode, fixtureId);
       }
     );
 
@@ -116,6 +152,51 @@ function summarizeSnapshot(snapshot: OddsSnapshot) {
   }
   const outcomes = snapshot.selections.length;
   return { fixtures: fixtures.size, markets: markets.size, outcomes };
+}
+
+function selectFixtureOutcomes(snapshotMap: Map<string, OddsSelection>, fixtureId: string) {
+  const map = new Map<string, OddsSelection>();
+  for (const [outcomeId, selection] of snapshotMap.entries()) {
+    if (selection.fixtureId !== fixtureId) {
+      continue;
+    }
+    map.set(outcomeId, selection);
+  }
+  return map;
+}
+
+function buildDisappearedFixtureDeltas(
+  snapshot: OddsSnapshot,
+  previous: Map<string, OddsSelection>,
+  next: Map<string, OddsSelection>,
+  seenFixtureIds: Set<string>
+) {
+  const deltas = [];
+  for (const [outcomeId, selection] of previous.entries()) {
+    if (next.has(outcomeId) || seenFixtureIds.has(selection.fixtureId)) {
+      continue;
+    }
+
+    deltas.push({
+      source: snapshot.source,
+      collectedAt: snapshot.collectedAt,
+      fixtureId: selection.fixtureId,
+      sport: selection.sport,
+      homeTeam: selection.homeTeam,
+      awayTeam: selection.awayTeam,
+      leagueName: selection.leagueName,
+      matchState: selection.matchState,
+      eventStartAt: selection.eventStartAt,
+      marketId: selection.marketId,
+      outcomeId: selection.outcomeId,
+      outcomeName: selection.outcomeName,
+      odds: selection.odds,
+      availableStake: selection.availableStake,
+      suspended: true,
+      op: "remove" as const
+    });
+  }
+  return deltas;
 }
 
 function logEightXBetSnapshotTelemetry(
