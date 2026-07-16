@@ -83,6 +83,8 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
   const fixtures = new Map<string, MutableFixture>();
 
   for (const item of items) {
+    const observedAt = item.last_observed_at || item.collected_at;
+    const changedAt = item.changed_at || item.collected_at;
     const fixtureID = canonicalFixtureKey({
       homeTeam: item.home_team,
       awayTeam: item.away_team
@@ -103,14 +105,14 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       id: fixtureID,
       match_name: displayMatchName(item),
       match_state: normalizeMatchState(item.match_state),
-      latest_collected_at: item.collected_at,
+      latest_collected_at: observedAt,
       leagues: new Set<string>(),
       sources: new Map<string, MutableSource>(),
       has_surebet: false
     };
 
     fixture.match_state = pickMatchState(fixture.match_state, item.match_state);
-    fixture.latest_collected_at = latestTimestamp(fixture.latest_collected_at, item.collected_at);
+    fixture.latest_collected_at = latestTimestamp(fixture.latest_collected_at, observedAt);
     if (item.league_name.trim()) {
       fixture.leagues.add(item.league_name.trim());
     }
@@ -120,13 +122,13 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       id: sourceID,
       bookmaker_id: item.bookmaker_id,
       lobby_id: item.lobby_id,
-      latest_collected_at: item.collected_at,
+      latest_collected_at: observedAt,
       markets: {
         handicap: new Map<string, MutableMarket>(),
         over_under: new Map<string, MutableMarket>()
       }
     };
-    source.latest_collected_at = latestTimestamp(source.latest_collected_at, item.collected_at);
+    source.latest_collected_at = latestTimestamp(source.latest_collected_at, observedAt);
 
     // Keep the fixture visible when a live source temporarily exposes only 1X2 or another unsupported market.
     fixture.sources.set(sourceID, source);
@@ -152,7 +154,7 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       outcome_name: item.outcome_name,
       side: item.side,
       odds: item.odds,
-      collected_at: item.collected_at,
+      collected_at: changedAt,
       is_surebet_leg: isSurebetLeg
     });
     source.markets[marketType].set(marketID, market);

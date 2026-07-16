@@ -65,6 +65,24 @@ export async function resolveCollectorProxy(): Promise<CollectorProxySettings | 
   throw new Error(`Unsupported collector proxy mode: ${mode}`);
 }
 
+export function startCollectorProxyCacheRefresh(collectorId: string) {
+  if (resolveProxyMode() !== "proxyxoay") {
+    return () => undefined;
+  }
+
+  const intervalMs = Math.max(
+    envInt("COLLECTOR_PROXY_REFRESH_MS", proxyXoayRefreshIntervalMs),
+    proxyXoayRefreshIntervalMs
+  );
+  const timer = setInterval(() => {
+    void resolveProxyXoayProxy().catch((error) => {
+      console.warn(`[${collectorId}-worker] proxy cache refresh failed:`, error);
+    });
+  }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
 export function collectorProxyDebugInfo(): CollectorProxyDebugInfo {
   const mode = resolveProxyMode();
   if (mode === "off") {

@@ -9,21 +9,21 @@ import type {
   StreamingCollectorRuntime
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
+import { envInt } from "../core/env.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
 import {
   assertSnapshotHasSelections,
-  browserRecycleIntervalMs,
   buildDeltas,
   heartbeatIntervalMs,
   heartbeatOf,
-  pageReloadIntervalMs,
   selectionMap,
-  streamPollIntervalMs
+  stateObservationIntervalMs
 } from "./streaming-utils.js";
 
 const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header";
+const CMD_DELTA_BINDING = "__surebet_cmd_emit__";
 
 export class Jun88CmdRuntime implements StreamingCollectorRuntime {
   constructor(private readonly collectorId: string) {}
@@ -48,59 +48,60 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         const initialHtml = await extractCmdMatchHtml(target);
         const initialSnapshot = parseJun88CmdSnapshot(initialHtml, target.url(), this.collectorId);
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
+        let activeSnapshot = initialSnapshot;
+        let activeSnapshotMap = selectionMap(initialSnapshot);
+        let streamFailure: Error | null = null;
+        await installCmdDeltaBinding(page, async (deltas) => {
+          applyDeltasToSelectionMap(activeSnapshotMap, deltas);
+          activeSnapshot = {
+            ...activeSnapshot,
+            collectedAt: latestDeltaTimestamp(deltas, activeSnapshot.collectedAt),
+            selections: Array.from(activeSnapshotMap.values())
+          };
+          sink.setResyncSnapshot?.(activeSnapshot);
+          try {
+            await sink.pushDelta(deltas);
+          } catch (error) {
+            streamFailure = error instanceof Error ? error : new Error(String(error));
+            throw streamFailure;
+          }
+        });
+        await installCmdObserver(target, initialSnapshot);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
-        await installCmdObserver(target, initialSnapshot);
-        let activeSnapshot = initialSnapshot;
-        const sessionStartedAt = Date.now();
         let lastHeartbeatAt = Date.now();
-        let lastReloadAt = Date.now();
+        let lastObservationAt = Date.now();
+        let lastReconcileAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
-        const pollIntervalMs = streamPollIntervalMs();
-        const reloadIntervalMs = pageReloadIntervalMs();
-        const recycleIntervalMs = browserRecycleIntervalMs();
-
-        // Phase A: signal-driven wake-up — resolve as soon as the in-browser
-        // queue has items, so we don't wait a full poll interval unnecessarily.
-        let wakeUpPoll: (() => void) | null = null;
-        let cancelWatcher = installCmdQueueWatcher(target, () => wakeUpPoll?.());
 
         while (!page.isClosed()) {
-          if (Date.now() - sessionStartedAt >= recycleIntervalMs) {
-            console.warn(`[${this.collectorId}] recycling browser session after TTL.`);
-            return;
+          if (streamFailure) {
+            throw streamFailure;
           }
 
-          if (Date.now() - lastReloadAt >= reloadIntervalMs) {
-            await page.reload({ waitUntil: "domcontentloaded" });
-            target = await resolveCmdContentTarget(page);
-
-            // Phase B: same optimisation on reload path
-            const reloadedHtml = await extractCmdMatchHtml(target);
-            const reloadedSnapshot = parseJun88CmdSnapshot(reloadedHtml, target.url(), this.collectorId);
-            assertSnapshotHasSelections(reloadedSnapshot, this.collectorId);
-            await sink.pushBootstrap(reloadedSnapshot);
-
+          if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
+            const reconciledHtml = await extractCmdMatchHtml(target);
+            const reconciledSnapshot = parseJun88CmdSnapshot(
+              reconciledHtml,
+              target.url(),
+              this.collectorId
+            );
+            assertSnapshotHasSelections(reconciledSnapshot, this.collectorId);
+            const reconciledSnapshotMap = selectionMap(reconciledSnapshot);
             const removed = buildDeltas(
-              reloadedSnapshot,
-              selectionMap(activeSnapshot),
-              selectionMap(reloadedSnapshot)
+              reconciledSnapshot,
+              activeSnapshotMap,
+              reconciledSnapshotMap
             ).filter((delta) => delta.op === "remove");
+            activeSnapshot = reconciledSnapshot;
+            activeSnapshotMap = reconciledSnapshotMap;
+            await installCmdObserver(target, reconciledSnapshot);
+            await sink.pushBootstrap(reconciledSnapshot);
             if (removed.length > 0) {
               await sink.pushDelta(removed);
             }
-
-            await installCmdObserver(target, reloadedSnapshot);
-            cancelWatcher();
-            cancelWatcher = installCmdQueueWatcher(target, () => wakeUpPoll?.());
-            activeSnapshot = reloadedSnapshot;
-            lastReloadAt = Date.now();
+            lastReconcileAt = Date.now();
             continue;
-          }
-
-          const deltas = await readCmdDeltas(target);
-          if (deltas.length > 0) {
-            await sink.pushDelta(deltas);
           }
 
           if (Date.now() - lastHeartbeatAt >= heartbeatMs) {
@@ -108,13 +109,15 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
             lastHeartbeatAt = Date.now();
           }
 
-          // Phase A: wait for poll interval OR early wake-up from queue watcher
-          const earlyWake = new Promise<void>((resolve) => { wakeUpPoll = resolve; });
-          await Promise.race([
-            page.waitForTimeout(pollIntervalMs),
-            earlyWake
-          ]);
-          wakeUpPoll = null;
+          if (Date.now() - lastObservationAt >= stateObservationIntervalMs()) {
+            await sink.pushBootstrap({
+              ...activeSnapshot,
+              collectedAt: new Date().toISOString()
+            });
+            lastObservationAt = Date.now();
+          }
+
+          await page.waitForTimeout(Math.max(Math.floor(heartbeatMs / 2), 250));
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
@@ -188,17 +191,25 @@ async function waitForFrameContent(frame: Frame) {
 
 async function installCmdObserver(
   target: Page | Frame,
-  snapshot: { source: CollectorSource; selections: Array<{ outcomeId: string; outcomeName: string; odds: number }> }
+  snapshot: {
+    source: CollectorSource;
+    selections: Array<{
+      outcomeId: string;
+      outcomeName: string;
+      odds: number;
+      suspended: boolean;
+    }>;
+  }
 ) {
   const seededFingerprints = Object.fromEntries(
     snapshot.selections.map((selection) => [
       selection.outcomeId,
-      `${selection.odds}|${selection.outcomeName}`
+      `${selection.odds}|${selection.outcomeName}|${selection.suspended}`
     ])
   );
 
   const script = `
-    ((seededFingerprints) => {
+    ((seededFingerprints, bindingName) => {
       const win = window;
       if (!win.__surebet_cmd_stream__) {
         win.__surebet_cmd_stream__ = { queue: [], seen: {}, byRow: {} };
@@ -211,6 +222,11 @@ async function installCmdObserver(
       const normalizeToken = (value) =>
         value.normalize("NFKD").replace(/[^\\p{L}\\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase();
       const parseOdds = (value) => Number.parseFloat((value || "").replace(/[^\\d./-]+/g, ""));
+      const isSuspended = (node) =>
+        !node ||
+        node.hasAttribute("disabled") ||
+        node.getAttribute("aria-disabled") === "true" ||
+        /disabled|locked|suspend|cursor-default/i.test(node.className || "");
       const quoteId = (fixtureId, marketId, outcomeName) => fixtureId + ":" + marketId + ":" + normalizeToken(outcomeName);
       const normalizeHandicapLine = (line, side) => {
         if (!line) return "";
@@ -226,20 +242,23 @@ async function installCmdObserver(
         return normalizeToken(prefix + "-" + kind);
       };
 
-      const selection = (node, fixtureId, homeTeam, awayTeam, marketId, outcomeName, suspended) => {
+      const selection = (node, fixtureId, homeTeam, awayTeam, leagueName, marketId, outcomeName) => {
         if (!node) return null;
         const odds = parseOdds(text(node));
         if (!Number.isFinite(odds)) return null;
         return {
           fixtureId,
+          sport: "football",
           homeTeam,
           awayTeam,
+          leagueName,
+          matchState: "live",
           marketId,
           outcomeId: quoteId(fixtureId, marketId, outcomeName),
           outcomeName,
           odds,
           availableStake: 0,
-          suspended: !!suspended
+          suspended: isSuspended(node)
         };
       };
 
@@ -276,8 +295,8 @@ async function installCmdObserver(
             const line = text(hdpNode.querySelector("b"));
             const buttons = Array.from(hdpNode.querySelectorAll(".tableDiv-match-odds__detail > a"));
             const marketId = marketIdOf(prefix, "handicap");
-            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, marketId, formatOutcome(homeTeam, normalizeHandicapLine(line, "home")), false);
-            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, marketId, formatOutcome(awayTeam, normalizeHandicapLine(line, "away")), false);
+            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome(homeTeam, normalizeHandicapLine(line, "home")));
+            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome(awayTeam, normalizeHandicapLine(line, "away")));
             if (home) selections.push(home);
             if (away) selections.push(away);
           }
@@ -286,8 +305,8 @@ async function installCmdObserver(
             const line = text(ouNode.querySelector("b"));
             const buttons = Array.from(ouNode.querySelectorAll(".tableDiv-match-odds__detail a"));
             const marketId = marketIdOf(prefix, "over_under");
-            const over = selection(buttons[0], fixtureId, homeTeam, awayTeam, marketId, formatOutcome("Over", line), false);
-            const under = selection(buttons[1], fixtureId, homeTeam, awayTeam, marketId, formatOutcome("Under", line), false);
+            const over = selection(buttons[0], fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome("Over", line));
+            const under = selection(buttons[1], fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome("Under", line));
             if (over) selections.push(over);
             if (under) selections.push(under);
           }
@@ -295,9 +314,9 @@ async function installCmdObserver(
           for (const x12Node of Array.from(rowNode.querySelectorAll(".col-45 .tableDiv-match-odds__X12detail"))) {
             const buttons = Array.from(x12Node.querySelectorAll("a"));
             const marketId = marketIdOf(prefix, "one_x_two");
-            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, marketId, homeTeam, false);
-            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, marketId, awayTeam, false);
-            const draw = selection(buttons[2], fixtureId, homeTeam, awayTeam, marketId, drawLabel, false);
+            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, leagueName, marketId, homeTeam);
+            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, leagueName, marketId, awayTeam);
+            const draw = selection(buttons[2], fixtureId, homeTeam, awayTeam, leagueName, marketId, drawLabel);
             if (home) selections.push(home);
             if (away) selections.push(away);
             if (draw) selections.push(draw);
@@ -333,15 +352,18 @@ async function installCmdObserver(
 
         if (emit) {
           for (const item of current) {
-            const fingerprint = item.odds + "|" + item.outcomeName;
+            const fingerprint = item.odds + "|" + item.outcomeName + "|" + item.suspended;
             if (state.seen[item.outcomeId] !== fingerprint) {
               state.seen[item.outcomeId] = fingerprint;
               state.queue.push({
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
+                sport: item.sport,
                 homeTeam: item.homeTeam,
                 awayTeam: item.awayTeam,
+                leagueName: item.leagueName,
+                matchState: item.matchState,
                 marketId: item.marketId,
                 outcomeId: item.outcomeId,
                 outcomeName: item.outcomeName,
@@ -360,8 +382,11 @@ async function installCmdObserver(
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
                 collectedAt: new Date().toISOString(),
                 fixtureId: item.fixtureId,
+                sport: item.sport,
                 homeTeam: item.homeTeam,
                 awayTeam: item.awayTeam,
+                leagueName: item.leagueName,
+                matchState: item.matchState,
                 marketId: item.marketId,
                 outcomeId: item.outcomeId,
                 outcomeName: item.outcomeName,
@@ -392,8 +417,11 @@ async function installCmdObserver(
             source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
             collectedAt: new Date().toISOString(),
             fixtureId: item.fixtureId,
+            sport: item.sport,
             homeTeam: item.homeTeam,
             awayTeam: item.awayTeam,
+            leagueName: item.leagueName,
+            matchState: item.matchState,
             marketId: item.marketId,
             outcomeId: item.outcomeId,
             outcomeName: item.outcomeName,
@@ -426,30 +454,28 @@ async function installCmdObserver(
         }
         for (const row of removedRows) removeRow(row);
         for (const row of rows) syncRow(row, true);
+        if (state.queue.length > 0 && typeof win[bindingName] === "function") {
+          const batch = state.queue.splice(0, state.queue.length);
+          Promise.resolve(win[bindingName](batch)).catch(() => {
+            state.queue.unshift(...batch);
+          });
+        }
       });
 
-      observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["class", "disabled", "aria-disabled"]
+      });
       state.observer = observer;
     })
   `;
 
-  await target.evaluate(`${script}(${JSON.stringify(seededFingerprints)})`);
-}
-
-async function readCmdDeltas(target: Page | Frame) {
-  return target.evaluate(() => {
-    const win = window as Window & {
-      __surebet_cmd_stream__?: {
-        queue: import("../contracts.js").OddsDelta[];
-      };
-    };
-    const queue = win.__surebet_cmd_stream__?.queue || [];
-    if (queue.length === 0) return [];
-    if (win.__surebet_cmd_stream__) {
-      win.__surebet_cmd_stream__.queue = [];
-    }
-    return queue;
-  }) as Promise<import("../contracts.js").OddsDelta[]>;
+  await target.evaluate(
+    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)})`
+  );
 }
 
 /**
@@ -469,38 +495,53 @@ async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
   return partial;
 }
 
-/**
- * Phase A: Pure Node-side queue watcher — polls the in-browser delta queue
- * length via target.evaluate() every 16 ms and calls onWake() as soon as
- * there are items. Works for both Page and Frame (no exposeFunction needed).
- * Returns a cancel function to stop the loop when the session ends.
- */
-function installCmdQueueWatcher(
-  target: Page | Frame,
-  onWake: () => void
-): () => void {
-  let cancelled = false;
-
-  const poll = async () => {
-    while (!cancelled) {
-      try {
-        const hasItems = await target.evaluate(() => {
-          const win = window as typeof window & {
-            __surebet_cmd_stream__?: { queue: unknown[] };
-          };
-          return (win.__surebet_cmd_stream__?.queue?.length ?? 0) > 0;
-        });
-        if (hasItems) {
-          onWake();
-        }
-      } catch {
-        break; // target closed / navigated
-      }
-      // ~1 frame tick: fast enough to react quickly without burning CPU
-      await new Promise<void>((r) => setTimeout(r, 16));
+async function installCmdDeltaBinding(
+  page: Page,
+  onDeltas: (deltas: OddsDelta[]) => Promise<void>
+) {
+  await page.exposeBinding(CMD_DELTA_BINDING, async (_source, value: unknown) => {
+    if (!Array.isArray(value) || value.length === 0) {
+      return;
     }
-  };
+    await onDeltas(value as OddsDelta[]);
+  });
+}
 
-  void poll();
-  return () => { cancelled = true; };
+function applyDeltasToSelectionMap(
+  current: Map<string, OddsSnapshot["selections"][number]>,
+  deltas: OddsDelta[]
+) {
+  for (const delta of deltas) {
+    if (delta.op === "remove") {
+      current.delete(delta.outcomeId);
+      continue;
+    }
+    current.set(delta.outcomeId, {
+      fixtureId: delta.fixtureId,
+      sport: delta.sport,
+      homeTeam: delta.homeTeam,
+      awayTeam: delta.awayTeam,
+      leagueName: delta.leagueName,
+      matchState: delta.matchState,
+      eventStartAt: delta.eventStartAt,
+      marketId: delta.marketId,
+      outcomeId: delta.outcomeId,
+      outcomeName: delta.outcomeName,
+      odds: delta.odds,
+      availableStake: delta.availableStake,
+      suspended: delta.suspended
+    });
+  }
+}
+
+function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
+  return deltas.reduce((latest, delta) => {
+    return new Date(delta.collectedAt).getTime() > new Date(latest).getTime()
+      ? delta.collectedAt
+      : latest;
+  }, fallback);
+}
+
+function cmdReconcileIntervalMs() {
+  return Math.max(envInt("CMD_RECONCILE_MS", 5 * 60_000), 60_000);
 }

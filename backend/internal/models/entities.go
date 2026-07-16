@@ -44,6 +44,8 @@ type OddsQuote struct {
 	MatchState     string     `json:"match_state" gorm:"index:idx_odds_quotes_state_start,priority:1"`
 	EventStartAt   *time.Time `json:"event_start_at,omitempty" gorm:"index:idx_odds_quotes_state_start,priority:2"`
 	CollectedAt    time.Time  `json:"collected_at" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:2,sort:desc"`
+	LastObservedAt time.Time  `json:"last_observed_at"`
+	ChangedAt      time.Time  `json:"changed_at"`
 }
 
 type SurebetLeg struct {

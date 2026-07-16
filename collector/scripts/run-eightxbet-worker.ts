@@ -3,6 +3,7 @@ import {
   envString,
   applyCollectorProxyProfile,
   logCollectorProxyDebug,
+  startCollectorProxyCacheRefresh,
   syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
 import { EightXBetCollector } from "../eightxbet/src/index.js";
@@ -30,8 +31,13 @@ async function runWorker(sink: BackendCollectorStreamSink) {
   logCollectorProxyDebug("8xbet");
 
   const collector = new EightXBetCollector();
+  const stopProxyRefresh = startCollectorProxyCacheRefresh("8xbet");
   console.log("[8xbet-worker] starting in streaming mode");
-  await collector.stream(sink);
+  try {
+    await collector.stream(sink);
+  } finally {
+    stopProxyRefresh();
+  }
 }
 
 async function runWorkerSafely(sink: BackendCollectorStreamSink) {

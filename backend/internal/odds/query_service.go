@@ -78,6 +78,8 @@ func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter
 			AvailableStake: item.AvailableStake,
 			Suspended:      item.Suspended,
 			CollectedAt:    item.CollectedAt,
+			LastObservedAt: item.LastObservedAt,
+			ChangedAt:      item.ChangedAt,
 		})
 	}
 

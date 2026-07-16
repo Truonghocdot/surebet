@@ -4,6 +4,7 @@ import {
   heartbeatIntervalMs,
   heartbeatOf,
   resolveEightXBetInplayPageURL,
+  stateObservationIntervalMs,
   type Collector,
   type CollectorSink,
   type OddsSelection,
@@ -11,7 +12,7 @@ import {
 } from "@surebet/collector-shared";
 
 export class EightXBetCollector implements Collector {
-  private readonly inplayRuntime = new EightXBetRuntime("8xbet-inplay");
+  private readonly inplayRuntime = new EightXBetRuntime("8xbet");
   private readonly inplayPageURL = resolveEightXBetInplayPageURL();
 
   async collect() {
@@ -27,6 +28,8 @@ export class EightXBetCollector implements Collector {
     let currentSnapshotMap = new Map<string, OddsSelection>();
     let bootstrapSent = false;
     let lastHeartbeatAt = 0;
+    let lastObservationAt = 0;
+    let observationInFlight = false;
     let activeDeltaScan:
       | {
           seenFixtureIds: Set<string>;
@@ -44,6 +47,7 @@ export class EightXBetCollector implements Collector {
         currentSnapshotMap = selectionMap(nextSnapshot);
         bootstrapSent = true;
         activeDeltaScan = null;
+        lastObservationAt = Date.now();
         await maybeHeartbeat(nextSnapshot);
         return;
       }
@@ -86,6 +90,13 @@ export class EightXBetCollector implements Collector {
       if (deltas.length > 0) {
         await sink.pushDelta(deltas);
       }
+      replaceFixtureOutcomes(currentSnapshotMap, fixtureId, nextFixtureMap);
+      currentSnapshot = {
+        ...currentSnapshot,
+        collectedAt: snapshot.collectedAt,
+        selections: Array.from(currentSnapshotMap.values())
+      };
+      sink.setResyncSnapshot?.(currentSnapshot);
       await maybeHeartbeat(snapshot);
     };
 
@@ -103,14 +114,41 @@ export class EightXBetCollector implements Collector {
         return;
       }
 
+      if (
+        !observationInFlight &&
+        Date.now() - lastObservationAt >= stateObservationIntervalMs()
+      ) {
+        observationInFlight = true;
+        const observedSnapshot = {
+          ...currentSnapshot,
+          collectedAt: new Date().toISOString()
+        };
+        void sink
+          .pushBootstrap(observedSnapshot)
+          .then(() => sink.heartbeat(heartbeatOf(observedSnapshot.source)))
+          .then(() => {
+            lastObservationAt = Date.now();
+            lastHeartbeatAt = Date.now();
+          })
+          .catch((error) => {
+            console.warn("[8xbet-worker] state observation failed:", error);
+          })
+          .finally(() => {
+            observationInFlight = false;
+          });
+        return;
+      }
+
       if (Date.now() - lastHeartbeatAt < heartbeatIntervalMs()) {
         return;
       }
 
       void sink.heartbeat(heartbeatOf(currentSnapshot.source)).then(() => {
         lastHeartbeatAt = Date.now();
+      }).catch((error) => {
+        console.warn("[8xbet-worker] heartbeat failed:", error);
       });
-    }, Math.max(Math.floor(heartbeatIntervalMs() / 2), 1_000));
+    }, Math.max(Math.floor(Math.min(heartbeatIntervalMs(), stateObservationIntervalMs()) / 2), 1_000));
 
     const inplayTask = this.inplayRuntime.streamSnapshots(
       {
@@ -163,6 +201,21 @@ function selectFixtureOutcomes(snapshotMap: Map<string, OddsSelection>, fixtureI
     map.set(outcomeId, selection);
   }
   return map;
+}
+
+function replaceFixtureOutcomes(
+  snapshotMap: Map<string, OddsSelection>,
+  fixtureId: string,
+  nextFixtureMap: Map<string, OddsSelection>
+) {
+  for (const [outcomeId, selection] of snapshotMap.entries()) {
+    if (selection.fixtureId === fixtureId) {
+      snapshotMap.delete(outcomeId);
+    }
+  }
+  for (const [outcomeId, selection] of nextFixtureMap.entries()) {
+    snapshotMap.set(outcomeId, selection);
+  }
 }
 
 function buildDisappearedFixtureDeltas(

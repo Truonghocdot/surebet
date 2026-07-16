@@ -82,6 +82,7 @@ export interface CollectorSink {
   pushBootstrap(snapshot: OddsSnapshot): Promise<void>;
   pushDelta(deltas: OddsDelta[]): Promise<void>;
   heartbeat(payload: CollectorHeartbeat): Promise<void>;
+  setResyncSnapshot?(snapshot: OddsSnapshot): void;
 }
 
 export interface StreamableCollector extends Collector {

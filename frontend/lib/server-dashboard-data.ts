@@ -42,6 +42,8 @@ export type BackendOdds = {
   available_stake: number;
   suspended: boolean;
   collected_at: string;
+  last_observed_at?: string;
+  changed_at?: string;
 };
 
 export async function fetchBackendOpportunities() {

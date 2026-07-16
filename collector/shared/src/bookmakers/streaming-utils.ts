@@ -5,26 +5,18 @@ import type {
   OddsSelection,
   OddsSnapshot
 } from "../contracts.js";
-import { envInt, envString } from "../core/env.js";
+import { envInt } from "../core/env.js";
 
 export function streamPollIntervalMs() {
   return Math.max(envInt("COLLECT_STREAM_POLL_MS", 300), 50);
 }
 
-export function pageReloadIntervalMs() {
-  return Math.max(envInt("COLLECT_PAGE_RELOAD_MS", 30_000), 1_000);
-}
-
-export function browserRecycleIntervalMs() {
-  const proxyMode = envString("COLLECTOR_PROXY_MODE", "").trim().toLowerCase();
-  if (proxyMode === "proxyxoay" || envString("COLLECTOR_PROXYXOAY_KEY", "").trim() !== "") {
-    return 60_000;
-  }
-  return Math.max(envInt("COLLECT_BROWSER_RECYCLE_MS", 300_000), 60_000);
-}
-
 export function heartbeatIntervalMs() {
   return Math.max(envInt("COLLECT_HEARTBEAT_MS", 15_000), 1_000);
+}
+
+export function stateObservationIntervalMs() {
+  return Math.max(envInt("COLLECT_STATE_OBSERVE_MS", 30_000), 5_000);
 }
 
 export function selectionMap(snapshot: OddsSnapshot) {

@@ -144,15 +144,21 @@ func (r *OddsStateRepository) ApplyQuoteUpsert(
 		}
 	}
 
-	if found && !shouldPersistQuote(current, next) {
-		return false, next, nil
+	prepared, stateChanged, observationChanged := prepareQuoteWrite(current, next, found)
+	if !observationChanged {
+		return false, prepared, nil
 	}
 
-	if err := r.storeQuote(ctx, event.Source, next); err != nil {
+	if stateChanged {
+		err = r.storeQuote(ctx, event.Source, prepared)
+	} else {
+		err = r.storeQuoteObservation(ctx, event.Source, prepared)
+	}
+	if err != nil {
 		return false, models.OddsQuote{}, err
 	}
 
-	return true, next, nil
+	return stateChanged, prepared, nil
 }
 
 func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
@@ -201,14 +207,18 @@ func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
 			pipe.Expire(ctx, snapshotSetKey(source, event.SessionID, event.SnapshotID), r.snapshotTTL)
 		}
 
-		if found && !shouldPersistQuote(current, next) {
+		prepared, stateChanged, observationChanged := prepareQuoteWrite(current, next, found)
+		if !observationChanged {
 			continue
 		}
-
-		if err := storeQuotePipeline(ctx, pipe, source, next, r.historyTTL, r.historyMaxEntries); err != nil {
+		if stateChanged {
+			if err := storeQuotePipeline(ctx, pipe, source, prepared, r.historyTTL, r.historyMaxEntries); err != nil {
+				return nil, err
+			}
+			changedQuotes = append(changedQuotes, prepared)
+		} else if err := storeQuoteObservationPipeline(ctx, pipe, source, prepared); err != nil {
 			return nil, err
 		}
-		changedQuotes = append(changedQuotes, next)
 	}
 
 	if _, err := pipe.Exec(ctx); err != nil {
@@ -241,15 +251,21 @@ func (r *OddsStateRepository) ApplyQuoteRemove(
 	next := current
 	next.Suspended = true
 	next.CollectedAt = event.OccurredAt.UTC()
-	if !shouldPersistQuote(current, next) {
-		return false, next, nil
+	prepared, stateChanged, observationChanged := prepareQuoteWrite(current, next, true)
+	if !observationChanged {
+		return false, prepared, nil
 	}
 
-	if err := r.storeQuote(ctx, event.Source, next); err != nil {
+	if stateChanged {
+		err = r.storeQuote(ctx, event.Source, prepared)
+	} else {
+		err = r.storeQuoteObservation(ctx, event.Source, prepared)
+	}
+	if err != nil {
 		return false, models.OddsQuote{}, err
 	}
 
-	return true, next, nil
+	return stateChanged, prepared, nil
 }
 
 func (r *OddsStateRepository) CommitSnapshot(
@@ -285,23 +301,32 @@ func (r *OddsStateRepository) CommitSnapshot(
 		if err != nil {
 			return nil, err
 		}
-		if item.Suspended && !item.CollectedAt.Before(event.SentAt.UTC()) {
+		if quoteObservedAt(item).After(event.SentAt.UTC()) {
 			continue
 		}
 
-		item.Suspended = true
-		item.CollectedAt = event.SentAt.UTC()
-		if err := storeQuotePipeline(
-			ctx,
-			pipe,
-			source,
-			item,
-			r.historyTTL,
-			r.historyMaxEntries,
-		); err != nil {
+		next := item
+		next.Suspended = true
+		next.CollectedAt = event.SentAt.UTC()
+		prepared, stateChanged, observationChanged := prepareQuoteWrite(item, next, true)
+		if !observationChanged {
+			continue
+		}
+		if stateChanged {
+			if err := storeQuotePipeline(
+				ctx,
+				pipe,
+				source,
+				prepared,
+				r.historyTTL,
+				r.historyMaxEntries,
+			); err != nil {
+				return nil, err
+			}
+			changed = append(changed, prepared)
+		} else if err := storeQuoteObservationPipeline(ctx, pipe, source, prepared); err != nil {
 			return nil, err
 		}
-		changed = append(changed, item)
 	}
 	pipe.Del(ctx, snapshotKey)
 
@@ -461,6 +486,19 @@ func (r *OddsStateRepository) storeQuote(
 	return err
 }
 
+func (r *OddsStateRepository) storeQuoteObservation(
+	ctx context.Context,
+	source dto.CollectorSource,
+	quote models.OddsQuote,
+) error {
+	pipe := r.client.TxPipeline()
+	if err := storeQuoteObservationPipeline(ctx, pipe, source, quote); err != nil {
+		return err
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 func (r *OddsStateRepository) registerSnapshotEntry(
 	ctx context.Context,
 	source dto.CollectorSource,
@@ -499,6 +537,26 @@ func storeQuotePipeline(
 	return nil
 }
 
+func storeQuoteObservationPipeline(
+	ctx context.Context,
+	pipe redis.Pipeliner,
+	source dto.CollectorSource,
+	quote models.OddsQuote,
+) error {
+	encoded, err := json.Marshal(quote)
+	if err != nil {
+		return err
+	}
+	logicKey := logicQuoteKey(quote)
+	pipe.HSet(ctx, currentKey(source), logicKey, encoded)
+	pipe.ZAdd(
+		ctx,
+		tsKey(source),
+		redis.Z{Score: float64(quoteObservedAt(quote).UnixMilli()), Member: logicKey},
+	)
+	return nil
+}
+
 func buildStreamOddsQuoteFromUpsert(event dto.CollectorStreamQuoteUpsert) models.OddsQuote {
 	collectedAt := event.OccurredAt.UTC()
 	return models.OddsQuote{
@@ -523,6 +581,8 @@ func buildStreamOddsQuoteFromUpsert(event dto.CollectorStreamQuoteUpsert) models
 		MatchState:     normalizeMatchState(event.Quote.MatchState),
 		EventStartAt:   parseCollectorEventStartAt(event.Quote.EventStartAt, collectedAt),
 		CollectedAt:    collectedAt,
+		LastObservedAt: collectedAt,
+		ChangedAt:      collectedAt,
 	}
 }
 
@@ -569,14 +629,44 @@ func firstNonEmpty(primary, fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
-func shouldPersistQuote(current, next models.OddsQuote) bool {
-	if next.CollectedAt.After(current.CollectedAt) {
-		return true
+func prepareQuoteWrite(
+	current, next models.OddsQuote,
+	found bool,
+) (models.OddsQuote, bool, bool) {
+	observedAt := next.CollectedAt.UTC()
+	if !found {
+		next.LastObservedAt = observedAt
+		next.ChangedAt = observedAt
+		return next, true, true
 	}
-	if current.CollectedAt.After(next.CollectedAt) {
-		return false
+
+	currentObservedAt := quoteObservedAt(current)
+	if observedAt.Before(currentObservedAt) {
+		return current, false, false
 	}
-	return !oddsQuoteStateEqual(current, next)
+	if oddsQuoteStateEqual(current, next) {
+		if !observedAt.After(currentObservedAt) {
+			return current, false, false
+		}
+		current.CollectedAt = observedAt
+		current.LastObservedAt = observedAt
+		if current.ChangedAt.IsZero() {
+			current.ChangedAt = currentObservedAt
+		}
+		return current, false, true
+	}
+
+	next.CollectedAt = observedAt
+	next.LastObservedAt = observedAt
+	next.ChangedAt = observedAt
+	return next, true, true
+}
+
+func quoteObservedAt(quote models.OddsQuote) time.Time {
+	if !quote.LastObservedAt.IsZero() {
+		return quote.LastObservedAt.UTC()
+	}
+	return quote.CollectedAt.UTC()
 }
 
 func oddsQuoteStateEqual(left, right models.OddsQuote) bool {
@@ -634,7 +724,7 @@ func matchesCurrentOptions(
 	if minCollectedAt.IsZero() && options.OnlyActiveMatches {
 		minCollectedAt = now.Add(-defaultCurrentOddsWindow)
 	}
-	if !minCollectedAt.IsZero() && item.CollectedAt.Before(minCollectedAt) {
+	if !minCollectedAt.IsZero() && quoteObservedAt(item).Before(minCollectedAt) {
 		return false
 	}
 
@@ -657,7 +747,7 @@ func shouldPruneQuote(
 	now time.Time,
 	finishedRetention, overallRetention time.Duration,
 ) bool {
-	age := now.Sub(item.CollectedAt.UTC())
+	age := now.Sub(quoteObservedAt(item))
 	if age > overallRetention {
 		return true
 	}
@@ -668,6 +758,12 @@ func decodeOddsQuote(value string) (models.OddsQuote, error) {
 	var item models.OddsQuote
 	if err := json.Unmarshal([]byte(value), &item); err != nil {
 		return models.OddsQuote{}, err
+	}
+	if item.LastObservedAt.IsZero() {
+		item.LastObservedAt = item.CollectedAt.UTC()
+	}
+	if item.ChangedAt.IsZero() {
+		item.ChangedAt = item.CollectedAt.UTC()
 	}
 	return item, nil
 }

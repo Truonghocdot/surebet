@@ -32,6 +32,8 @@ type OddsView struct {
 	AvailableStake float64    `json:"available_stake"`
 	Suspended      bool       `json:"suspended"`
 	CollectedAt    time.Time  `json:"collected_at"`
+	LastObservedAt time.Time  `json:"last_observed_at"`
+	ChangedAt      time.Time  `json:"changed_at"`
 }
 
 type SurebetLegView struct {

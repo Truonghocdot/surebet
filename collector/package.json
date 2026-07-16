@@ -9,9 +9,11 @@
   ],
   "scripts": {
     "run:8xbet-worker": "tsx scripts/run-eightxbet-worker.ts",
+    "record:8xbet-traffic": "tsx scripts/record-eightxbet-traffic.ts",
     "run:jun88-cmd-worker": "tsx scripts/run-jun88-cmd-worker.ts",
     "test:cmd-parser": "tsx scripts/test-cmd-parser.ts",
     "test:eightxbet-incoming-parser": "tsx scripts/test-eightxbet-incoming-parser.ts",
+    "test:eightxbet-network-feed": "tsx scripts/test-eightxbet-network-feed.ts",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
     "typecheck": "npm run typecheck --workspaces"

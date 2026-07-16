@@ -138,9 +138,14 @@ export class BackendCollectorStreamSink implements CollectorSink {
     });
   }
 
+  setResyncSnapshot(snapshot: OddsSnapshot) {
+    this.latestBootstrap = snapshot;
+  }
+
   private enqueue(operation: () => Promise<void>) {
-    this.sendQueue = this.sendQueue.then(operation);
-    return this.sendQueue;
+    const pending = this.sendQueue.catch(() => undefined).then(operation);
+    this.sendQueue = pending.catch(() => undefined);
+    return pending;
   }
 
   private async ensureConnected() {

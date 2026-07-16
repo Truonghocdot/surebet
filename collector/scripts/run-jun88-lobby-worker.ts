@@ -4,6 +4,7 @@ import {
   createJun88LobbyCollector,
   envString,
   logCollectorProxyDebug,
+  startCollectorProxyCacheRefresh,
   syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
 
@@ -42,9 +43,14 @@ async function runWorker(
   }
 
   const collector = createJun88LobbyCollector(collectorId, lobbyId);
+  const stopProxyRefresh = startCollectorProxyCacheRefresh(collectorId);
   logCollectorProxyDebug(collectorId);
   console.log(`[${collectorId}-worker] starting in streaming mode`);
-  await collector.stream(sink);
+  try {
+    await collector.stream(sink);
+  } finally {
+    stopProxyRefresh();
+  }
 }
 
 async function sleep(ms: number) {

@@ -15,7 +15,7 @@ func TestOddsStateRepositoryQuoteUpsertIsIdempotent(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
 
-	event := testQuoteUpsertEvent("fixture-a", "market-a", "outcome-a", time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC))
+	event := testQuoteUpsertEvent("fixture-a", "market-a", "outcome-a", time.Now().UTC())
 
 	changed, _, err := repo.ApplyQuoteUpsert(context.Background(), event)
 	if err != nil {
@@ -42,11 +42,73 @@ func TestOddsStateRepositoryQuoteUpsertIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestOddsStateRepositoryRepeatedObservationDoesNotAppendHistory(t *testing.T) {
+	repo, cleanup := newTestOddsStateRepository(t)
+	defer cleanup()
+
+	initialAt := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
+	event := testQuoteUpsertEvent("fixture-observed", "market-a", "outcome-a", initialAt)
+	if changed, _, err := repo.ApplyQuoteUpsert(context.Background(), event); err != nil || !changed {
+		t.Fatalf("apply initial upsert: changed=%v err=%v", changed, err)
+	}
+
+	event.OccurredAt = initialAt.Add(20 * time.Second)
+	changed, observed, err := repo.ApplyQuoteUpsert(context.Background(), event)
+	if err != nil {
+		t.Fatalf("apply repeated observation: %v", err)
+	}
+	if changed {
+		t.Fatal("expected repeated observation not to change quote state")
+	}
+	if !observed.LastObservedAt.Equal(event.OccurredAt) {
+		t.Fatalf("expected last observed at %s, got %s", event.OccurredAt, observed.LastObservedAt)
+	}
+	if !observed.ChangedAt.Equal(initialAt) {
+		t.Fatalf("expected changed at to remain %s, got %s", initialAt, observed.ChangedAt)
+	}
+
+	history, err := repo.ListByFixture(context.Background(), "fixture-observed")
+	if err != nil {
+		t.Fatalf("list fixture history: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("expected one history record after observation-only update, got %d", len(history))
+	}
+}
+
+func TestOddsStateRepositoryBatchObservationDoesNotReportChanges(t *testing.T) {
+	repo, cleanup := newTestOddsStateRepository(t)
+	defer cleanup()
+
+	initialAt := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
+	event := testQuoteUpsertEvent("fixture-batch", "market-a", "outcome-a", initialAt)
+	if changed, err := repo.ApplyQuoteUpsertBatch(context.Background(), []dto.CollectorStreamQuoteUpsert{event}); err != nil || len(changed) != 1 {
+		t.Fatalf("apply initial batch: changed=%d err=%v", len(changed), err)
+	}
+
+	event.OccurredAt = initialAt.Add(30 * time.Second)
+	changed, err := repo.ApplyQuoteUpsertBatch(context.Background(), []dto.CollectorStreamQuoteUpsert{event})
+	if err != nil {
+		t.Fatalf("apply observation batch: %v", err)
+	}
+	if len(changed) != 0 {
+		t.Fatalf("expected observation batch to report no state changes, got %d", len(changed))
+	}
+
+	history, err := repo.ListByFixture(context.Background(), "fixture-batch")
+	if err != nil {
+		t.Fatalf("list batch fixture history: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("expected one batch history record, got %d", len(history))
+	}
+}
+
 func TestOddsStateRepositoryQuoteRemoveSuspendsCurrentQuote(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
 
-	upsert := testQuoteUpsertEvent("fixture-a", "market-a", "outcome-a", time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC))
+	upsert := testQuoteUpsertEvent("fixture-a", "market-a", "outcome-a", time.Now().UTC())
 	if _, _, err := repo.ApplyQuoteUpsert(context.Background(), upsert); err != nil {
 		t.Fatalf("seed quote: %v", err)
 	}
@@ -145,18 +207,19 @@ func TestOddsStateRepositoryJanitorPrunesExpiredQuotes(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
 
-	oldFinished := testQuoteUpsertEvent("fixture-old", "market-a", "outcome-a", time.Date(2026, 7, 16, 8, 0, 0, 0, time.UTC))
+	base := time.Now().UTC()
+	oldFinished := testQuoteUpsertEvent("fixture-old", "market-a", "outcome-a", base.Add(-2*time.Hour))
 	oldFinished.Quote.MatchState = "finished"
 	if _, _, err := repo.ApplyQuoteUpsert(context.Background(), oldFinished); err != nil {
 		t.Fatalf("seed old finished quote: %v", err)
 	}
 
-	fresh := testQuoteUpsertEvent("fixture-fresh", "market-b", "outcome-b", time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC))
+	fresh := testQuoteUpsertEvent("fixture-fresh", "market-b", "outcome-b", base)
 	if _, _, err := repo.ApplyQuoteUpsert(context.Background(), fresh); err != nil {
 		t.Fatalf("seed fresh quote: %v", err)
 	}
 
-	if err := repo.pruneExpired(context.Background(), time.Date(2026, 7, 16, 10, 31, 0, 0, time.UTC)); err != nil {
+	if err := repo.pruneExpired(context.Background(), base.Add(31*time.Minute)); err != nil {
 		t.Fatalf("prune expired: %v", err)
 	}
 

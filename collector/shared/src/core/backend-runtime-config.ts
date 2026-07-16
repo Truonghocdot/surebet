@@ -61,7 +61,6 @@ function applyProxySettings(options: {
   applySetting("COLLECTOR_PROXY_BYPASS", "");
   applySetting("COLLECTOR_PROXY_CACHE_ENABLED", token ? "true" : "");
   applySetting("COLLECTOR_PROXY_CACHE_FILE", token ? "tmp/collector/proxyxoay-cache.json" : "");
-  applySetting("COLLECT_BROWSER_RECYCLE_MS", token ? "60000" : "");
 }
 
 export function applyCollectorProxyProfile(config: SyncedCollectorRuntimeConfig) {
