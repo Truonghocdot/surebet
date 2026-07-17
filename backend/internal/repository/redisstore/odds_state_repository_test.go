@@ -42,6 +42,71 @@ func TestOddsStateRepositoryQuoteUpsertIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestOddsStateRepositoryWarmsPersistedCurrentState(t *testing.T) {
+	repo, cleanup := newTestOddsStateRepository(t)
+	defer cleanup()
+
+	event := testQuoteUpsertEvent("fixture-warm", "market-a", "outcome-a", time.Now().UTC())
+	if changed, _, err := repo.ApplyQuoteUpsert(context.Background(), event); err != nil || !changed {
+		t.Fatalf("seed persisted quote: changed=%v err=%v", changed, err)
+	}
+
+	restarted := NewOddsStateRepository(repo.client)
+	if err := restarted.WarmCurrentCache(context.Background()); err != nil {
+		t.Fatalf("warm current cache: %v", err)
+	}
+	items, err := restarted.ListCurrent(context.Background(), "jun88", "cmd", "")
+	if err != nil {
+		t.Fatalf("list warmed current state: %v", err)
+	}
+	if len(items) != 1 || items[0].FixtureID != event.RawIDs.FixtureID {
+		t.Fatalf("expected persisted quote after warm, got %+v", items)
+	}
+}
+
+func TestOddsStateRepositoryCurrentReadsDoNotRoundTripToRedis(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer func() {
+		_ = client.Close()
+		server.Close()
+	}()
+
+	repo := NewOddsStateRepository(client)
+	event := testQuoteUpsertEvent("fixture-cached", "market-a", "outcome-a", time.Now().UTC())
+	if changed, _, err := repo.ApplyQuoteUpsert(context.Background(), event); err != nil || !changed {
+		t.Fatalf("seed cached quote: changed=%v err=%v", changed, err)
+	}
+	commandsBeforeReads := server.CommandCount()
+
+	for range 20 {
+		items, err := repo.ListCurrent(context.Background(), "jun88", "cmd", "")
+		if err != nil || len(items) != 1 {
+			t.Fatalf("list cached current state: items=%d err=%v", len(items), err)
+		}
+	}
+
+	if commandsAfterReads := server.CommandCount(); commandsAfterReads != commandsBeforeReads {
+		t.Fatalf(
+			"expected cached reads not to call Redis, commands %d -> %d",
+			commandsBeforeReads,
+			commandsAfterReads,
+		)
+	}
+
+	event.OccurredAt = event.OccurredAt.Add(30 * time.Second)
+	if changed, _, err := repo.ApplyQuoteUpsert(context.Background(), event); err != nil || changed {
+		t.Fatalf("refresh cached observation: changed=%v err=%v", changed, err)
+	}
+	if commandsAfterObservation := server.CommandCount(); commandsAfterObservation != commandsBeforeReads {
+		t.Fatalf(
+			"expected unchanged observation not to write Redis, commands %d -> %d",
+			commandsBeforeReads,
+			commandsAfterObservation,
+		)
+	}
+}
+
 func TestOddsStateRepositoryRepeatedObservationDoesNotAppendHistory(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()

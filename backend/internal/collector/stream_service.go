@@ -33,6 +33,22 @@ type SurebetNotifier interface {
 	Trigger()
 }
 
+type multiSurebetNotifier struct {
+	notifiers []SurebetNotifier
+}
+
+func NewMultiSurebetNotifier(notifiers ...SurebetNotifier) SurebetNotifier {
+	return multiSurebetNotifier{notifiers: notifiers}
+}
+
+func (n multiSurebetNotifier) Trigger() {
+	for _, notifier := range n.notifiers {
+		if notifier != nil {
+			notifier.Trigger()
+		}
+	}
+}
+
 type StreamService struct {
 	store     StreamOddsStateStore
 	publisher EventPublisher
@@ -184,7 +200,7 @@ func (s *StreamService) handleMessage(
 		if err := s.requireEventSource(conn, state, batch.SessionID, batch.Source); err != nil {
 			return err
 		}
-		
+
 		events := make([]dto.CollectorStreamQuoteUpsert, len(batch.Items))
 		for i, item := range batch.Items {
 			events[i] = dto.CollectorStreamQuoteUpsert{
@@ -378,6 +394,9 @@ func (s *StreamService) publishQuotes(
 		return nil
 	}
 
+	if s.notifier != nil {
+		s.notifier.Trigger()
+	}
 	if s.publisher != nil {
 		if err := s.publisher.PublishOddsUpdated(
 			ctx,
@@ -390,9 +409,6 @@ func (s *StreamService) publishQuotes(
 		); err != nil {
 			return err
 		}
-	}
-	if s.notifier != nil {
-		s.notifier.Trigger()
 	}
 	return nil
 }

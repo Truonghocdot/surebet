@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"time"
 
 	"surebet/backend/internal/api"
 	"surebet/backend/internal/auth"
@@ -46,6 +47,13 @@ func main() {
 
 	userRepository := gormstore.NewUserRepository(db)
 	oddsStateRepository := redisstore.NewOddsStateRepository(redisClient)
+	warmCtx, warmCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	if err := oddsStateRepository.WarmCurrentCache(warmCtx); err != nil {
+		warmCancel()
+		log.Error("failed to warm redis odds cache", "error", err.Error())
+		os.Exit(1)
+	}
+	warmCancel()
 	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
 	telegramRecipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	telegramLogRepository := gormstore.NewTelegramNotificationLogRepository(db)
@@ -94,7 +102,7 @@ func main() {
 				collector.NewLoggingEventPublisher(log),
 				collector.NewRealtimeEventPublisher(realtimeHub),
 			),
-			telegramNotifier,
+			collector.NewMultiSurebetNotifier(surebetQuery, telegramNotifier),
 			log,
 		),
 		TelegramAdmin:   telegramAdmin,

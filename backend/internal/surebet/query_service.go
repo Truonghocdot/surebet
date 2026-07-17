@@ -2,6 +2,7 @@ package surebet
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"surebet/backend/internal/calculator"
@@ -9,7 +10,10 @@ import (
 	"surebet/backend/internal/models"
 )
 
-const detectorQuoteFreshnessWindow = 45 * time.Second
+const (
+	detectorQuoteFreshnessWindow = 45 * time.Second
+	detectorResultMaxAge         = 1 * time.Second
+)
 
 type OddsReader interface {
 	ListCurrentDetectorCandidatesBySource(ctx context.Context, minCollectedAt time.Time) ([]models.OddsQuote, error)
@@ -18,16 +22,82 @@ type OddsReader interface {
 type QueryService struct {
 	reader   OddsReader
 	detector calculator.Detector
+
+	mu               sync.Mutex
+	generation       uint64
+	cachedGeneration uint64
+	cachedAt         time.Time
+	cached           []dto.SurebetView
+	hasCache         bool
+	refreshing       chan struct{}
 }
 
-func NewQueryService(reader OddsReader, detector calculator.Detector) QueryService {
-	return QueryService{
+func NewQueryService(reader OddsReader, detector calculator.Detector) *QueryService {
+	return &QueryService{
 		reader:   reader,
 		detector: detector,
 	}
 }
 
-func (s QueryService) ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error) {
+// Trigger invalidates the materialized detector result. Stream ingest calls it
+// before notifying clients, so concurrent API requests share one recalculation.
+func (s *QueryService) Trigger() {
+	s.mu.Lock()
+	s.generation++
+	s.mu.Unlock()
+}
+
+func (s *QueryService) ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error) {
+	for attempt := 0; ; attempt++ {
+		s.mu.Lock()
+		targetGeneration := s.generation
+		if s.hasCache &&
+			s.cachedGeneration == targetGeneration &&
+			time.Since(s.cachedAt) < detectorResultMaxAge {
+			result := cloneSurebetViews(s.cached)
+			s.mu.Unlock()
+			return result, nil
+		}
+		if s.refreshing != nil {
+			refreshing := s.refreshing
+			s.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-refreshing:
+				continue
+			}
+		}
+
+		refreshing := make(chan struct{})
+		s.refreshing = refreshing
+		s.mu.Unlock()
+
+		result, err := s.detectCurrentSurebets(ctx)
+
+		s.mu.Lock()
+		if err == nil {
+			s.cached = cloneSurebetViews(result)
+			s.cachedGeneration = targetGeneration
+			s.cachedAt = time.Now()
+			s.hasCache = true
+		}
+		currentGeneration := s.generation
+		s.refreshing = nil
+		close(refreshing)
+		s.mu.Unlock()
+
+		if err != nil {
+			return nil, err
+		}
+		if currentGeneration != targetGeneration && attempt < 1 {
+			continue
+		}
+		return cloneSurebetViews(result), nil
+	}
+}
+
+func (s *QueryService) detectCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error) {
 	var (
 		quotes []models.OddsQuote
 		err    error
@@ -52,6 +122,15 @@ func (s QueryService) ListCurrentSurebets(ctx context.Context) ([]dto.SurebetVie
 	}
 
 	return result, nil
+}
+
+func cloneSurebetViews(items []dto.SurebetView) []dto.SurebetView {
+	result := make([]dto.SurebetView, len(items))
+	for i, item := range items {
+		result[i] = item
+		result[i].Legs = append([]dto.SurebetLegView(nil), item.Legs...)
+	}
+	return result
 }
 
 func mapOpportunity(item models.SurebetOpportunity) dto.SurebetView {

@@ -17,6 +17,7 @@ type FeedFixtureState = {
   markets: Map<SupportedMarketCode, unknown>;
   seenMarkets: Set<SupportedMarketCode>;
   occurredAt: string;
+  lastDeliveredSignature?: string;
 };
 
 type FeedSnapshotListener = (snapshot: OddsSnapshot, fixtureId: string) => Promise<void>;
@@ -24,8 +25,10 @@ type FeedSnapshotListener = (snapshot: OddsSnapshot, fixtureId: string) => Promi
 const supportedMarketCodes = new Set<SupportedMarketCode>(["ah", "ah_1st", "ou", "ou_1st"]);
 export class EightXBetNetworkFeed {
   private readonly fixtures = new Map<string, FeedFixtureState>();
+  private readonly pendingFixtureIds = new Set<string>();
   private listener: FeedSnapshotListener | null = null;
   private deliveryQueue = Promise.resolve();
+  private deliveryRunning = false;
 
   constructor(private readonly collectorId: string) {}
 
@@ -63,6 +66,7 @@ export class EightXBetNetworkFeed {
 
   deactivate() {
     this.listener = null;
+    this.pendingFixtureIds.clear();
   }
 
   overlaySnapshot(domSnapshot: OddsSnapshot) {
@@ -247,25 +251,63 @@ export class EightXBetNetworkFeed {
     if (!this.listener) {
       return;
     }
-    const state = this.fixtures.get(fixtureId);
-    if (!state?.metadata || state.seenMarkets.size === 0) {
+
+    this.pendingFixtureIds.add(fixtureId);
+    if (this.deliveryRunning) {
       return;
     }
-    const snapshot: OddsSnapshot = {
-      source: {
-        collectorId: this.collectorId,
-        bookmakerId: "8xbet",
-        lobbyId: "default"
-      },
-      collectedAt: state.occurredAt || new Date().toISOString(),
-      selections: buildSelections(state)
-    };
-    const listener = this.listener;
+
+    this.deliveryRunning = true;
     this.deliveryQueue = this.deliveryQueue
-      .then(() => listener(snapshot, fixtureId))
+      .then(() => this.drainFixtureDeliveries())
       .catch((error) => {
-        console.warn(`[8xbet-network] fixture delivery failed fixture=${fixtureId}:`, error);
+        console.warn("[8xbet-network] fixture delivery queue failed:", error);
+      })
+      .finally(() => {
+        this.deliveryRunning = false;
+        const nextFixtureId = this.pendingFixtureIds.values().next().value;
+        if (typeof nextFixtureId === "string" && this.listener) {
+          this.emitFixture(nextFixtureId);
+        }
       });
+  }
+
+  private async drainFixtureDeliveries() {
+    while (this.listener && this.pendingFixtureIds.size > 0) {
+      const fixtureIds = Array.from(this.pendingFixtureIds);
+      this.pendingFixtureIds.clear();
+
+      for (const fixtureId of fixtureIds) {
+        const listener = this.listener;
+        const state = this.fixtures.get(fixtureId);
+        if (!listener || !state?.metadata || state.seenMarkets.size === 0) {
+          continue;
+        }
+
+        const selections = buildSelections(state);
+        const signature = fixtureDeliverySignature(state, selections);
+        if (state.lastDeliveredSignature === signature) {
+          continue;
+        }
+
+        const snapshot: OddsSnapshot = {
+          source: {
+            collectorId: this.collectorId,
+            bookmakerId: "8xbet",
+            lobbyId: "default"
+          },
+          collectedAt: state.occurredAt || new Date().toISOString(),
+          selections
+        };
+
+        try {
+          await listener(snapshot, fixtureId);
+          state.lastDeliveredSignature = signature;
+        } catch (error) {
+          console.warn(`[8xbet-network] fixture delivery failed fixture=${fixtureId}:`, error);
+        }
+      }
+    }
   }
 
   private ensureState(fixtureId: string) {
@@ -299,6 +341,22 @@ function buildSelections(state: FeedFixtureState) {
     }
   }
   return result;
+}
+
+function fixtureDeliverySignature(state: FeedFixtureState, selections: OddsSelection[]) {
+  return JSON.stringify([
+    state.metadata?.homeTeam ?? "",
+    state.metadata?.awayTeam ?? "",
+    state.metadata?.leagueName ?? "",
+    state.metadata?.eventStartAt ?? "",
+    selections.map((selection) => [
+      selection.marketId,
+      selection.outcomeId,
+      selection.odds,
+      selection.availableStake,
+      selection.suspended
+    ])
+  ]);
 }
 
 function buildHandicapSelections(

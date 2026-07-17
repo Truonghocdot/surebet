@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -43,6 +44,8 @@ type StreamOddsStateStore interface {
 
 type OddsStateRepository struct {
 	client            *redis.Client
+	cacheMu           sync.RWMutex
+	current           map[string]map[string]models.OddsQuote
 	finishedRetention time.Duration
 	overallRetention  time.Duration
 	historyTTL        time.Duration
@@ -54,6 +57,7 @@ type OddsStateRepository struct {
 func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 	return &OddsStateRepository{
 		client:            client,
+		current:           make(map[string]map[string]models.OddsQuote),
 		finishedRetention: defaultFinishedRetention,
 		overallRetention:  defaultOverallRetention,
 		historyTTL:        defaultHistoryTTL,
@@ -61,6 +65,49 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 		snapshotTTL:       defaultSnapshotTTL,
 		janitorInterval:   defaultJanitorInterval,
 	}
+}
+
+// WarmCurrentCache loads the persisted Redis state once. Hot-path reads use the
+// in-process mirror so API traffic never has to transfer the full odds hash.
+func (r *OddsStateRepository) WarmCurrentCache(ctx context.Context) error {
+	loaded := make(map[string]map[string]models.OddsQuote)
+	for _, source := range repository.MigratedOddsSources() {
+		sourceRef := dto.CollectorSource{
+			BookmakerID: source.BookmakerID,
+			LobbyID:     source.LobbyID,
+		}
+		items := make(map[string]models.OddsQuote)
+		var cursor uint64
+		for {
+			values, nextCursor, err := r.client.HScan(
+				ctx,
+				currentKey(sourceRef),
+				cursor,
+				"*",
+				1000,
+			).Result()
+			if err != nil && !errors.Is(err, redis.Nil) {
+				return err
+			}
+			for i := 0; i+1 < len(values); i += 2 {
+				item, err := decodeOddsQuote(values[i+1])
+				if err != nil {
+					return err
+				}
+				items[values[i]] = item
+			}
+			if nextCursor == 0 {
+				break
+			}
+			cursor = nextCursor
+		}
+		loaded[currentCacheKey(sourceRef)] = items
+	}
+
+	r.cacheMu.Lock()
+	r.current = loaded
+	r.cacheMu.Unlock()
+	return nil
 }
 
 func (r *OddsStateRepository) ListByFixture(
@@ -133,10 +180,6 @@ func (r *OddsStateRepository) ApplyQuoteUpsert(
 ) (bool, models.OddsQuote, error) {
 	next := buildStreamOddsQuoteFromUpsert(event)
 	logicKey := logicQuoteKey(next)
-	current, found, err := r.loadCurrentQuote(ctx, event.Source, logicKey)
-	if err != nil {
-		return false, models.OddsQuote{}, err
-	}
 
 	if event.SnapshotID != "" {
 		if err := r.registerSnapshotEntry(ctx, event.Source, event.SessionID, event.SnapshotID, logicKey); err != nil {
@@ -144,19 +187,22 @@ func (r *OddsStateRepository) ApplyQuoteUpsert(
 		}
 	}
 
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+	currentItems := r.currentSourceLocked(event.Source)
+	current, found := currentItems[logicKey]
+
 	prepared, stateChanged, observationChanged := prepareQuoteWrite(current, next, found)
 	if !observationChanged {
 		return false, prepared, nil
 	}
 
 	if stateChanged {
-		err = r.storeQuote(ctx, event.Source, prepared)
-	} else {
-		err = r.storeQuoteObservation(ctx, event.Source, prepared)
+		if err := r.storeQuote(ctx, event.Source, prepared); err != nil {
+			return false, models.OddsQuote{}, err
+		}
 	}
-	if err != nil {
-		return false, models.OddsQuote{}, err
-	}
+	currentItems[logicKey] = prepared
 
 	return stateChanged, prepared, nil
 }
@@ -170,59 +216,55 @@ func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
 	}
 
 	source := events[0].Source
-	logicKeys := make([]string, len(events))
 	nextQuotes := make([]models.OddsQuote, len(events))
 
-	for i, event := range events {
-		next := buildStreamOddsQuoteFromUpsert(event)
-		logicKeys[i] = logicQuoteKey(next)
+	for i := range events {
+		next := buildStreamOddsQuoteFromUpsert(events[i])
 		nextQuotes[i] = next
 	}
 
-	currentValues, err := r.client.HMGet(ctx, currentKey(source), logicKeys...).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return nil, err
-	}
-
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+	currentItems := r.currentSourceLocked(source)
 	pipe := r.client.TxPipeline()
 	changedQuotes := make([]models.OddsQuote, 0, len(events))
-
-	for i, event := range events {
-		next := nextQuotes[i]
-		logicKey := logicKeys[i]
-
-		var current models.OddsQuote
-		found := false
-		if currentValues[i] != nil {
-			if strVal, ok := currentValues[i].(string); ok {
-				current, err = decodeOddsQuote(strVal)
-				if err == nil {
-					found = true
-				}
-			}
+	preparedQuotes := make(map[string]models.OddsQuote, len(events))
+	if events[0].SnapshotID != "" {
+		members := make([]any, 0, len(events))
+		for _, next := range nextQuotes {
+			members = append(members, logicQuoteKey(next))
 		}
+		snapshotKey := snapshotSetKey(source, events[0].SessionID, events[0].SnapshotID)
+		pipe.SAdd(ctx, snapshotKey, members...)
+		pipe.Expire(ctx, snapshotKey, r.snapshotTTL)
+	}
 
-		if event.SnapshotID != "" {
-			pipe.SAdd(ctx, snapshotSetKey(source, event.SessionID, event.SnapshotID), logicKey)
-			pipe.Expire(ctx, snapshotSetKey(source, event.SessionID, event.SnapshotID), r.snapshotTTL)
+	for i := range events {
+		next := nextQuotes[i]
+		logicKey := logicQuoteKey(next)
+		current, found := preparedQuotes[logicKey]
+		if !found {
+			current, found = currentItems[logicKey]
 		}
 
 		prepared, stateChanged, observationChanged := prepareQuoteWrite(current, next, found)
 		if !observationChanged {
 			continue
 		}
+		preparedQuotes[logicKey] = prepared
 		if stateChanged {
 			if err := storeQuotePipeline(ctx, pipe, source, prepared, r.historyTTL, r.historyMaxEntries); err != nil {
 				return nil, err
 			}
 			changedQuotes = append(changedQuotes, prepared)
-		} else if err := storeQuoteObservationPipeline(ctx, pipe, source, prepared); err != nil {
-			return nil, err
 		}
 	}
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		return nil, err
+	}
+	for logicKey, quote := range preparedQuotes {
+		currentItems[logicKey] = quote
 	}
 
 	return changedQuotes, nil
@@ -233,16 +275,17 @@ func (r *OddsStateRepository) ApplyQuoteRemove(
 	event dto.CollectorStreamQuoteRemove,
 ) (bool, models.OddsQuote, error) {
 	logicKey := logicQuoteKeyFromMarkers(event.Markers)
-	current, found, err := r.loadCurrentQuote(ctx, event.Source, logicKey)
-	if err != nil {
-		return false, models.OddsQuote{}, err
-	}
 
 	if event.SnapshotID != "" {
 		if err := r.registerSnapshotEntry(ctx, event.Source, event.SessionID, event.SnapshotID, logicKey); err != nil {
 			return false, models.OddsQuote{}, err
 		}
 	}
+
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+	currentItems := r.currentSourceLocked(event.Source)
+	current, found := currentItems[logicKey]
 
 	if !found {
 		return false, models.OddsQuote{}, nil
@@ -257,13 +300,11 @@ func (r *OddsStateRepository) ApplyQuoteRemove(
 	}
 
 	if stateChanged {
-		err = r.storeQuote(ctx, event.Source, prepared)
-	} else {
-		err = r.storeQuoteObservation(ctx, event.Source, prepared)
+		if err := r.storeQuote(ctx, event.Source, prepared); err != nil {
+			return false, models.OddsQuote{}, err
+		}
 	}
-	if err != nil {
-		return false, models.OddsQuote{}, err
-	}
+	currentItems[logicKey] = prepared
 
 	return stateChanged, prepared, nil
 }
@@ -285,21 +326,15 @@ func (r *OddsStateRepository) CommitSnapshot(
 		seen[member] = struct{}{}
 	}
 
-	currentValues, err := r.client.HGetAll(ctx, currentKey(source)).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return nil, err
-	}
-
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
+	currentItems := r.currentSourceLocked(source)
 	changed := make([]models.OddsQuote, 0)
 	pipe := r.client.TxPipeline()
-	for logicKey, rawValue := range currentValues {
+	preparedQuotes := make(map[string]models.OddsQuote)
+	for logicKey, item := range currentItems {
 		if _, ok := seen[logicKey]; ok {
 			continue
-		}
-
-		item, err := decodeOddsQuote(rawValue)
-		if err != nil {
-			return nil, err
 		}
 		if quoteObservedAt(item).After(event.SentAt.UTC()) {
 			continue
@@ -312,6 +347,7 @@ func (r *OddsStateRepository) CommitSnapshot(
 		if !observationChanged {
 			continue
 		}
+		preparedQuotes[logicKey] = prepared
 		if stateChanged {
 			if err := storeQuotePipeline(
 				ctx,
@@ -324,14 +360,15 @@ func (r *OddsStateRepository) CommitSnapshot(
 				return nil, err
 			}
 			changed = append(changed, prepared)
-		} else if err := storeQuoteObservationPipeline(ctx, pipe, source, prepared); err != nil {
-			return nil, err
 		}
 	}
 	pipe.Del(ctx, snapshotKey)
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		return nil, err
+	}
+	for logicKey, quote := range preparedQuotes {
+		currentItems[logicKey] = quote
 	}
 
 	return changed, nil
@@ -362,7 +399,7 @@ type currentQueryOptions struct {
 }
 
 func (r *OddsStateRepository) listCurrent(
-	ctx context.Context,
+	_ context.Context,
 	bookmakerID, lobbyID, fixtureID string,
 	options currentQueryOptions,
 ) ([]models.OddsQuote, error) {
@@ -377,20 +414,13 @@ func (r *OddsStateRepository) listCurrent(
 
 	now := time.Now().UTC()
 	items := make([]models.OddsQuote, 0)
+	r.cacheMu.RLock()
 	for _, source := range sources {
-		values, err := r.client.HVals(ctx, currentKey(dto.CollectorSource{
+		sourceRef := dto.CollectorSource{
 			BookmakerID: source.BookmakerID,
 			LobbyID:     source.LobbyID,
-		})).Result()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			return nil, err
 		}
-
-		for _, value := range values {
-			item, err := decodeOddsQuote(value)
-			if err != nil {
-				return nil, err
-			}
+		for _, item := range r.current[currentCacheKey(sourceRef)] {
 			if fixtureID != "" && item.FixtureID != fixtureID {
 				continue
 			}
@@ -400,6 +430,7 @@ func (r *OddsStateRepository) listCurrent(
 			items = append(items, item)
 		}
 	}
+	r.cacheMu.RUnlock()
 
 	repository.SortOddsQuotesForDisplay(items)
 	return items, nil
@@ -409,61 +440,49 @@ func (r *OddsStateRepository) pruneExpired(
 	ctx context.Context,
 	now time.Time,
 ) error {
+	r.cacheMu.Lock()
+	defer r.cacheMu.Unlock()
 	for _, source := range repository.MigratedOddsSources() {
 		sourceRef := dto.CollectorSource{
 			BookmakerID: source.BookmakerID,
 			LobbyID:     source.LobbyID,
 		}
 
-		values, err := r.client.HGetAll(ctx, currentKey(sourceRef)).Result()
-		if err != nil && !errors.Is(err, redis.Nil) {
-			return err
-		}
-
-		if len(values) == 0 {
+		items := r.currentSourceLocked(sourceRef)
+		if len(items) == 0 {
 			continue
 		}
 
 		pipe := r.client.TxPipeline()
-		for logicKey, rawValue := range values {
-			item, err := decodeOddsQuote(rawValue)
-			if err != nil {
-				return err
-			}
+		pruned := make([]string, 0)
+		for logicKey, item := range items {
 			if !shouldPruneQuote(item, now, r.finishedRetention, r.overallRetention) {
 				continue
 			}
 			pipe.HDel(ctx, currentKey(sourceRef), logicKey)
 			pipe.ZRem(ctx, tsKey(sourceRef), logicKey)
+			pruned = append(pruned, logicKey)
 		}
 
 		if _, err := pipe.Exec(ctx); err != nil {
 			return err
+		}
+		for _, logicKey := range pruned {
+			delete(items, logicKey)
 		}
 	}
 
 	return nil
 }
 
-func (r *OddsStateRepository) loadCurrentQuote(
-	ctx context.Context,
-	source dto.CollectorSource,
-	logicKey string,
-) (models.OddsQuote, bool, error) {
-	value, err := r.client.HGet(ctx, currentKey(source), logicKey).Result()
-	if errors.Is(err, redis.Nil) {
-		return models.OddsQuote{}, false, nil
+func (r *OddsStateRepository) currentSourceLocked(source dto.CollectorSource) map[string]models.OddsQuote {
+	key := currentCacheKey(source)
+	items := r.current[key]
+	if items == nil {
+		items = make(map[string]models.OddsQuote)
+		r.current[key] = items
 	}
-	if err != nil {
-		return models.OddsQuote{}, false, err
-	}
-
-	item, err := decodeOddsQuote(value)
-	if err != nil {
-		return models.OddsQuote{}, false, err
-	}
-
-	return item, true, nil
+	return items
 }
 
 func (r *OddsStateRepository) storeQuote(
@@ -480,19 +499,6 @@ func (r *OddsStateRepository) storeQuote(
 		r.historyTTL,
 		r.historyMaxEntries,
 	); err != nil {
-		return err
-	}
-	_, err := pipe.Exec(ctx)
-	return err
-}
-
-func (r *OddsStateRepository) storeQuoteObservation(
-	ctx context.Context,
-	source dto.CollectorSource,
-	quote models.OddsQuote,
-) error {
-	pipe := r.client.TxPipeline()
-	if err := storeQuoteObservationPipeline(ctx, pipe, source, quote); err != nil {
 		return err
 	}
 	_, err := pipe.Exec(ctx)
@@ -537,26 +543,6 @@ func storeQuotePipeline(
 	return nil
 }
 
-func storeQuoteObservationPipeline(
-	ctx context.Context,
-	pipe redis.Pipeliner,
-	source dto.CollectorSource,
-	quote models.OddsQuote,
-) error {
-	encoded, err := json.Marshal(quote)
-	if err != nil {
-		return err
-	}
-	logicKey := logicQuoteKey(quote)
-	pipe.HSet(ctx, currentKey(source), logicKey, encoded)
-	pipe.ZAdd(
-		ctx,
-		tsKey(source),
-		redis.Z{Score: float64(quoteObservedAt(quote).UnixMilli()), Member: logicKey},
-	)
-	return nil
-}
-
 func buildStreamOddsQuoteFromUpsert(event dto.CollectorStreamQuoteUpsert) models.OddsQuote {
 	collectedAt := event.OccurredAt.UTC()
 	return models.OddsQuote{
@@ -588,6 +574,10 @@ func buildStreamOddsQuoteFromUpsert(event dto.CollectorStreamQuoteUpsert) models
 
 func currentKey(source dto.CollectorSource) string {
 	return "odds:v2:source:" + source.BookmakerID + ":" + source.LobbyID + ":current"
+}
+
+func currentCacheKey(source dto.CollectorSource) string {
+	return repository.OddsSourceKey(source.BookmakerID, source.LobbyID)
 }
 
 func tsKey(source dto.CollectorSource) string {
