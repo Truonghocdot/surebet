@@ -15,10 +15,6 @@ export function heartbeatIntervalMs() {
   return Math.max(envInt("COLLECT_HEARTBEAT_MS", 15_000), 1_000);
 }
 
-export function stateObservationIntervalMs() {
-  return Math.max(envInt("COLLECT_STATE_OBSERVE_MS", 30_000), 5_000);
-}
-
 export function selectionMap(snapshot: OddsSnapshot) {
   return new Map(snapshot.selections.map((selection) => [selection.outcomeId, selection]));
 }

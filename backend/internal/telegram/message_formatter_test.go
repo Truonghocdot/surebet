@@ -38,22 +38,14 @@ func TestFormatSurebetMessageAt_FormatsOpportunityLikeDashboardCard(t *testing.T
 	}
 
 	got := formatSurebetMessageAt(item, now, time.UTC)
-	want := `<b>Kèo mới</b> | 18 giây trước
-Lệch tiền <b>1.26</b> | Lãi surebet <b>1.82%</b>
-
-<b>Arsenal &amp; Chelsea</b>
+	want := `<b>Arsenal &amp; Chelsea</b>
 Tài/Xỉu 2.5
-Hết hạn 20:15:03
 
-<b>Cửa 1 | 8xbet / BTI</b> <code>-0.67</code>
-Cửa đối ứng: <b>Tài 2.5</b>
-Tỷ trọng vốn: <b>51.23%</b>
-Odds gốc: -0.67
+<b>8xbet / BTI</b>
+Tài 2.5 | <code>-0.67</code>
 
-<b>Cửa 2 | jun88 / SABA</b> <code>1.93</code>
-Cửa đối ứng: <b>Xỉu 2.5</b>
-Tỷ trọng vốn: <b>48.77%</b>
-Odds gốc: 1.93`
+<b>jun88 / SABA</b>
+Xỉu 2.5 | <code>1.93</code>`
 
 	if got != want {
 		t.Fatalf("formatted message mismatch\nwant:\n%s\n\ngot:\n%s", want, got)
@@ -90,22 +82,14 @@ func TestFormatSurebetMessageAt_FormatsHandicapFallbacks(t *testing.T) {
 	}
 
 	got := formatSurebetMessageAt(item, now, time.UTC)
-	want := `<b>Kèo mới</b> | 1 phút trước
-Lệch tiền <b>0.02</b> | Lãi surebet <b>0.75%</b>
-
-<b>Team A vs Team B</b>
+	want := `<b>Team A vs Team B</b>
 Kèo chấp 0.5
-Hết hạn 20:11:30
 
-<b>Cửa 1 | m9bet / -</b> <code>0.91</code>
-Cửa đối ứng: <b>Team A -0.5</b>
-Tỷ trọng vốn: <b>50.50%</b>
-Odds gốc: 0.91
+<b>m9bet / -</b>
+Team A -0.5 | <code>0.91</code>
 
-<b>Cửa 2 | jun88 / CMD</b> <code>0.89</code>
-Cửa đối ứng: <b>Team B +0.5</b>
-Tỷ trọng vốn: <b>49.50%</b>
-Odds gốc: 0.89`
+<b>jun88 / CMD</b>
+Team B +0.5 | <code>0.89</code>`
 
 	if got != want {
 		t.Fatalf("formatted message mismatch\nwant:\n%s\n\ngot:\n%s", want, got)
@@ -124,7 +108,10 @@ func TestFormatSurebetMessageAtKeepsRawOddsPrecision(t *testing.T) {
 	}
 
 	message := formatSurebetMessageAt(item, now, time.UTC)
-	if !strings.Contains(message, "<code>-0.6789</code>") || !strings.Contains(message, "Odds gốc: -0.6789") {
+	if !strings.Contains(message, "<code>-0.6789</code>") {
 		t.Fatalf("expected raw odds precision in message, got:\n%s", message)
+	}
+	if strings.Contains(message, "Tỷ trọng vốn") || strings.Contains(message, "Lãi surebet") || strings.Contains(message, "Lệch tiền") {
+		t.Fatalf("expected odds-only message, got:\n%s", message)
 	}
 }

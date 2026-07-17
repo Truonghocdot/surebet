@@ -18,8 +18,7 @@ import {
   buildDeltas,
   heartbeatIntervalMs,
   heartbeatOf,
-  selectionMap,
-  stateObservationIntervalMs
+  selectionMap
 } from "./streaming-utils.js";
 
 const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header";
@@ -70,7 +69,6 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         let lastHeartbeatAt = Date.now();
-        let lastObservationAt = Date.now();
         let lastReconcileAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
 
@@ -109,15 +107,7 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
             lastHeartbeatAt = Date.now();
           }
 
-          if (Date.now() - lastObservationAt >= stateObservationIntervalMs()) {
-            await sink.pushBootstrap({
-              ...activeSnapshot,
-              collectedAt: new Date().toISOString()
-            });
-            lastObservationAt = Date.now();
-          }
-
-          await page.waitForTimeout(Math.max(Math.floor(heartbeatMs / 2), 250));
+			await page.waitForTimeout(Math.max(Math.floor(heartbeatMs / 2), 250));
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);

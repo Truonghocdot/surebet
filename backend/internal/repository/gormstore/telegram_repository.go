@@ -287,3 +287,21 @@ func (r *TelegramNotificationLogRepository) MarkFailed(
 			"updated_at":    attemptedAt.UTC(),
 		}).Error
 }
+
+func (r *TelegramNotificationLogRepository) MarkExpired(
+	ctx context.Context,
+	id string,
+	reason string,
+	expiredAt time.Time,
+) error {
+	return r.db.WithContext(ctx).
+		Table("telegram_notification_logs").
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":        "expired",
+			"available_at":  nil,
+			"reserved_at":   nil,
+			"error_message": reason,
+			"updated_at":    expiredAt.UTC(),
+		}).Error
+}

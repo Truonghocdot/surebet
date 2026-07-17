@@ -30,6 +30,7 @@ const (
 )
 
 type StreamOddsStateStore interface {
+	ObserveSource(ctx context.Context, source dto.CollectorSource, observedAt time.Time) error
 	BeginSnapshot(ctx context.Context, source dto.CollectorSource, sessionID, snapshotID string) error
 	ApplyQuoteUpsert(ctx context.Context, event dto.CollectorStreamQuoteUpsert) (bool, models.OddsQuote, error)
 	ApplyQuoteRemove(ctx context.Context, event dto.CollectorStreamQuoteRemove) (bool, models.OddsQuote, error)
@@ -46,6 +47,7 @@ type OddsStateRepository struct {
 	client            *redis.Client
 	cacheMu           sync.RWMutex
 	current           map[string]map[string]models.OddsQuote
+	sourceSeen        map[string]time.Time
 	finishedRetention time.Duration
 	overallRetention  time.Duration
 	historyTTL        time.Duration
@@ -58,6 +60,7 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 	return &OddsStateRepository{
 		client:            client,
 		current:           make(map[string]map[string]models.OddsQuote),
+		sourceSeen:        make(map[string]time.Time),
 		finishedRetention: defaultFinishedRetention,
 		overallRetention:  defaultOverallRetention,
 		historyTTL:        defaultHistoryTTL,
@@ -65,6 +68,17 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 		snapshotTTL:       defaultSnapshotTTL,
 		janitorInterval:   defaultJanitorInterval,
 	}
+}
+
+func (r *OddsStateRepository) ObserveSource(
+	_ context.Context,
+	source dto.CollectorSource,
+	_ time.Time,
+) error {
+	r.cacheMu.Lock()
+	r.sourceSeen[currentCacheKey(source)] = time.Now().UTC()
+	r.cacheMu.Unlock()
+	return nil
 }
 
 // WarmCurrentCache loads the persisted Redis state once. Hot-path reads use the
@@ -106,6 +120,7 @@ func (r *OddsStateRepository) WarmCurrentCache(ctx context.Context) error {
 
 	r.cacheMu.Lock()
 	r.current = loaded
+	r.sourceSeen = make(map[string]time.Time)
 	r.cacheMu.Unlock()
 	return nil
 }
@@ -420,7 +435,13 @@ func (r *OddsStateRepository) listCurrent(
 			BookmakerID: source.BookmakerID,
 			LobbyID:     source.LobbyID,
 		}
-		for _, item := range r.current[currentCacheKey(sourceRef)] {
+		sourceKey := currentCacheKey(sourceRef)
+		sourceSeenAt := r.sourceSeen[sourceKey]
+		for _, item := range r.current[sourceKey] {
+			if options.DetectorMarketsOnly && sourceSeenAt.After(item.CollectedAt) {
+				item.CollectedAt = sourceSeenAt
+				item.LastObservedAt = sourceSeenAt
+			}
 			if fixtureID != "" && item.FixtureID != fixtureID {
 				continue
 			}

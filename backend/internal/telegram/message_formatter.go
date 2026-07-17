@@ -3,7 +3,6 @@ package telegram
 import (
 	"fmt"
 	"html"
-	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -34,7 +33,6 @@ var (
 
 type formattedOpportunityPresentation struct {
 	MarketLabel string
-	MoneyGap    float64
 	Legs        []formattedSurebetLeg
 }
 
@@ -58,41 +56,20 @@ func formatSurebetMessageAt(item dto.SurebetView, now time.Time, location *time.
 	presentation := deriveTelegramOpportunityPresentation(item)
 
 	var builder strings.Builder
-	builder.WriteString("<b>Kèo mới</b> | ")
-	builder.WriteString(html.EscapeString(formatTelegramFreshness(item.DetectedAt, now)))
-	builder.WriteString("\n")
-	builder.WriteString("Lệch tiền <b>")
-	builder.WriteString(formatTelegramFixed(presentation.MoneyGap))
-	builder.WriteString("</b> | Lãi surebet <b>")
-	builder.WriteString(formatTelegramPercent(item.ProfitPercentage))
-	builder.WriteString("</b>\n\n")
-
 	builder.WriteString("<b>")
 	builder.WriteString(html.EscapeString(strings.TrimSpace(item.FixtureID)))
 	builder.WriteString("</b>\n")
 	builder.WriteString(html.EscapeString(presentation.MarketLabel))
-	builder.WriteString("\n")
-	builder.WriteString("Hết hạn ")
-	builder.WriteString(html.EscapeString(formatTelegramClock(item.ExpiresAt, location)))
 
-	for index, leg := range presentation.Legs {
+	for _, leg := range presentation.Legs {
 		builder.WriteString("\n\n")
-		builder.WriteString("<b>Cửa ")
-		builder.WriteString(fmt.Sprintf("%d", index+1))
-		builder.WriteString(" | ")
+		builder.WriteString("<b>")
 		builder.WriteString(html.EscapeString(formatTelegramSourceLabel(leg.BookmakerID, leg.LobbyID)))
-		builder.WriteString("</b> ")
-		builder.WriteString("<code>")
-		builder.WriteString(html.EscapeString(fmt.Sprint(leg.Odds)))
-		builder.WriteString("</code>\n")
-		builder.WriteString("Cửa đối ứng: <b>")
+		builder.WriteString("</b>\n")
 		builder.WriteString(html.EscapeString(leg.DisplayOutcome))
-		builder.WriteString("</b>\n")
-		builder.WriteString("Tỷ trọng vốn: <b>")
-		builder.WriteString(formatTelegramPercent(leg.Stake * 100))
-		builder.WriteString("</b>\n")
-		builder.WriteString("Odds gốc: ")
+		builder.WriteString(" | <code>")
 		builder.WriteString(fmt.Sprint(leg.Odds))
+		builder.WriteString("</code>")
 	}
 
 	return builder.String()
@@ -111,14 +88,8 @@ func deriveTelegramOpportunityPresentation(item dto.SurebetView) formattedOpport
 		})
 	}
 
-	moneyGap := 0.0
-	if len(legs) >= 2 {
-		moneyGap = math.Abs(math.Abs(legs[0].Odds) - math.Abs(legs[1].Odds))
-	}
-
 	return formattedOpportunityPresentation{
 		MarketLabel: deriveTelegramMarketDisplayLabel(item),
-		MoneyGap:    moneyGap,
 		Legs:        legs,
 	}
 }

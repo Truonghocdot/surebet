@@ -17,6 +17,7 @@ import (
 )
 
 type StreamOddsStateStore interface {
+	ObserveSource(ctx context.Context, source dto.CollectorSource, observedAt time.Time) error
 	BeginSnapshot(ctx context.Context, source dto.CollectorSource, sessionID, snapshotID string) error
 	ApplyQuoteUpsert(ctx context.Context, event dto.CollectorStreamQuoteUpsert) (bool, models.OddsQuote, error)
 	ApplyQuoteUpsertBatch(ctx context.Context, events []dto.CollectorStreamQuoteUpsert) ([]models.OddsQuote, error)
@@ -276,7 +277,10 @@ func (s *StreamService) handleMessage(
 				Message:   "heartbeat frame is invalid",
 			})
 		}
-		return s.requireActiveSession(conn, state, event.SessionID)
+		if err := s.requireActiveSession(conn, state, event.SessionID); err != nil {
+			return err
+		}
+		return s.store.ObserveSource(ctx, state.hello.Source, event.SentAt)
 	default:
 		return s.writeFrame(conn, dto.CollectorStreamError{
 			Type:      "error",

@@ -107,6 +107,40 @@ func TestOddsStateRepositoryCurrentReadsDoNotRoundTripToRedis(t *testing.T) {
 	}
 }
 
+func TestOddsStateRepositoryUsesSourceHeartbeatForDetectorFreshness(t *testing.T) {
+	repo, cleanup := newTestOddsStateRepository(t)
+	defer cleanup()
+
+	staleAt := time.Now().UTC().Add(-10 * time.Minute)
+	event := testQuoteUpsertEvent("fixture-heartbeat", "market-a", "outcome-a", staleAt)
+	if changed, _, err := repo.ApplyQuoteUpsert(context.Background(), event); err != nil || !changed {
+		t.Fatalf("seed quote: changed=%v err=%v", changed, err)
+	}
+
+	minObservedAt := time.Now().UTC().Add(-45 * time.Second)
+	items, err := repo.ListCurrentDetectorCandidatesBySource(context.Background(), minObservedAt)
+	if err != nil {
+		t.Fatalf("list stale detector candidates: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected stale source to be excluded, got %+v", items)
+	}
+
+	if err := repo.ObserveSource(context.Background(), event.Source, time.Now().UTC()); err != nil {
+		t.Fatalf("observe source heartbeat: %v", err)
+	}
+	items, err = repo.ListCurrentDetectorCandidatesBySource(context.Background(), minObservedAt)
+	if err != nil {
+		t.Fatalf("list heartbeat-backed detector candidates: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected heartbeat-backed candidate, got %+v", items)
+	}
+	if !items[0].CollectedAt.After(minObservedAt) {
+		t.Fatalf("expected detector quote time to derive from source heartbeat, got %s", items[0].CollectedAt)
+	}
+}
+
 func TestOddsStateRepositoryRepeatedObservationDoesNotAppendHistory(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()

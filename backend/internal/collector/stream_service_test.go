@@ -308,6 +308,10 @@ type streamStoreStub struct {
 	commitQuotes  []models.OddsQuote
 }
 
+func (s streamStoreStub) ObserveSource(context.Context, dto.CollectorSource, time.Time) error {
+	return nil
+}
+
 func (s streamStoreStub) BeginSnapshot(context.Context, dto.CollectorSource, string, string) error {
 	return nil
 }
