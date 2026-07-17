@@ -3,7 +3,8 @@ import { getSessionUser } from "@/features/auth/server/session";
 import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
 import {
   fetchBackendOdds,
-  fetchBackendOpportunities,
+  fetchBackendConfirmedOpportunities,
+  type BackendOpportunity,
   type BackendOdds
 } from "@/lib/server-dashboard-data";
 import { canonicalFixtureKey } from "@/lib/fixture-identity";
@@ -40,6 +41,13 @@ type MutableFixture = {
   leagues: Set<string>;
   sources: Map<string, MutableSource>;
   has_surebet: boolean;
+  confirmed_at: string;
+  confirmedLegs: Set<string>;
+};
+
+type ConfirmedOpportunityLegs = {
+  confirmedAt: string;
+  signatures: string[];
 };
 
 export async function GET() {
@@ -47,17 +55,16 @@ export async function GET() {
     const [user, odds, rawOpportunities] = await Promise.all([
       getSessionUser(),
       fetchBackendOdds(false),
-      fetchBackendOpportunities()
+      fetchBackendConfirmedOpportunities()
     ]);
     const opportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
+    const confirmedOpportunities = buildConfirmedOpportunityLegs(opportunities);
     const surebetLegs = new Set(
-      opportunities.flatMap((opportunity) =>
-        opportunity.legs.map((leg) => outcomeKey(leg.bookmaker_id, leg.lobby_id, leg.outcome_id))
-      )
+      confirmedOpportunities.flatMap((opportunity) => opportunity.signatures)
     );
 
-    const fixtures = groupOpportunityBoard(odds, surebetLegs)
-      .filter((fixture) => fixture.sources.size >= 2)
+    const fixtures = groupOpportunityBoard(odds, surebetLegs, confirmedOpportunities)
+      .filter((fixture) => fixture.sources.size >= 2 && fixture.has_surebet)
       .map(serializeFixture)
       .sort((left, right) => {
         if (left.has_surebet !== right.has_surebet) {
@@ -83,7 +90,11 @@ export async function GET() {
   }
 }
 
-function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
+function groupOpportunityBoard(
+  items: BackendOdds[],
+  surebetLegs: Set<string>,
+  confirmedOpportunities: ConfirmedOpportunityLegs[]
+) {
   const fixtures = new Map<string, MutableFixture>();
 
   for (const item of items) {
@@ -112,7 +123,9 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       latest_collected_at: observedAt,
       leagues: new Set<string>(),
       sources: new Map<string, MutableSource>(),
-      has_surebet: false
+      has_surebet: false,
+      confirmed_at: "",
+      confirmedLegs: new Set<string>()
     };
 
     fixture.match_state = pickMatchState(fixture.match_state, item.match_state);
@@ -150,9 +163,13 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       line: item.line || "",
       outcomes: []
     };
-    const isSurebetLeg = surebetLegs.has(
-      outcomeKey(item.bookmaker_id, item.lobby_id, item.outcome_id)
+    const legSignature = confirmedLegSignature(
+      item.bookmaker_id,
+      item.lobby_id,
+      item.outcome_id,
+      item.odds
     );
+    const isSurebetLeg = surebetLegs.has(legSignature);
     market.outcomes.push({
       outcome_id: item.outcome_id,
       outcome_name: item.outcome_name,
@@ -162,18 +179,32 @@ function groupOpportunityBoard(items: BackendOdds[], surebetLegs: Set<string>) {
       is_surebet_leg: isSurebetLeg
     });
     source.markets[marketType].set(marketID, market);
-    fixture.has_surebet ||= isSurebetLeg;
+    if (isSurebetLeg) {
+      fixture.confirmedLegs.add(legSignature);
+    }
+  }
+
+  for (const fixture of fixtures.values()) {
+    for (const opportunity of confirmedOpportunities) {
+      if (!opportunity.signatures.every((signature) => fixture.confirmedLegs.has(signature))) {
+        continue;
+      }
+      fixture.has_surebet = true;
+      fixture.confirmed_at = latestTimestamp(fixture.confirmed_at, opportunity.confirmedAt);
+    }
   }
 
   return Array.from(fixtures.values());
 }
 
 function serializeFixture(fixture: MutableFixture) {
+  const confirmedAt = fixture.confirmed_at || fixture.latest_collected_at;
   return {
     id: fixture.id,
     match_name: fixture.match_name,
     match_state: fixture.match_state,
-    latest_collected_at: fixture.latest_collected_at,
+    latest_collected_at: confirmedAt,
+    confirmed_at: confirmedAt,
     league_names: Array.from(fixture.leagues).sort((left, right) => left.localeCompare(right)),
     has_surebet: fixture.has_surebet,
     sources: Array.from(fixture.sources.values())
@@ -181,20 +212,24 @@ function serializeFixture(fixture: MutableFixture) {
         id: source.id,
         bookmaker_id: source.bookmaker_id,
         lobby_id: source.lobby_id,
-        latest_collected_at: source.latest_collected_at,
-        handicap: serializeMarkets(source.markets.handicap),
-        over_under: serializeMarkets(source.markets.over_under)
+        latest_collected_at: confirmedAt,
+        handicap: serializeMarkets(source.markets.handicap, true),
+        over_under: serializeMarkets(source.markets.over_under, true)
       }))
+      .filter((source) => source.handicap.length > 0 || source.over_under.length > 0)
       .sort((left, right) => left.id.localeCompare(right.id))
   };
 }
 
-function serializeMarkets(markets: Map<string, MutableMarket>) {
+function serializeMarkets(markets: Map<string, MutableMarket>, confirmedOnly = false) {
   return Array.from(markets.values())
     .map((market) => ({
       ...market,
-      outcomes: market.outcomes.sort(compareOutcomes)
+      outcomes: market.outcomes
+        .filter((outcome) => !confirmedOnly || outcome.is_surebet_leg)
+        .sort(compareOutcomes)
     }))
+    .filter((market) => market.outcomes.length > 0)
     .sort(compareMarkets);
 }
 
@@ -211,6 +246,33 @@ function sourceKey(bookmakerID: string, lobbyID: string) {
 
 function outcomeKey(bookmakerID: string, lobbyID: string, outcomeID: string) {
   return `${bookmakerID.trim()}\u0000${lobbyID.trim()}\u0000${outcomeID}`;
+}
+
+function confirmedLegSignature(
+  bookmakerID: string,
+  lobbyID: string,
+  outcomeID: string,
+  odds: number
+) {
+  return `${outcomeKey(bookmakerID, lobbyID, outcomeID)}\u0000${odds}`;
+}
+
+function buildConfirmedOpportunityLegs(
+  opportunities: BackendOpportunity[]
+): ConfirmedOpportunityLegs[] {
+  return opportunities
+    .filter((opportunity) => opportunity.legs.length === 2)
+    .map((opportunity) => ({
+      confirmedAt: opportunity.detected_at,
+      signatures: opportunity.legs.map((leg) =>
+        confirmedLegSignature(
+          leg.bookmaker_id,
+          leg.lobby_id,
+          leg.outcome_id,
+          leg.odds
+        )
+      )
+    }));
 }
 
 function displayMatchName(item: BackendOdds) {

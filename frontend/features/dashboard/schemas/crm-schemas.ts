@@ -98,6 +98,7 @@ export const opportunityBoardFixtureSchema = z.object({
   match_name: z.string(),
   match_state: z.string(),
   latest_collected_at: z.string(),
+  confirmed_at: z.string(),
   league_names: z.array(z.string()),
   has_surebet: z.boolean(),
   sources: z.array(opportunityBoardSourceSchema)

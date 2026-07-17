@@ -59,8 +59,37 @@ func TestHandleConfirmSurebetReturnsFreshResult(t *testing.T) {
 	}
 }
 
+func TestHandleListConfirmedSurebetsReturnsOnlyConfirmedResults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v2/internal/surebets/confirmed", nil)
+	ctx.Request.Header.Set("X-Surebet-Internal-Token", "internal-token")
+
+	expected := dto.SurebetView{ID: "opportunity-confirmed"}
+	server := &Server{deps: Dependencies{
+		SurebetConfirm: confirmationServiceStub{items: []dto.SurebetView{expected}},
+		InternalToken:  "internal-token",
+	}}
+	server.handleListConfirmedSurebets(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected successful response, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var payload struct {
+		Data []dto.SurebetView `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(payload.Data) != 1 || payload.Data[0].ID != expected.ID {
+		t.Fatalf("unexpected confirmed opportunities: %+v", payload.Data)
+	}
+}
+
 type confirmationServiceStub struct {
 	item      dto.SurebetView
+	items     []dto.SurebetView
 	confirmed bool
 	err       error
 }
@@ -70,4 +99,8 @@ func (s confirmationServiceStub) ConfirmCurrentSurebet(
 	string,
 ) (dto.SurebetView, bool, error) {
 	return s.item, s.confirmed, s.err
+}
+
+func (s confirmationServiceStub) ListConfirmedSurebets(context.Context) ([]dto.SurebetView, error) {
+	return append([]dto.SurebetView(nil), s.items...), s.err
 }

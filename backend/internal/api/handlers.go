@@ -31,6 +31,7 @@ type SurebetQueryService interface {
 
 type SurebetConfirmationService interface {
 	ConfirmCurrentSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
+	ListConfirmedSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
 
 type RealtimeService interface {
@@ -74,6 +75,7 @@ func (s *Server) registerRoutes() {
 	v2 := s.engine.Group("/v2")
 	v2.GET("/collector/stream", s.handleCollectorStream)
 	v2.POST("/internal/surebets/:id/confirm", s.handleConfirmSurebet)
+	v2.GET("/internal/surebets/confirmed", s.handleListConfirmedSurebets)
 }
 
 func (s *Server) handleHealth(ctx *gin.Context) {
@@ -172,15 +174,11 @@ func (s *Server) handleCollectorStream(ctx *gin.Context) {
 }
 
 func (s *Server) handleConfirmSurebet(ctx *gin.Context) {
-	if s.deps.SurebetConfirm == nil || strings.TrimSpace(s.deps.InternalToken) == "" {
+	if s.deps.SurebetConfirm == nil {
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "surebet confirmation is not configured"})
 		return
 	}
-
-	provided := ctx.GetHeader("X-Surebet-Internal-Token")
-	expected := s.deps.InternalToken
-	if len(provided) != len(expected) || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal token"})
+	if !s.requireInternalToken(ctx) {
 		return
 	}
 
@@ -198,6 +196,37 @@ func (s *Server) handleConfirmSurebet(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"data": item})
+}
+
+func (s *Server) handleListConfirmedSurebets(ctx *gin.Context) {
+	if s.deps.SurebetConfirm == nil {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "surebet confirmation is not configured"})
+		return
+	}
+	if !s.requireInternalToken(ctx) {
+		return
+	}
+
+	items, err := s.deps.SurebetConfirm.ListConfirmedSurebets(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"data": items})
+}
+
+func (s *Server) requireInternalToken(ctx *gin.Context) bool {
+	expected := strings.TrimSpace(s.deps.InternalToken)
+	if expected == "" {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "internal token is not configured"})
+		return false
+	}
+	provided := ctx.GetHeader("X-Surebet-Internal-Token")
+	if len(provided) != len(expected) || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal token"})
+		return false
+	}
+	return true
 }
 
 func placeholder(ctx *gin.Context, message string) {

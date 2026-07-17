@@ -2,6 +2,7 @@ package surebet
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +55,59 @@ func TestConfirmationServiceRejectsOpportunityAfterOddsMove(t *testing.T) {
 	}
 }
 
+func TestConfirmationServiceBatchDropsUnconfirmedCandidates(t *testing.T) {
+	confirmedCandidate := confirmationCandidate()
+	rejectedCandidate := confirmationCandidate()
+	rejectedCandidate.ID = "opportunity-rejected"
+	for index := range rejectedCandidate.Legs {
+		rejectedCandidate.Legs[index].OutcomeID += "-rejected"
+	}
+
+	service := NewConfirmationService(
+		confirmationReaderStub{items: []dto.SurebetView{confirmedCandidate, rejectedCandidate}},
+		selectiveConfirmationConfirmer{},
+		calculator.NewDetector(),
+	)
+
+	items, err := service.ListConfirmedSurebets(context.Background())
+	if err != nil {
+		t.Fatalf("list confirmed surebets: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != confirmedCandidate.ID {
+		t.Fatalf("expected only live confirmed candidate, got %+v", items)
+	}
+}
+
+func TestConfirmationServiceCachesOnlyMatchingCandidateOdds(t *testing.T) {
+	candidate := confirmationCandidate()
+	reader := &mutableConfirmationReader{items: []dto.SurebetView{candidate}}
+	confirmer := &countingConfirmationConfirmer{}
+	service := NewConfirmationService(reader, confirmer, calculator.NewDetector())
+
+	items, err := service.ListConfirmedSurebets(context.Background())
+	if err != nil || len(items) != 1 {
+		t.Fatalf("first confirmation: items=%+v err=%v", items, err)
+	}
+	items, err = service.ListConfirmedSurebets(context.Background())
+	if err != nil || len(items) != 1 {
+		t.Fatalf("cached confirmation: items=%+v err=%v", items, err)
+	}
+	if confirmer.Count() != 2 {
+		t.Fatalf("expected one two-leg collector confirmation, got %d calls", confirmer.Count())
+	}
+
+	reader.mu.Lock()
+	reader.items[0].Legs[0].Odds = 0.51
+	reader.mu.Unlock()
+	items, err = service.ListConfirmedSurebets(context.Background())
+	if err != nil || len(items) != 1 {
+		t.Fatalf("confirmation after candidate odds change: items=%+v err=%v", items, err)
+	}
+	if confirmer.Count() != 4 {
+		t.Fatalf("candidate odds change must bypass cache, got %d collector calls", confirmer.Count())
+	}
+}
+
 type confirmationReaderStub struct {
 	items []dto.SurebetView
 }
@@ -64,6 +118,62 @@ func (s confirmationReaderStub) ListCurrentSurebets(context.Context) ([]dto.Sure
 
 type confirmationConfirmerStub struct {
 	oddsByBookmaker map[string]float64
+}
+
+type selectiveConfirmationConfirmer struct{}
+
+func (selectiveConfirmationConfirmer) ConfirmQuote(
+	ctx context.Context,
+	source dto.CollectorSource,
+	fixtureID, marketID, outcomeID string,
+) (dto.CollectorConfirmQuoteResponse, error) {
+	if len(outcomeID) >= len("-rejected") && outcomeID[len(outcomeID)-len("-rejected"):] == "-rejected" {
+		return dto.CollectorConfirmQuoteResponse{ObservedAt: time.Now().UTC(), Found: false}, nil
+	}
+	return confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
+		"8xbet": -0.92,
+		"jun88": 0.96,
+	}}.ConfirmQuote(ctx, source, fixtureID, marketID, outcomeID)
+}
+
+type mutableConfirmationReader struct {
+	mu    sync.Mutex
+	items []dto.SurebetView
+}
+
+func (r *mutableConfirmationReader) ListCurrentSurebets(context.Context) ([]dto.SurebetView, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	items := make([]dto.SurebetView, len(r.items))
+	for index, item := range r.items {
+		items[index] = cloneSurebetView(item)
+	}
+	return items, nil
+}
+
+type countingConfirmationConfirmer struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (c *countingConfirmationConfirmer) ConfirmQuote(
+	ctx context.Context,
+	source dto.CollectorSource,
+	fixtureID, marketID, outcomeID string,
+) (dto.CollectorConfirmQuoteResponse, error) {
+	c.mu.Lock()
+	c.calls++
+	c.mu.Unlock()
+	return confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
+		"8xbet": -0.92,
+		"jun88": 0.96,
+	}}.ConfirmQuote(ctx, source, fixtureID, marketID, outcomeID)
+}
+
+func (c *countingConfirmationConfirmer) Count() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
 }
 
 func (s confirmationConfirmerStub) ConfirmQuote(

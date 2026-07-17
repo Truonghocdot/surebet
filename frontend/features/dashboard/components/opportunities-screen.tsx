@@ -15,7 +15,7 @@ import type {
   OpportunityBoardOutcome
 } from "@/features/dashboard/schemas/crm-schemas";
 
-const MAX_SOURCE_AGE_MS = 60_000;
+const MAX_CONFIRMED_AGE_MS = 10_000;
 
 export function OpportunitiesScreen() {
   const query = useOpportunityBoardQuery();
@@ -115,12 +115,12 @@ function useBoardClock() {
 }
 
 function isFixtureFresh(fixture: OpportunityBoardFixture, now: number) {
-  return fixture.sources.every((source) => isFreshTimestamp(source.latest_collected_at, now));
+  return fixture.has_surebet && isFreshTimestamp(fixture.confirmed_at, now);
 }
 
 function isFreshTimestamp(value: string, now: number) {
   const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) && now - timestamp <= MAX_SOURCE_AGE_MS;
+  return Number.isFinite(timestamp) && now - timestamp <= MAX_CONFIRMED_AGE_MS;
 }
 
 function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
@@ -289,10 +289,7 @@ function outcomeLabel(
 function EmptyBoard() {
   return (
     <div className="border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
-      <p className="font-semibold text-[var(--ink)]">Chưa có trận khớp giữa các nhà cái</p>
-      <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--muted)]">
-        Bảng sẽ hiển thị khi một trận có dữ liệu từ ít nhất hai sảnh khác nhau.
-      </p>
+      <p className="font-semibold text-[var(--ink)]">Chưa có cơ hội đã được xác nhận</p>
     </div>
   );
 }

@@ -14,7 +14,7 @@ const (
 	// In-play odds can disappear in seconds. Telegram alerts must use quotes
 	// observed almost simultaneously, otherwise the detector can combine a
 	// current leg with a no-longer-offered one.
-	detectorQuoteFreshnessWindow = 15 * time.Second
+	detectorQuoteFreshnessWindow = 25 * time.Second
 	detectorResultMaxAge         = 1 * time.Second
 )
 

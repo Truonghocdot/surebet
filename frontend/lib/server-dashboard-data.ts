@@ -1,3 +1,4 @@
+import "server-only";
 import { fetchBackendJSON } from "@/lib/server-api";
 
 export type BackendOpportunity = {
@@ -48,7 +49,26 @@ export type BackendOdds = {
 
 export async function fetchBackendOpportunities() {
   const payload = await fetchBackendJSON<{ data: BackendOpportunity[] }>("/v1/surebets");
-  return payload.data;
+  return payload.data ?? [];
+}
+
+export async function fetchBackendConfirmedOpportunities() {
+  const internalToken = (
+    process.env.SUREBET_INTERNAL_TOKEN ?? process.env.TELEGRAM_BOT_TOKEN ?? ""
+  ).trim();
+  if (!internalToken) {
+    throw new Error("SUREBET_INTERNAL_TOKEN chưa được cấu hình cho frontend server.");
+  }
+
+  const payload = await fetchBackendJSON<{ data: BackendOpportunity[] }>(
+    "/v2/internal/surebets/confirmed",
+    {
+      headers: {
+        "X-Surebet-Internal-Token": internalToken
+      }
+    }
+  );
+  return payload.data ?? [];
 }
 
 export async function fetchBackendOdds(includeSuspended = false) {
