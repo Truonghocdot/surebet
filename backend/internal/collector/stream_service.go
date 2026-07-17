@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"surebet/backend/internal/dto"
@@ -51,15 +52,19 @@ func (n multiSurebetNotifier) Trigger() {
 }
 
 type StreamService struct {
-	store     StreamOddsStateStore
-	publisher EventPublisher
-	notifier  SurebetNotifier
-	log       logger.Logger
-	upgrader  websocket.Upgrader
-	sessions  collectorSessionRegistry
-	batchMu   sync.Mutex
-	batches   map[string]*pendingSourcePublish
-	debounce  time.Duration
+	store         StreamOddsStateStore
+	publisher     EventPublisher
+	notifier      SurebetNotifier
+	log           logger.Logger
+	upgrader      websocket.Upgrader
+	sessions      collectorSessionRegistry
+	connections   collectorConnectionRegistry
+	writeMu       sync.Mutex
+	confirmMu     sync.Mutex
+	confirmations map[string]chan dto.CollectorConfirmQuoteResponse
+	batchMu       sync.Mutex
+	batches       map[string]*pendingSourcePublish
+	debounce      time.Duration
 }
 
 func NewStreamService(
@@ -81,8 +86,12 @@ func NewStreamService(
 		sessions: collectorSessionRegistry{
 			active: make(map[string]string),
 		},
-		batches:  make(map[string]*pendingSourcePublish),
-		debounce: 250 * time.Millisecond,
+		connections: collectorConnectionRegistry{
+			active: make(map[string]activeCollectorConnection),
+		},
+		confirmations: make(map[string]chan dto.CollectorConfirmQuoteResponse),
+		batches:       make(map[string]*pendingSourcePublish),
+		debounce:      250 * time.Millisecond,
 	}
 }
 
@@ -102,6 +111,7 @@ func (s *StreamService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if state.hello != nil {
 			s.sessions.Unregister(state.hello.Source, state.hello.SessionID)
+			s.connections.Unregister(state.hello.Source, state.hello.SessionID)
 		}
 	}()
 
@@ -281,6 +291,21 @@ func (s *StreamService) handleMessage(
 			return err
 		}
 		return s.store.ObserveSource(ctx, state.hello.Source, event.SentAt)
+	case "confirm_quote_response":
+		var response dto.CollectorConfirmQuoteResponse
+		if err := json.Unmarshal(payload, &response); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_confirm_quote_response",
+				Message:   "collector confirmation response is invalid",
+			})
+		}
+		if err := s.requireActiveSession(conn, state, response.SessionID); err != nil {
+			return err
+		}
+		s.deliverQuoteConfirmation(response)
+		return nil
 	default:
 		return s.writeFrame(conn, dto.CollectorStreamError{
 			Type:      "error",
@@ -319,6 +344,7 @@ func (s *StreamService) handleHello(
 
 	state.hello = &hello
 	s.sessions.Register(hello.Source, hello.SessionID)
+	s.connections.Register(hello.Source, hello.SessionID, conn)
 
 	return s.writeFrame(conn, dto.CollectorStreamHelloAck{
 		Type:            "hello_ack",
@@ -418,7 +444,68 @@ func (s *StreamService) publishQuotes(
 }
 
 func (s *StreamService) writeFrame(conn *websocket.Conn, payload any) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return conn.WriteJSON(payload)
+}
+
+func (s *StreamService) ConfirmQuote(
+	ctx context.Context,
+	source dto.CollectorSource,
+	fixtureID, marketID, outcomeID string,
+) (dto.CollectorConfirmQuoteResponse, error) {
+	connection, ok := s.connections.Get(source)
+	if !ok || !s.sessions.IsActive(source, connection.sessionID) {
+		return dto.CollectorConfirmQuoteResponse{}, errors.New("collector source is not connected")
+	}
+
+	requestID := uuid.NewString()
+	responseChannel := make(chan dto.CollectorConfirmQuoteResponse, 1)
+	s.confirmMu.Lock()
+	s.confirmations[requestID] = responseChannel
+	s.confirmMu.Unlock()
+	defer func() {
+		s.confirmMu.Lock()
+		delete(s.confirmations, requestID)
+		s.confirmMu.Unlock()
+	}()
+
+	const timeoutMS = 2000
+	if err := s.writeFrame(connection.conn, dto.CollectorConfirmQuoteRequest{
+		Type:        "confirm_quote",
+		SessionID:   connection.sessionID,
+		RequestID:   requestID,
+		RequestedAt: time.Now().UTC(),
+		FixtureID:   fixtureID,
+		MarketID:    marketID,
+		OutcomeID:   outcomeID,
+		TimeoutMS:   timeoutMS,
+	}); err != nil {
+		return dto.CollectorConfirmQuoteResponse{}, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return dto.CollectorConfirmQuoteResponse{}, ctx.Err()
+	case response := <-responseChannel:
+		if response.Error != "" {
+			return response, errors.New(response.Error)
+		}
+		return response, nil
+	}
+}
+
+func (s *StreamService) deliverQuoteConfirmation(response dto.CollectorConfirmQuoteResponse) {
+	s.confirmMu.Lock()
+	responseChannel := s.confirmations[response.RequestID]
+	s.confirmMu.Unlock()
+	if responseChannel == nil {
+		return
+	}
+	select {
+	case responseChannel <- response:
+	default:
+	}
 }
 
 type collectorStreamConnectionState struct {
@@ -436,6 +523,45 @@ func (s *collectorStreamConnectionState) sessionID() string {
 type collectorSessionRegistry struct {
 	mu     sync.RWMutex
 	active map[string]string
+}
+
+type activeCollectorConnection struct {
+	sessionID string
+	conn      *websocket.Conn
+}
+
+type collectorConnectionRegistry struct {
+	mu     sync.RWMutex
+	active map[string]activeCollectorConnection
+}
+
+func (r *collectorConnectionRegistry) Register(
+	source dto.CollectorSource,
+	sessionID string,
+	conn *websocket.Conn,
+) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.active[repository.OddsSourceKey(source.BookmakerID, source.LobbyID)] = activeCollectorConnection{
+		sessionID: sessionID,
+		conn:      conn,
+	}
+}
+
+func (r *collectorConnectionRegistry) Get(source dto.CollectorSource) (activeCollectorConnection, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	connection, ok := r.active[repository.OddsSourceKey(source.BookmakerID, source.LobbyID)]
+	return connection, ok
+}
+
+func (r *collectorConnectionRegistry) Unregister(source dto.CollectorSource, sessionID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := repository.OddsSourceKey(source.BookmakerID, source.LobbyID)
+	if r.active[key].sessionID == sessionID {
+		delete(r.active, key)
+	}
 }
 
 func (r *collectorSessionRegistry) Register(source dto.CollectorSource, sessionID string) {

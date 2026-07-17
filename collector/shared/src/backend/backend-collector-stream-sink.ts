@@ -6,7 +6,9 @@ import type {
   LobbyCode,
   OddsDelta,
   OddsSelection,
-  OddsSnapshot
+  OddsSnapshot,
+  QuoteConfirmationHandler,
+  QuoteConfirmationRequest
 } from "../contracts.js";
 import { normalizeSourceEventStartAt } from "./source-event-start-at.js";
 
@@ -32,6 +34,15 @@ type ErrorFrame = {
   message?: string;
 };
 
+type ConfirmQuoteFrame = {
+  type?: string;
+  request_id?: string;
+  fixture_id?: string;
+  market_id?: string;
+  outcome_id?: string;
+  timeout_ms?: number;
+};
+
 export class BackendCollectorStreamSink implements CollectorSink {
   private readonly startedAt = new Date().toISOString();
   private readonly streamURL: string;
@@ -44,6 +55,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
   private pendingResync = true;
   private sessionId = "";
   private seq = 0;
+  private quoteConfirmationHandler: QuoteConfirmationHandler | null = null;
 
   constructor(
     backendURL: string,
@@ -142,6 +154,10 @@ export class BackendCollectorStreamSink implements CollectorSink {
     this.latestBootstrap = snapshot;
   }
 
+  setQuoteConfirmationHandler(handler: QuoteConfirmationHandler | null) {
+    this.quoteConfirmationHandler = handler;
+  }
+
   private enqueue(operation: () => Promise<void>) {
     const pending = this.sendQueue.catch(() => undefined).then(operation);
     this.sendQueue = pending.catch(() => undefined);
@@ -214,10 +230,10 @@ export class BackendCollectorStreamSink implements CollectorSink {
   }
 
   private handleIncomingFrame(payload: string) {
-    let parsed: HelloAckFrame | ResyncFrame | ErrorFrame;
+    let parsed: HelloAckFrame | ResyncFrame | ErrorFrame | ConfirmQuoteFrame;
 
     try {
-      parsed = JSON.parse(payload) as HelloAckFrame | ResyncFrame | ErrorFrame;
+      parsed = JSON.parse(payload) as HelloAckFrame | ResyncFrame | ErrorFrame | ConfirmQuoteFrame;
     } catch {
       return;
     }
@@ -237,7 +253,47 @@ export class BackendCollectorStreamSink implements CollectorSink {
       if ((parsed as ErrorFrame).code === "stale_session") {
         this.socket?.close();
       }
+      return;
     }
+
+    if (parsed.type === "confirm_quote") {
+      void this.handleQuoteConfirmation(parsed as ConfirmQuoteFrame);
+    }
+  }
+
+  private async handleQuoteConfirmation(frame: ConfirmQuoteFrame) {
+    const request = parseQuoteConfirmationRequest(frame);
+    if (!request) {
+      return;
+    }
+
+    let observedAt = new Date().toISOString();
+    let selection: OddsSelection | null = null;
+    let error = "";
+    try {
+      if (!this.quoteConfirmationHandler) {
+        throw new Error("quote confirmation is not supported by this collector");
+      }
+      const result = await this.quoteConfirmationHandler(request);
+      observedAt = result.observedAt;
+      selection = result.selection;
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.sendFrame({
+        type: "confirm_quote_response",
+        session_id: this.sessionId,
+        seq: this.nextSeq(),
+        request_id: request.requestId,
+        observed_at: observedAt,
+        found: selection !== null && !selection.suspended,
+        error,
+        selection: selection ? serializeConfirmedSelection(selection) : undefined
+      });
+    });
   }
 
   private async replayLatestBootstrapIfNeeded() {
@@ -328,6 +384,43 @@ export class BackendCollectorStreamSink implements CollectorSink {
     this.seq += 1;
     return this.seq;
   }
+}
+
+function parseQuoteConfirmationRequest(
+  frame: ConfirmQuoteFrame
+): QuoteConfirmationRequest | null {
+  const requestId = String(frame.request_id ?? "").trim();
+  const fixtureId = String(frame.fixture_id ?? "").trim();
+  const marketId = String(frame.market_id ?? "").trim();
+  const outcomeId = String(frame.outcome_id ?? "").trim();
+  if (!requestId || !fixtureId || !marketId || !outcomeId) {
+    return null;
+  }
+  return {
+    requestId,
+    fixtureId,
+    marketId,
+    outcomeId,
+    timeoutMs: Math.max(Math.min(Number(frame.timeout_ms) || 2_000, 3_000), 250)
+  };
+}
+
+function serializeConfirmedSelection(selection: OddsSelection) {
+  return {
+    fixture_id: selection.fixtureId,
+    sport: selection.sport ?? "football",
+    home_team: selection.homeTeam ?? "",
+    away_team: selection.awayTeam ?? "",
+    league_name: selection.leagueName ?? "",
+    match_state: selection.matchState ?? "unknown",
+    event_start_at: selection.eventStartAt ?? "",
+    market_id: selection.marketId,
+    outcome_id: selection.outcomeId,
+    outcome_name: selection.outcomeName,
+    odds: selection.odds,
+    available_stake: selection.availableStake,
+    suspended: selection.suspended
+  };
 }
 
 function buildCollectorStreamURL(backendURL: string) {

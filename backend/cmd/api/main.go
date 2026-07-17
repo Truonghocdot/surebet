@@ -68,10 +68,8 @@ func main() {
 		runtimeSettingRepository,
 		cfg.Collector,
 	)
-	surebetQuery := surebet.NewQueryService(
-		oddsStateRepository,
-		calculator.NewDetectorWithLogger(log),
-	)
+	detector := calculator.NewDetectorWithLogger(log)
+	surebetQuery := surebet.NewQueryService(oddsStateRepository, detector)
 	telegramNotifier := telegram.NewNotifier(
 		cfg.Telegram,
 		surebetQuery,
@@ -85,6 +83,16 @@ func main() {
 		telegramRecipientRepository,
 	)
 
+	collectorStream := collector.NewStreamService(
+		oddsStateRepository,
+		collector.NewMultiEventPublisher(
+			collector.NewLoggingEventPublisher(log),
+			collector.NewRealtimeEventPublisher(realtimeHub),
+		),
+		collector.NewMultiSurebetNotifier(surebetQuery, telegramNotifier),
+		log,
+	)
+
 	server := api.NewServer(cfg.HTTP, api.Dependencies{
 		Health: health.NewStaticReporter(cfg.App.Name),
 		Logger: log,
@@ -96,15 +104,9 @@ func main() {
 		AuthTokens:      tokenManager,
 		CollectorConfig: collectorConfigService,
 		OddsQuery:       odds.NewQueryService(oddsStateRepository),
-		CollectorStream: collector.NewStreamService(
-			oddsStateRepository,
-			collector.NewMultiEventPublisher(
-				collector.NewLoggingEventPublisher(log),
-				collector.NewRealtimeEventPublisher(realtimeHub),
-			),
-			collector.NewMultiSurebetNotifier(surebetQuery, telegramNotifier),
-			log,
-		),
+		CollectorStream: collectorStream,
+		SurebetConfirm:  surebet.NewConfirmationService(surebetQuery, collectorStream, detector),
+		InternalToken:   cfg.Telegram.BotToken,
 		TelegramAdmin:   telegramAdmin,
 		TelegramWebhook: telegramWebhook,
 		Realtime:        realtimeHub,

@@ -1,4 +1,10 @@
-import type { CollectContext, CollectorRuntime, OddsSnapshot } from "../contracts.js";
+import type {
+  CollectContext,
+  CollectorRuntime,
+  OddsSnapshot,
+  QuoteConfirmationRequest,
+  QuoteConfirmationResult
+} from "../contracts.js";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { writeDebugArtifacts } from "../core/debug.js";
 import { envInt } from "../core/env.js";
@@ -111,6 +117,35 @@ export class EightXBetRuntime implements CollectorRuntime {
   async close() {
     this.shutdownRequested = true;
     await this.resetPage(true);
+  }
+
+  async confirmQuote(request: QuoteConfirmationRequest): Promise<QuoteConfirmationResult> {
+    const page = this.page;
+    if (!page || page.isClosed()) {
+      throw new Error("8xbet in-play page is not available for confirmation");
+    }
+
+    const nextSnapshot = this.networkFeed.waitForNextFixtureSnapshot(
+      request.fixtureId,
+      request.timeoutMs
+    );
+    try {
+      await refreshEightXBetFixtureSubscriptions(page, [request.fixtureId]);
+      const snapshot = await nextSnapshot;
+      const selection = snapshot.selections.find(
+        (item) =>
+          item.fixtureId === request.fixtureId &&
+          item.marketId === request.marketId &&
+          item.outcomeId === request.outcomeId
+      );
+      return {
+        observedAt: snapshot.collectedAt,
+        selection: selection ?? null
+      };
+    } catch (error) {
+      void nextSnapshot.catch(() => undefined);
+      throw error;
+    }
   }
 
   private async ensurePage(targetURL: string) {
@@ -369,6 +404,7 @@ async function installEightXBetSocketSubscriptionBridge(context: BrowserContext)
     const bridgeWindow = window as typeof window & {
       __surebetSetEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
       __surebetAddEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
+      __surebetRefreshEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
     };
     bridgeWindow.__surebetSetEightXBetFixtureSubscriptions = (fixtureIDs) => {
       desiredFixtureIDs.clear();
@@ -391,6 +427,26 @@ async function installEightXBetSocketSubscriptionBridge(context: BrowserContext)
         syncSubscriptions(socket);
       }
     };
+    bridgeWindow.__surebetRefreshEightXBetFixtureSubscriptions = (fixtureIDs) => {
+      const validFixtureIDs = fixtureIDs.filter((fixtureID) => /^\d+$/.test(fixtureID));
+      for (const fixtureID of validFixtureIDs) {
+        desiredFixtureIDs.add(fixtureID);
+      }
+      for (const socket of sockets) {
+        if (!connectedSockets.has(socket) || socket.readyState !== nativeWebSocket.OPEN) {
+          continue;
+        }
+        const active = subscribedFixtureIDs.get(socket) ?? new Set<string>();
+        for (const fixtureID of validFixtureIDs) {
+          if (active.has(fixtureID)) {
+            sendFrame(socket, `UNSUBSCRIBE\nid:${subscriptionID(fixtureID)}`);
+            active.delete(fixtureID);
+          }
+        }
+        subscribedFixtureIDs.set(socket, active);
+        syncSubscriptions(socket);
+      }
+    };
   });
 }
 
@@ -408,6 +464,14 @@ async function addEightXBetFixtureSubscriptions(page: Page, fixtureIDs: string[]
     (window as typeof window & {
       __surebetAddEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
     }).__surebetAddEightXBetFixtureSubscriptions?.(ids);
+  }, fixtureIDs);
+}
+
+async function refreshEightXBetFixtureSubscriptions(page: Page, fixtureIDs: string[]) {
+  await page.evaluate((ids) => {
+    (window as typeof window & {
+      __surebetRefreshEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
+    }).__surebetRefreshEightXBetFixtureSubscriptions?.(ids);
   }, fixtureIDs);
 }
 

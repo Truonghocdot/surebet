@@ -121,6 +121,7 @@ export class EightXBetCollector implements Collector {
       });
     }, Math.max(Math.floor(heartbeatIntervalMs() / 2), 1_000));
 
+    sink.setQuoteConfirmationHandler?.((request) => this.inplayRuntime.confirmQuote(request));
     const inplayTask = this.inplayRuntime.streamSnapshots(
       {
         pageURL: this.inplayPageURL
@@ -136,6 +137,7 @@ export class EightXBetCollector implements Collector {
     try {
       await inplayTask;
     } finally {
+      sink.setQuoteConfirmationHandler?.(null);
       clearInterval(heartbeatTimer);
       await this.inplayRuntime.close();
     }

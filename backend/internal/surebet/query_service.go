@@ -14,7 +14,7 @@ const (
 	// In-play odds can disappear in seconds. Telegram alerts must use quotes
 	// observed almost simultaneously, otherwise the detector can combine a
 	// current leg with a no-longer-offered one.
-	detectorQuoteFreshnessWindow = 45 * time.Second
+	detectorQuoteFreshnessWindow = 15 * time.Second
 	detectorResultMaxAge         = 1 * time.Second
 )
 
@@ -142,6 +142,7 @@ func mapOpportunity(item models.SurebetOpportunity) dto.SurebetView {
 		legs = append(legs, dto.SurebetLegView{
 			BookmakerID: leg.BookmakerID,
 			LobbyID:     leg.LobbyID,
+			FixtureID:   leg.FixtureID,
 			MarketID:    leg.MarketID,
 			OutcomeID:   leg.OutcomeID,
 			OutcomeName: leg.OutcomeName,

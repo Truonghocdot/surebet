@@ -22,6 +22,12 @@ type FeedFixtureState = {
 
 type FeedSnapshotListener = (snapshot: OddsSnapshot, fixtureId: string) => Promise<void>;
 
+type FixtureSnapshotWaiter = {
+  resolve: (snapshot: OddsSnapshot) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 const supportedMarketCodes = new Set<SupportedMarketCode>(["ah", "ah_1st", "ou", "ou_1st"]);
 export class EightXBetNetworkFeed {
   private readonly fixtures = new Map<string, FeedFixtureState>();
@@ -29,6 +35,7 @@ export class EightXBetNetworkFeed {
   private listener: FeedSnapshotListener | null = null;
   private deliveryQueue = Promise.resolve();
   private deliveryRunning = false;
+  private readonly fixtureWaiters = new Map<string, Set<FixtureSnapshotWaiter>>();
 
   constructor(private readonly collectorId: string) {}
 
@@ -67,6 +74,13 @@ export class EightXBetNetworkFeed {
   deactivate() {
     this.listener = null;
     this.pendingFixtureIds.clear();
+    for (const waiters of this.fixtureWaiters.values()) {
+      for (const waiter of waiters) {
+        clearTimeout(waiter.timer);
+        waiter.reject(new Error("8xbet network feed stopped before quote confirmation"));
+      }
+    }
+    this.fixtureWaiters.clear();
   }
 
   overlaySnapshot(domSnapshot: OddsSnapshot) {
@@ -106,6 +120,25 @@ export class EightXBetNetworkFeed {
 
   async flush() {
     await this.deliveryQueue;
+  }
+
+  waitForNextFixtureSnapshot(fixtureId: string, timeoutMs: number) {
+    return new Promise<OddsSnapshot>((resolve, reject) => {
+      const waiters = this.fixtureWaiters.get(fixtureId) ?? new Set<FixtureSnapshotWaiter>();
+      const waiter: FixtureSnapshotWaiter = {
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          waiters.delete(waiter);
+          if (waiters.size === 0) {
+            this.fixtureWaiters.delete(fixtureId);
+          }
+          reject(new Error(`8xbet quote confirmation timed out for fixture ${fixtureId}`));
+        }, timeoutMs)
+      };
+      waiters.add(waiter);
+      this.fixtureWaiters.set(fixtureId, waiters);
+    });
   }
 
   private async ingestResponse(response: Response) {
@@ -236,6 +269,9 @@ export class EightXBetNetworkFeed {
     }
 
     current.occurredAt = occurredAt || new Date().toISOString();
+    if (full) {
+      this.resolveFixtureWaiters(fixtureId);
+    }
     if (envBool("EIGHTXBET_STREAM_TELEMETRY", true)) {
       const sourceLagMs = Math.max(Date.now() - new Date(current.occurredAt).getTime(), 0);
       console.log(
@@ -290,15 +326,7 @@ export class EightXBetNetworkFeed {
           continue;
         }
 
-        const snapshot: OddsSnapshot = {
-          source: {
-            collectorId: this.collectorId,
-            bookmakerId: "8xbet",
-            lobbyId: "default"
-          },
-          collectedAt: state.occurredAt || new Date().toISOString(),
-          selections
-        };
+        const snapshot = this.fixtureSnapshot(fixtureId, state, selections);
 
         try {
           await listener(snapshot, fixtureId);
@@ -321,6 +349,37 @@ export class EightXBetNetworkFeed {
       this.fixtures.set(fixtureId, state);
     }
     return state;
+  }
+
+  private resolveFixtureWaiters(fixtureId: string) {
+    const waiters = this.fixtureWaiters.get(fixtureId);
+    const state = this.fixtures.get(fixtureId);
+    if (!waiters || !state?.metadata) {
+      return;
+    }
+
+    this.fixtureWaiters.delete(fixtureId);
+    const snapshot = this.fixtureSnapshot(fixtureId, state, buildSelections(state));
+    for (const waiter of waiters) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(snapshot);
+    }
+  }
+
+  private fixtureSnapshot(
+    _fixtureId: string,
+    state: FeedFixtureState,
+    selections: OddsSelection[]
+  ): OddsSnapshot {
+    return {
+      source: {
+        collectorId: this.collectorId,
+        bookmakerId: "8xbet",
+        lobbyId: "default"
+      },
+      collectedAt: state.occurredAt || new Date().toISOString(),
+      selections
+    };
   }
 }
 

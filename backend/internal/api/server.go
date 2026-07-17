@@ -21,6 +21,8 @@ type Dependencies struct {
 	CollectorConfig CollectorConfigService
 	OddsQuery       OddsQueryService
 	CollectorStream CollectorStreamService
+	SurebetConfirm  SurebetConfirmationService
+	InternalToken   string
 	TelegramAdmin   TelegramAdminService
 	TelegramWebhook TelegramWebhookService
 	Realtime        RealtimeService

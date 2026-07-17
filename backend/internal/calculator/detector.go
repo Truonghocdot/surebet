@@ -594,6 +594,7 @@ func buildLegs(left, right normalizedQuote, combinedProbability float64) []model
 		{
 			BookmakerID: left.quote.BookmakerID,
 			LobbyID:     left.quote.LobbyID,
+			FixtureID:   left.quote.FixtureID,
 			MarketID:    left.quote.MarketID,
 			OutcomeID:   left.quote.OutcomeID,
 			OutcomeName: left.quote.OutcomeName,
@@ -603,6 +604,7 @@ func buildLegs(left, right normalizedQuote, combinedProbability float64) []model
 		{
 			BookmakerID: right.quote.BookmakerID,
 			LobbyID:     right.quote.LobbyID,
+			FixtureID:   right.quote.FixtureID,
 			MarketID:    right.quote.MarketID,
 			OutcomeID:   right.quote.OutcomeID,
 			OutcomeName: right.quote.OutcomeName,

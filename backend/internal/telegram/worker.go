@@ -28,11 +28,15 @@ type NotificationQueue interface {
 	MarkExpired(ctx context.Context, id string, reason string, expiredAt time.Time) error
 }
 
+type SurebetConfirmer interface {
+	ConfirmSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
+}
+
 type Worker struct {
 	cfg        config.TelegramConfig
 	recipients RecipientLookup
 	queue      NotificationQueue
-	surebets   SurebetReader
+	surebets   SurebetConfirmer
 	log        logger.Logger
 	client     *http.Client
 }
@@ -41,7 +45,7 @@ func NewWorker(
 	cfg config.TelegramConfig,
 	recipients RecipientLookup,
 	queue NotificationQueue,
-	surebets SurebetReader,
+	surebets SurebetConfirmer,
 	log logger.Logger,
 ) *Worker {
 	if strings.TrimSpace(cfg.BotToken) == "" {
@@ -107,42 +111,19 @@ func (w *Worker) processBatch(ctx context.Context, batchSize int) error {
 	for _, job := range jobs {
 		attemptedAt := time.Now().UTC()
 		if w.surebets == nil {
-			_ = w.queue.RetryOrFail(
-				ctx,
-				job,
-				"surebet revalidation is not configured",
-				w.cfg.QueueRetryDelay,
-				w.cfg.QueueMaxAttempts,
-				attemptedAt,
-			)
+			_ = w.queue.MarkExpired(ctx, job.ID, "surebet confirmation is not configured", attemptedAt)
 			continue
 		}
 
-		currentSurebets, err := w.surebets.ListCurrentSurebets(ctx)
+		current, confirmed, err := w.surebets.ConfirmSurebet(ctx, job.OpportunityID)
 		if err != nil {
-			_ = w.queue.RetryOrFail(
-				ctx,
-				job,
-				"surebet revalidation failed: "+err.Error(),
-				w.cfg.QueueRetryDelay,
-				w.cfg.QueueMaxAttempts,
-				attemptedAt,
-			)
+			_ = w.queue.MarkExpired(ctx, job.ID, "surebet confirmation failed: "+err.Error(), attemptedAt)
+			w.log.Warn("telegram notification confirmation failed", "opportunity_id", job.OpportunityID, "error", err.Error())
 			continue
 		}
 
-		var current dto.SurebetView
-		stillActive := false
-		for _, item := range currentSurebets {
-			if item.ID != job.OpportunityID {
-				continue
-			}
-			current = item
-			stillActive = true
-			break
-		}
-		if !stillActive || (!current.ExpiresAt.IsZero() && !current.ExpiresAt.After(attemptedAt)) {
-			_ = w.queue.MarkExpired(ctx, job.ID, "surebet is no longer active", attemptedAt)
+		if !confirmed || (!current.ExpiresAt.IsZero() && !current.ExpiresAt.After(attemptedAt)) {
+			_ = w.queue.MarkExpired(ctx, job.ID, "surebet is no longer confirmed", attemptedAt)
 			w.log.Info("telegram notification expired before send", "opportunity_id", job.OpportunityID)
 			continue
 		}

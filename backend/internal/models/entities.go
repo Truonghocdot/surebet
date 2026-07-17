@@ -51,6 +51,7 @@ type OddsQuote struct {
 type SurebetLeg struct {
 	BookmakerID string  `json:"bookmaker_id"`
 	LobbyID     string  `json:"lobby_id"`
+	FixtureID   string  `json:"fixture_id"`
 	MarketID    string  `json:"market_id"`
 	OutcomeID   string  `json:"outcome_id"`
 	OutcomeName string  `json:"outcome_name"`

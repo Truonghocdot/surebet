@@ -84,6 +84,78 @@ func TestStreamServiceRejectsStaleSession(t *testing.T) {
 	}
 }
 
+func TestStreamServiceConfirmsQuoteThroughActiveCollector(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+
+	hello := testHello("session-confirm")
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read hello_ack: %v", err)
+	}
+
+	type confirmationResult struct {
+		response dto.CollectorConfirmQuoteResponse
+		err      error
+	}
+	resultChannel := make(chan confirmationResult, 1)
+	go func() {
+		response, err := service.ConfirmQuote(
+			context.Background(),
+			hello.Source,
+			"fixture-a",
+			"hdp-ah",
+			"home-plus-0.5",
+		)
+		resultChannel <- confirmationResult{response: response, err: err}
+	}()
+
+	var request dto.CollectorConfirmQuoteRequest
+	if err := conn.ReadJSON(&request); err != nil {
+		t.Fatalf("read confirmation request: %v", err)
+	}
+	if request.Type != "confirm_quote" || request.SessionID != hello.SessionID ||
+		request.FixtureID != "fixture-a" || request.MarketID != "hdp-ah" ||
+		request.OutcomeID != "home-plus-0.5" {
+		t.Fatalf("unexpected confirmation request: %+v", request)
+	}
+
+	observedAt := time.Now().UTC()
+	if err := conn.WriteJSON(dto.CollectorConfirmQuoteResponse{
+		Type:       "confirm_quote_response",
+		SessionID:  hello.SessionID,
+		Seq:        1,
+		RequestID:  request.RequestID,
+		ObservedAt: observedAt,
+		Found:      true,
+		Selection: &dto.CollectorConfirmedSelection{
+			FixtureID:   request.FixtureID,
+			MarketID:    request.MarketID,
+			OutcomeID:   request.OutcomeID,
+			OutcomeName: "Team A +0.5",
+			Odds:        -0.92,
+		},
+	}); err != nil {
+		t.Fatalf("write confirmation response: %v", err)
+	}
+
+	select {
+	case result := <-resultChannel:
+		if result.err != nil {
+			t.Fatalf("confirm quote: %v", result.err)
+		}
+		if !result.response.Found || result.response.RequestID != request.RequestID ||
+			result.response.Selection == nil || result.response.Selection.Odds != -0.92 {
+			t.Fatalf("unexpected confirmation response: %+v", result.response)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for quote confirmation")
+	}
+}
+
 func TestStreamServicePublishesBufferedSnapshotOnceOnCommit(t *testing.T) {
 	publisher := &recordingEventPublisher{}
 	service := NewStreamService(

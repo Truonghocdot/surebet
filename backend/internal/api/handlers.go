@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,6 +27,10 @@ type AuthLoginService interface {
 
 type SurebetQueryService interface {
 	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
+}
+
+type SurebetConfirmationService interface {
+	ConfirmCurrentSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
 }
 
 type RealtimeService interface {
@@ -68,6 +73,7 @@ func (s *Server) registerRoutes() {
 
 	v2 := s.engine.Group("/v2")
 	v2.GET("/collector/stream", s.handleCollectorStream)
+	v2.POST("/internal/surebets/:id/confirm", s.handleConfirmSurebet)
 }
 
 func (s *Server) handleHealth(ctx *gin.Context) {
@@ -163,6 +169,35 @@ func (s *Server) handleCollectorStream(ctx *gin.Context) {
 	}
 
 	s.deps.CollectorStream.ServeHTTP(ctx.Writer, ctx.Request)
+}
+
+func (s *Server) handleConfirmSurebet(ctx *gin.Context) {
+	if s.deps.SurebetConfirm == nil || strings.TrimSpace(s.deps.InternalToken) == "" {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "surebet confirmation is not configured"})
+		return
+	}
+
+	provided := ctx.GetHeader("X-Surebet-Internal-Token")
+	expected := s.deps.InternalToken
+	if len(provided) != len(expected) || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal token"})
+		return
+	}
+
+	item, confirmed, err := s.deps.SurebetConfirm.ConfirmCurrentSurebet(
+		ctx.Request.Context(),
+		strings.TrimSpace(ctx.Param("id")),
+	)
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	if !confirmed {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "surebet is no longer confirmed"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"data": item})
 }
 
 func placeholder(ctx *gin.Context, message string) {

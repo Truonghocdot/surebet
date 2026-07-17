@@ -66,6 +66,23 @@ export type CollectorHeartbeat = {
   sentAt: string;
 };
 
+export type QuoteConfirmationRequest = {
+  requestId: string;
+  fixtureId: string;
+  marketId: string;
+  outcomeId: string;
+  timeoutMs: number;
+};
+
+export type QuoteConfirmationResult = {
+  observedAt: string;
+  selection: OddsSelection | null;
+};
+
+export type QuoteConfirmationHandler = (
+  request: QuoteConfirmationRequest
+) => Promise<QuoteConfirmationResult>;
+
 export interface Collector {
   collect(): Promise<OddsSnapshot>;
 }
@@ -83,6 +100,7 @@ export interface CollectorSink {
   pushDelta(deltas: OddsDelta[]): Promise<void>;
   heartbeat(payload: CollectorHeartbeat): Promise<void>;
   setResyncSnapshot?(snapshot: OddsSnapshot): void;
+  setQuoteConfirmationHandler?(handler: QuoteConfirmationHandler | null): void;
 }
 
 export interface StreamableCollector extends Collector {

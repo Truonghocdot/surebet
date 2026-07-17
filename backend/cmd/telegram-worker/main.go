@@ -29,7 +29,11 @@ func main() {
 
 	recipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	queueRepository := gormstore.NewTelegramNotificationLogRepository(db)
-	surebetReader := telegram.NewBackendSurebetReader(cfg.Telegram.BackendAPIURL, cfg.Telegram.RequestTimeout)
+	surebetReader := telegram.NewBackendSurebetConfirmer(
+		cfg.Telegram.BackendAPIURL,
+		cfg.Telegram.BotToken,
+		cfg.Telegram.RequestTimeout,
+	)
 	worker := telegram.NewWorker(cfg.Telegram, recipientRepository, queueRepository, surebetReader, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

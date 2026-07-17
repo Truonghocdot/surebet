@@ -50,6 +50,24 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         let activeSnapshot = initialSnapshot;
         let activeSnapshotMap = selectionMap(initialSnapshot);
         let streamFailure: Error | null = null;
+        sink.setQuoteConfirmationHandler?.(async (request) => {
+          target = await resolveCmdContentTarget(page);
+          const confirmationSnapshot = parseJun88CmdSnapshot(
+            await extractCmdMatchHtml(target),
+            target.url(),
+            this.collectorId
+          );
+          const selection = confirmationSnapshot.selections.find(
+            (item) =>
+              item.fixtureId === request.fixtureId &&
+              item.marketId === request.marketId &&
+              item.outcomeId === request.outcomeId
+          );
+          return {
+            observedAt: confirmationSnapshot.collectedAt,
+            selection: selection ?? null
+          };
+        });
         await installCmdDeltaBinding(page, async (deltas) => {
           applyDeltasToSelectionMap(activeSnapshotMap, deltas);
           activeSnapshot = {
@@ -112,6 +130,8 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
         throw new Error(`[${this.collectorId}] stream failed: ${formatError(error)}`);
+      } finally {
+        sink.setQuoteConfirmationHandler?.(null);
       }
     });
   }
