@@ -23,10 +23,11 @@ type FeedFixtureState = {
   occurredAt: string;
   lastEventFull: boolean;
   lastTouchedMarkets: SupportedMarketCode[];
+  retired: boolean;
 };
 
 type FeedDeltaListener = (deltas: OddsDelta[], fixtureId: string) => Promise<void>;
-type FixtureDiscoveryListener = (fixtureId: string) => Promise<void> | void;
+type ActiveFixtureListener = (fixtureIds: string[]) => Promise<void> | void;
 
 type FixtureSnapshotWaiter = {
   resolve: (snapshot: OddsSnapshot) => void;
@@ -39,18 +40,24 @@ export class EightXBetNetworkFeed {
   private readonly fixtures = new Map<string, FeedFixtureState>();
   private readonly pendingFixtureIds = new Set<string>();
   private listener: FeedDeltaListener | null = null;
-  private fixtureDiscoveryListener: FixtureDiscoveryListener | null = null;
+  private activeFixtureListener: ActiveFixtureListener | null = null;
+  private activeMetadataFixtureIds: Set<string> | null = null;
+  private lastNotifiedFixtureSignature = "";
   private deliveryQueue = Promise.resolve();
   private deliveryRunning = false;
   private lastTelemetryAt = 0;
+  private metadataGeneration = 0;
   private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly fixtureWaiters = new Map<string, Set<FixtureSnapshotWaiter>>();
 
   constructor(private readonly collectorId: string) {}
 
   attach(page: Page) {
+    const metadataGeneration = ++this.metadataGeneration;
+    this.activeMetadataFixtureIds = null;
+    this.lastNotifiedFixtureSignature = "";
     const onResponse = (response: Response) => {
-      void this.ingestResponse(response);
+      void this.ingestResponse(response, metadataGeneration);
     };
     const onWebSocket = (socket: PlaywrightWebSocket) => {
       if (!isSportsWebSocket(socket.url())) {
@@ -69,17 +76,21 @@ export class EightXBetNetworkFeed {
     return () => {
       page.off("response", onResponse);
       page.off("websocket", onWebSocket);
+      if (this.metadataGeneration === metadataGeneration) {
+        this.metadataGeneration += 1;
+        this.activeMetadataFixtureIds = null;
+      }
     };
   }
 
   activate(
     bootstrap: OddsSnapshot,
     listener: FeedDeltaListener,
-    fixtureDiscoveryListener?: FixtureDiscoveryListener
+    activeFixtureListener?: ActiveFixtureListener
   ) {
     this.seedMetadata(bootstrap);
     this.listener = listener;
-    this.fixtureDiscoveryListener = fixtureDiscoveryListener ?? null;
+    this.activeFixtureListener = activeFixtureListener ?? null;
     const bootstrapByFixture = groupSelectionsByFixture(bootstrap.selections);
     for (const [fixtureId, state] of this.fixtures) {
       state.deliveredSelections = new Map(
@@ -93,11 +104,13 @@ export class EightXBetNetworkFeed {
       }
       this.emitFixture(fixtureId);
     }
+    this.notifyActiveFixtures();
   }
 
   deactivate() {
     this.listener = null;
-    this.fixtureDiscoveryListener = null;
+    this.activeFixtureListener = null;
+    this.lastNotifiedFixtureSignature = "";
     this.pendingFixtureIds.clear();
     for (const state of this.fixtures.values()) {
       state.pendingMarkets.clear();
@@ -123,6 +136,9 @@ export class EightXBetNetworkFeed {
 
     for (const fixtureId of fixtureIds) {
       const state = this.fixtures.get(fixtureId);
+      if (state?.retired) {
+        continue;
+      }
       if (!state || state.seenMarkets.size === 0 || !state.metadata) {
         selections.push(...(domByFixture.get(fixtureId) ?? []));
         continue;
@@ -141,13 +157,10 @@ export class EightXBetNetworkFeed {
     return (this.fixtures.get(fixtureId)?.seenMarkets.size ?? 0) > 0;
   }
 
-  retainFixtures(fixtureIds: string[]) {
-    const active = new Set(fixtureIds);
-    for (const fixtureId of this.fixtures.keys()) {
-      if (!active.has(fixtureId)) {
-        this.fixtures.delete(fixtureId);
-      }
-    }
+  activeFixtureIds() {
+    return this.activeMetadataFixtureIds
+      ? Array.from(this.activeMetadataFixtureIds).sort()
+      : null;
   }
 
   async flush() {
@@ -173,21 +186,26 @@ export class EightXBetNetworkFeed {
     });
   }
 
-  private async ingestResponse(response: Response) {
+  private async ingestResponse(response: Response, metadataGeneration: number) {
     const url = response.url();
     if (!isSportsMetadataResponse(url) && !isSportsMatchResponse(url)) {
       return;
     }
 
     const payload = await response.json().catch(() => null);
-    if (!payload || typeof payload !== "object") {
+    if (
+      metadataGeneration !== this.metadataGeneration ||
+      !payload ||
+      typeof payload !== "object"
+    ) {
       return;
     }
 
     if (isSportsMetadataResponse(url)) {
-      for (const match of extractTournamentMatches(payload)) {
-        this.applyMetadata(match);
+      if (!isValidTournamentMetadataSnapshot(payload)) {
+        return;
       }
+      this.applyMetadataSnapshot(parseEightXBetStandardFixtures(payload));
       return;
     }
 
@@ -247,21 +265,26 @@ export class EightXBetNetworkFeed {
     if (!fixtureId) {
       return;
     }
-    const isNewFixture = !this.fixtures.has(fixtureId);
     const home = objectValue(value.home);
     const away = objectValue(value.away);
     const current = this.ensureState(fixtureId);
-    current.metadata = {
+    const metadata = {
       fixtureId,
       homeTeam: String(home.name ?? current.metadata?.homeTeam ?? "").trim(),
       awayTeam: String(away.name ?? current.metadata?.awayTeam ?? "").trim(),
       leagueName: String(value.tnName ?? current.metadata?.leagueName ?? "").trim(),
-      eventStartAt: timestampOf(value.kickoffTime ?? value.kickoff) || current.metadata?.eventStartAt
+      eventStartAt:
+        optionalTimestampOf(value.kickoffTime ?? value.kickoff) ??
+        current.metadata?.eventStartAt
     };
-    rebuildMarketSelections(current, current.seenMarkets);
-    if (isNewFixture) {
-      this.notifyFixtureDiscovered(fixtureId);
+    const metadataChanged =
+      current.retired || !fixtureMetadataEqual(current.metadata, metadata);
+    current.metadata = metadata;
+    current.retired = false;
+    if (!metadataChanged) {
+      return;
     }
+    rebuildMarketSelections(current, current.seenMarkets);
     if (current.seenMarkets.size > 0) {
       for (const code of current.seenMarkets) {
         current.pendingMarkets.add(code);
@@ -277,7 +300,14 @@ export class EightXBetNetworkFeed {
     full: boolean,
     occurredAt: string
   ) {
+    if (
+      this.activeMetadataFixtureIds &&
+      !this.activeMetadataFixtureIds.has(fixtureId)
+    ) {
+      return;
+    }
     const current = this.ensureState(fixtureId);
+    current.retired = false;
     const touchedMarkets = new Set<SupportedMarketCode>();
     if (full) {
       for (const code of supportedMarketCodes) {
@@ -377,6 +407,9 @@ export class EightXBetNetworkFeed {
             clearTimeout(retryTimer);
             this.deliveryRetryTimers.delete(fixtureId);
           }
+          if (state.retired && state.deliveredSelections.size === 0) {
+            this.fixtures.delete(fixtureId);
+          }
         } catch (error) {
           for (const code of touchedMarkets) {
             state.pendingMarkets.add(code);
@@ -399,7 +432,8 @@ export class EightXBetNetworkFeed {
         pendingMarkets: new Set(),
         occurredAt: new Date().toISOString(),
         lastEventFull: false,
-        lastTouchedMarkets: []
+        lastTouchedMarkets: [],
+        retired: false
       };
       this.fixtures.set(fixtureId, state);
     }
@@ -437,12 +471,71 @@ export class EightXBetNetworkFeed {
     };
   }
 
-  private notifyFixtureDiscovered(fixtureId: string) {
-    if (!this.fixtureDiscoveryListener) {
+  private applyMetadataSnapshot(matches: Record<string, unknown>[]) {
+    const active = new Set<string>();
+    for (const match of matches) {
+      const fixtureId = stringID(match.iid);
+      if (!fixtureId) continue;
+      active.add(fixtureId);
+      this.applyMetadata(match);
+    }
+
+    this.retireFixturesMissingFromMetadata(active);
+    this.activeMetadataFixtureIds = active;
+    this.notifyActiveFixtures();
+  }
+
+  private retireFixturesMissingFromMetadata(active: Set<string>) {
+    for (const [fixtureId, state] of this.fixtures) {
+      if (active.has(fixtureId) || state.retired) {
+        continue;
+      }
+
+      const waiters = this.fixtureWaiters.get(fixtureId);
+      if (waiters) {
+        this.fixtureWaiters.delete(fixtureId);
+        for (const waiter of waiters) {
+          clearTimeout(waiter.timer);
+          waiter.reject(new Error(`8xbet fixture ${fixtureId} is no longer active`));
+        }
+      }
+
+      if (!this.listener || !state.metadata || state.deliveredSelections.size === 0) {
+        this.fixtures.delete(fixtureId);
+        continue;
+      }
+
+      state.retired = true;
+      state.occurredAt = new Date().toISOString();
+      const retiringMarkets = new Set(state.seenMarkets);
+      for (const selection of state.deliveredSelections.values()) {
+        const code = marketCodeForSelection(selection);
+        if (code) retiringMarkets.add(code);
+      }
+      for (const code of retiringMarkets) {
+        state.markets.delete(code);
+        state.selectionsByMarket.set(code, []);
+        state.pendingMarkets.add(code);
+      }
+      this.emitFixture(fixtureId);
+    }
+  }
+
+  private notifyActiveFixtures() {
+    if (!this.activeFixtureListener || !this.activeMetadataFixtureIds) {
       return;
     }
-    void Promise.resolve(this.fixtureDiscoveryListener(fixtureId)).catch((error) => {
-      console.warn(`[8xbet-network] fixture subscription failed fixture=${fixtureId}:`, error);
+
+    const fixtureIds = Array.from(this.activeMetadataFixtureIds).sort();
+    const signature = fixtureIds.join(",");
+    if (signature === this.lastNotifiedFixtureSignature) {
+      return;
+    }
+    this.lastNotifiedFixtureSignature = signature;
+    console.log(`[8xbet-network] metadata active_fixtures=${fixtureIds.length}`);
+    void Promise.resolve(this.activeFixtureListener(fixtureIds)).catch((error) => {
+      this.lastNotifiedFixtureSignature = "";
+      console.warn("[8xbet-network] metadata subscription sync failed:", error);
     });
   }
 
@@ -743,7 +836,8 @@ export function buildEightXBetNetworkFixtureSnapshot(options: {
     pendingMarkets: new Set(),
     occurredAt: options.occurredAt,
     lastEventFull: true,
-    lastTouchedMarkets: []
+    lastTouchedMarkets: [],
+    retired: false
   };
   for (const [rawCode, market] of Object.entries(options.markets)) {
     const code = normalizeMarketCode(rawCode);
@@ -776,6 +870,56 @@ function extractTournamentMatches(payload: Record<string, unknown>) {
   });
 }
 
+export function parseEightXBetStandardFixtures(payload: unknown) {
+  return extractTournamentMatches(objectValue(payload)).filter(isStandardFootballFixture);
+}
+
+function isValidTournamentMetadataSnapshot(payload: Record<string, unknown>) {
+  const data = objectValue(payload.data);
+  return Number(payload.code ?? 0) === 0 && Array.isArray(data.tournaments);
+}
+
+function isStandardFootballFixture(match: Record<string, unknown>) {
+  if (match.inplay === false || match.specialsTournament === true) {
+    return false;
+  }
+  const homeTeam = String(objectValue(match.home).name ?? "").trim();
+  const awayTeam = String(objectValue(match.away).name ?? "").trim();
+  const leagueName = String(match.tnName ?? "").trim();
+  if (!stringID(match.iid) || !homeTeam || !awayTeam || !leagueName) {
+    return false;
+  }
+
+  const league = filterText(leagueName);
+  const participants = filterText(`${homeTeam} ${awayTeam}`);
+  if (
+    /\b(corners?|corner kicks?|bookings?|cards?|e\s?soccer|e\s?football|exotic|specials?|virtual)\b/.test(
+      league
+    ) ||
+    /\bsingle team\b/.test(league) ||
+    /\bspecific\s+\d+\s+mins?\b/.test(league) ||
+    /\b(no of corners?|\d+(st|nd|rd|th) corner|\d{1,2}\s*\d{2}\s+\d{1,2}\s*\d{2})\b/.test(
+      participants
+    ) ||
+    /\b(over|under)\s*$/.test(filterText(homeTeam)) ||
+    /\b(over|under)\s*$/.test(filterText(awayTeam))
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function filterText(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractMatchResponse(payload: Record<string, unknown>) {
   const first = objectValue(payload.data);
   const match = objectValue(first.data);
@@ -798,6 +942,26 @@ function latestOccurredAt(fixtures: Map<string, FeedFixtureState>, fallback: str
     latest = Math.max(latest, new Date(state.occurredAt).getTime());
   }
   return Number.isFinite(latest) ? new Date(latest).toISOString() : fallback;
+}
+
+function fixtureMetadataEqual(
+  left: EightXBetFixtureMetadata | undefined,
+  right: EightXBetFixtureMetadata
+) {
+  return (
+    left?.fixtureId === right.fixtureId &&
+    left.homeTeam === right.homeTeam &&
+    left.awayTeam === right.awayTeam &&
+    left.leagueName === right.leagueName &&
+    left.eventStartAt === right.eventStartAt
+  );
+}
+
+function optionalTimestampOf(value: unknown) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return undefined;
+  }
+  return timestampOf(value);
 }
 
 function timestampOf(value: unknown) {

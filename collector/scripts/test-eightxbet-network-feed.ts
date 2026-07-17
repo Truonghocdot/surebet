@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
-  parseEightXBetOddsDiffFrame
+  parseEightXBetOddsDiffFrame,
+  parseEightXBetStandardFixtures
 } from "@surebet/collector-shared";
 import type { OddsDelta } from "@surebet/collector-shared";
 
@@ -62,6 +63,73 @@ assert.equal(parsed.full, false);
 assert.deepEqual(parsed.removedMarkets, ["ou"]);
 assert.ok("ah" in parsed.markets);
 
+const metadataPayload = {
+  data: {
+    tournaments: [
+      {
+        name: "League",
+        matches: [
+          {
+            iid: 4824992,
+            inplay: true,
+            home: { name: "Home FC" },
+            away: { name: "Away FC" }
+          }
+        ]
+      },
+      {
+        name: "Brazil Serie A - Corners",
+        matches: [
+          {
+            iid: 1002,
+            inplay: true,
+            home: { name: "Bahia EC BA (No.of Corners)" },
+            away: { name: "Chapecoense SC (No.of Corners)" }
+          }
+        ]
+      },
+      {
+        name: "Brazil Serie A - Single Team Over/Under",
+        matches: [
+          {
+            iid: 1003,
+            inplay: true,
+            home: { name: "Bahia EC BA - Over" },
+            away: { name: "Bahia EC BA - Under" }
+          }
+        ]
+      },
+      {
+        name: "Brazil Serie A - Specific 15 Mins",
+        matches: [
+          {
+            iid: 1004,
+            inplay: true,
+            home: { name: "Bahia EC BA (00:00-15:00)" },
+            away: { name: "Chapecoense SC (00:00-15:00)" }
+          }
+        ]
+      },
+      {
+        name: "Esoccer Battle - 8 Mins Play",
+        matches: [
+          {
+            iid: 1005,
+            inplay: true,
+            home: { name: "England (A1ose)" },
+            away: { name: "Argentina (R0ge)" }
+          }
+        ]
+      }
+    ]
+  }
+};
+assert.deepEqual(
+  parseEightXBetStandardFixtures(metadataPayload).map((item) => String(item.iid)),
+  ["4824992"],
+  "metadata must retain standard football and drop exotic fixtures"
+);
+
 class FakeEmitter {
   private readonly listeners = new Map<string, Set<(value: any) => void>>();
 
@@ -101,6 +169,14 @@ function stompFrame(sendType: "INIT" | "UPDATE", body: Record<string, unknown>) 
       ...body
     }) + "\0"
   ].join("\n");
+}
+
+function metadataResponse(payload: unknown) {
+  return {
+    url: () =>
+      "https://gw-nwapi.example/product/business/sport/tournament/info?sid=1&inplay=true",
+    json: async () => payload
+  };
 }
 
 async function testMarketDeltaDelivery() {
@@ -150,6 +226,34 @@ async function testMarketDeltaDelivery() {
   assert.equal(delivered[1].length, 2);
   assert.ok(delivered[1].every((delta) => delta.marketId === "o-u-ou"));
   assert.ok(delivered[1].every((delta) => delta.op === "remove"));
+
+  page.emit("response", metadataResponse({ code: 0, ...metadataPayload }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await feed.flush();
+  assert.deepEqual(feed.activeFixtureIds(), ["4824992"]);
+  assert.equal(delivered.length, 2, "unchanged metadata must not emit quote deltas");
+
+  page.emit("response", metadataResponse({ code: 500, data: { tournaments: [] } }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(
+    feed.activeFixtureIds(),
+    ["4824992"],
+    "an invalid metadata response must not retire active fixtures"
+  );
+
+  page.emit(
+    "response",
+    metadataResponse({
+      code: 0,
+      data: { tournaments: [] }
+    })
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await feed.flush();
+  assert.deepEqual(feed.activeFixtureIds(), []);
+  assert.equal(delivered.length, 3);
+  assert.equal(delivered[2].length, 6, "metadata retirement must remove remaining quotes");
+  assert.ok(delivered[2].every((delta) => delta.op === "remove"));
 }
 
 testMarketDeltaDelivery()
