@@ -46,6 +46,9 @@ export class EightXBetNetworkFeed {
   private deliveryQueue = Promise.resolve();
   private deliveryRunning = false;
   private lastTelemetryAt = 0;
+  private lastCoverageAt = 0;
+  private lastCoverageSignature = "";
+  private metadataFixtureTotal = 0;
   private metadataGeneration = 0;
   private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly fixtureWaiters = new Map<string, Set<FixtureSnapshotWaiter>>();
@@ -56,6 +59,9 @@ export class EightXBetNetworkFeed {
     const metadataGeneration = ++this.metadataGeneration;
     this.activeMetadataFixtureIds = null;
     this.lastNotifiedFixtureSignature = "";
+    this.lastCoverageAt = 0;
+    this.lastCoverageSignature = "";
+    this.metadataFixtureTotal = 0;
     const onResponse = (response: Response) => {
       void this.ingestResponse(response, metadataGeneration);
     };
@@ -163,6 +169,29 @@ export class EightXBetNetworkFeed {
       : null;
   }
 
+  coverageStats() {
+    const activeFixtureIds = this.activeMetadataFixtureIds ?? new Set<string>();
+    let decodedFixtures = 0;
+    let fixturesWithQuotes = 0;
+    for (const fixtureId of activeFixtureIds) {
+      const state = this.fixtures.get(fixtureId);
+      if ((state?.seenMarkets.size ?? 0) > 0) {
+        decodedFixtures += 1;
+      }
+      if (state && selectionCount(state) > 0) {
+        fixturesWithQuotes += 1;
+      }
+    }
+
+    return {
+      metadataFixtures: activeFixtureIds.size,
+      decodedFixtures,
+      fixturesWithQuotes,
+      pendingFixtures: Math.max(activeFixtureIds.size - decodedFixtures, 0),
+      filteredFixtures: Math.max(this.metadataFixtureTotal - activeFixtureIds.size, 0)
+    };
+  }
+
   async flush() {
     await this.deliveryQueue;
   }
@@ -205,7 +234,11 @@ export class EightXBetNetworkFeed {
       if (!isValidTournamentMetadataSnapshot(payload)) {
         return;
       }
-      this.applyMetadataSnapshot(parseEightXBetStandardFixtures(payload));
+      const metadataFixtures = extractTournamentMatches(payload);
+      this.applyMetadataSnapshot(
+        metadataFixtures.filter(isStandardFootballFixture),
+        metadataFixtures.length
+      );
       return;
     }
 
@@ -343,6 +376,7 @@ export class EightXBetNetworkFeed {
     current.lastEventFull = full;
     current.lastTouchedMarkets = Array.from(touchedMarkets);
     rebuildMarketSelections(current, touchedMarkets);
+    this.logCoverage();
     for (const code of touchedMarkets) {
       current.pendingMarkets.add(code);
     }
@@ -471,7 +505,7 @@ export class EightXBetNetworkFeed {
     };
   }
 
-  private applyMetadataSnapshot(matches: Record<string, unknown>[]) {
+  private applyMetadataSnapshot(matches: Record<string, unknown>[], totalFixtureCount: number) {
     const active = new Set<string>();
     for (const match of matches) {
       const fixtureId = stringID(match.iid);
@@ -481,7 +515,9 @@ export class EightXBetNetworkFeed {
     }
 
     this.retireFixturesMissingFromMetadata(active);
+    this.metadataFixtureTotal = totalFixtureCount;
     this.activeMetadataFixtureIds = active;
+    this.logCoverage();
     this.notifyActiveFixtures();
   }
 
@@ -532,7 +568,6 @@ export class EightXBetNetworkFeed {
       return;
     }
     this.lastNotifiedFixtureSignature = signature;
-    console.log(`[8xbet-network] metadata active_fixtures=${fixtureIds.length}`);
     void Promise.resolve(this.activeFixtureListener(fixtureIds)).catch((error) => {
       this.lastNotifiedFixtureSignature = "";
       console.warn("[8xbet-network] metadata subscription sync failed:", error);
@@ -566,6 +601,28 @@ export class EightXBetNetworkFeed {
       `[8xbet-network] event fixture=${fixtureId} mode=${state.lastEventFull ? "init" : "update"}` +
         ` markets=${state.lastTouchedMarkets.join(",")}` +
         ` outcomes=${selectionCount(state)} source_lag_ms=${sourceLagMs}`
+    );
+  }
+
+  private logCoverage() {
+    if (!envBool("EIGHTXBET_COVERAGE_TELEMETRY", true)) {
+      return;
+    }
+    const stats = this.coverageStats();
+    const signature = Object.values(stats).join("|");
+    const now = Date.now();
+    const intervalMs = Math.max(envInt("EIGHTXBET_COVERAGE_TELEMETRY_MS", 30_000), 5_000);
+    if (signature === this.lastCoverageSignature && now - this.lastCoverageAt < intervalMs) {
+      return;
+    }
+    this.lastCoverageSignature = signature;
+    this.lastCoverageAt = now;
+    console.log(
+      `[8xbet-network] coverage metadata=${stats.metadataFixtures}` +
+        ` decoded=${stats.decodedFixtures}` +
+        ` with_quotes=${stats.fixturesWithQuotes}` +
+        ` pending=${stats.pendingFixtures}` +
+        ` filtered=${stats.filteredFixtures}`
     );
   }
 }

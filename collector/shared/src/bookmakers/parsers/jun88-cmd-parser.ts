@@ -21,7 +21,8 @@ export function parseJun88CmdSnapshot(
 ): OddsSnapshot {
   const dom = new JSDOM(html);
   const document = dom.window.document;
-  const selections = groupJun88MatchRows(document).flatMap((rows) => parseMatchGroup(rows));
+  const matchGroups = groupJun88MatchRows(document);
+  const selections = matchGroups.flatMap((rows) => parseMatchGroup(rows));
 
   return {
     source: {
@@ -31,7 +32,9 @@ export function parseJun88CmdSnapshot(
     },
     collectedAt: new Date().toISOString(),
     selections:
-      selections.length > 0 ? selections : parseFallbackMatches(document, pageUrl)
+      selections.length > 0 || matchGroups.length > 0
+        ? selections
+        : parseFallbackMatches(document, pageUrl)
   };
 }
 
@@ -49,7 +52,7 @@ function parseMatchGroup(rows: HTMLElement[]) {
     "";
   const drawLabel = textContent(baseRow?.querySelector(".drawcss")) || "Hòa";
 
-  if (!homeTeam || !awayTeam) {
+  if (!isStandardJun88CmdFixture(leagueName, homeTeam, awayTeam)) {
     return [];
   }
 
@@ -372,6 +375,45 @@ function normalizeToken(value: string) {
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
+}
+
+export function isStandardJun88CmdFixture(
+  leagueName: string,
+  homeTeam: string,
+  awayTeam: string
+) {
+  if (!homeTeam.trim() || !awayTeam.trim()) {
+    return false;
+  }
+
+  const league = filterFixtureText(leagueName);
+  const participants = filterFixtureText(`${homeTeam} ${awayTeam}`);
+  if (
+    /\b(corners?|corner kicks?|bookings?|cards?|e\s?soccer|e\s?football|exotic|specials?|virtual)\b/.test(
+      league
+    ) ||
+    /\bsingle team\b/.test(league) ||
+    /\bspecific\s+\d+\s+mins?\b/.test(league) ||
+    /\b(no of corners?|\d+(st|nd|rd|th) corner|\d{1,2}\s+\d{2}\s+\d{1,2}\s+\d{2})\b/.test(
+      participants
+    ) ||
+    /\b(over|under)\s*$/.test(filterFixtureText(homeTeam)) ||
+    /\b(over|under)\s*$/.test(filterFixtureText(awayTeam))
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function filterFixtureText(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function textContent(node: Element | null | undefined) {

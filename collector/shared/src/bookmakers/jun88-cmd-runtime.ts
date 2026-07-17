@@ -280,6 +280,27 @@ async function installCmdObserver(
         if (kind === "one_x_two") return isFirstHalf ? "1x2-1st" : "1x2";
         return normalizeToken(prefix + "-" + kind);
       };
+      const filterFixtureText = (value) =>
+        String(value || "")
+          .normalize("NFKD")
+          .replace(/[\\u0300-\\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .replace(/\\s+/g, " ")
+          .trim();
+      const isStandardFixture = (leagueName, homeTeam, awayTeam) => {
+        if (!String(homeTeam || "").trim() || !String(awayTeam || "").trim()) return false;
+        const league = filterFixtureText(leagueName);
+        const participants = filterFixtureText(homeTeam + " " + awayTeam);
+        return !(
+          /\\b(corners?|corner kicks?|bookings?|cards?|e\\s?soccer|e\\s?football|exotic|specials?|virtual)\\b/.test(league) ||
+          /\\bsingle team\\b/.test(league) ||
+          /\\bspecific\\s+\\d+\\s+mins?\\b/.test(league) ||
+          /\\b(no of corners?|\\d+(st|nd|rd|th) corner|\\d{1,2}\\s+\\d{2}\\s+\\d{1,2}\\s+\\d{2})\\b/.test(participants) ||
+          /\\b(over|under)\\s*$/.test(filterFixtureText(homeTeam)) ||
+          /\\b(over|under)\\s*$/.test(filterFixtureText(awayTeam))
+        );
+      };
 
       const selection = (node, fixtureId, homeTeam, awayTeam, leagueName, marketId, outcomeName) => {
         if (!node) return null;
@@ -323,7 +344,7 @@ async function installCmdObserver(
         const homeTeam = text(baseRow.querySelector("#ht_" + matchID)) || text(baseRow.querySelector(".tableDiv-match-info__event div:first-child"));
         const awayTeam = text(baseRow.querySelector("#at_" + matchID)) || text(baseRow.querySelector(".tableDiv-match-info__event div:nth-child(2)"));
         const drawLabel = text(baseRow.querySelector(".drawcss")) || "Hòa";
-        if (!homeTeam || !awayTeam) return [];
+        if (!isStandardFixture(leagueName, homeTeam, awayTeam)) return [];
         const fixtureId = baseRow.getAttribute("groupid") || [leagueName, homeTeam, awayTeam, matchID].filter(Boolean).join("|");
 
         const parseMarketRow = (rowNode, prefix) => {

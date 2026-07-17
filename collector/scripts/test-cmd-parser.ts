@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { JSDOM } from "jsdom";
-import { parseJun88CmdSnapshot } from "@surebet/collector-shared";
+import {
+  isStandardJun88CmdFixture,
+  parseJun88CmdSnapshot
+} from "@surebet/collector-shared";
 
 async function main() {
   const htmlPath = path.resolve("../docs/lobbby/jun888/cmd.html");
@@ -27,6 +30,38 @@ async function main() {
   }
 
   assertLeagueScopes(html, snapshot);
+  assertStandardFixtureFilter(snapshot);
+}
+
+function assertStandardFixtureFilter(
+  snapshot: ReturnType<typeof parseJun88CmdSnapshot>
+) {
+  const rejected = [
+    ["BRAZIL SERIE A - CORNERS", "Bahia (No.of Corners)", "Chapecoense (No.of Corners)"],
+    ["BRAZIL SERIE A - SINGLE TEAM OVER/UNDER", "Bahia - Over", "Bahia - Under"],
+    ["BRAZIL SERIE A - SPECIFIC 15 MINS", "Bahia (00:00-15:00)", "Chapecoense (00:00-15:00)"],
+    ["ESOCCER BATTLE - 8 MINS PLAY", "England (A1ose)", "Argentina (R0ge)"]
+  ];
+  for (const [league, home, away] of rejected) {
+    if (isStandardJun88CmdFixture(league, home, away)) {
+      throw new Error(`CMD exotic fixture was accepted: ${league}`);
+    }
+  }
+  if (!isStandardJun88CmdFixture("BRAZIL SERIE B", "America Mineiro", "Ceara CE")) {
+    throw new Error("CMD standard football fixture was rejected.");
+  }
+
+  const leaked = snapshot.selections.filter(
+    (selection) =>
+      !isStandardJun88CmdFixture(
+        selection.leagueName ?? "",
+        selection.homeTeam ?? "",
+        selection.awayTeam ?? ""
+      )
+  );
+  if (leaked.length > 0) {
+    throw new Error(`CMD parser leaked ${leaked.length} exotic selection(s).`);
+  }
 }
 
 function assertLeagueScopes(

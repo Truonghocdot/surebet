@@ -52,6 +52,9 @@ function normalizeParticipantAliasName(value: string) {
     case "club nacional de football":
     case "nacional de football":
       return "nacional montevideo";
+    case "gremio fbpa rs":
+    case "gremio porto alegrense":
+      return "gremio";
     case "san lorenzo de almagro":
       return "san lorenzo";
     case "club agropecuario argentino":

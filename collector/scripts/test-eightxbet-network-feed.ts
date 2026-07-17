@@ -231,6 +231,13 @@ async function testMarketDeltaDelivery() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await feed.flush();
   assert.deepEqual(feed.activeFixtureIds(), ["4824992"]);
+  assert.deepEqual(feed.coverageStats(), {
+    metadataFixtures: 1,
+    decodedFixtures: 1,
+    fixturesWithQuotes: 1,
+    pendingFixtures: 0,
+    filteredFixtures: 4
+  });
   assert.equal(delivered.length, 2, "unchanged metadata must not emit quote deltas");
 
   page.emit("response", metadataResponse({ code: 500, data: { tournaments: [] } }));
