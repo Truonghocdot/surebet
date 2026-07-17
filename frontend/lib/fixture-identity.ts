@@ -17,7 +17,9 @@ export function canonicalFixtureKey({ homeTeam, awayTeam }: FixtureParticipants)
 }
 
 function canonicalParticipantName(value: string) {
-  const canonical = canonicalText(stripParticipantAnnotations(value.normalize("NFKD")));
+  const canonical = normalizeParticipantAliasName(
+    canonicalText(stripParticipantAnnotations(value.normalize("NFKD")))
+  );
   const tokens = canonical
     .split(" ")
     .filter(Boolean)
@@ -38,13 +40,39 @@ function normalizeParticipantAliasToken(value: string) {
       return "amed";
     case "kobenhavn":
       return "copenhagen";
+    case "mineiro":
+      return "mg";
+    default:
+      return value;
+  }
+}
+
+function normalizeParticipantAliasName(value: string) {
+  switch (value) {
+    case "club nacional de football":
+    case "nacional de football":
+      return "nacional montevideo";
+    case "san lorenzo de almagro":
+      return "san lorenzo";
+    case "club agropecuario argentino":
+    case "agropecuario argentino":
+      return "agropecuario";
     default:
       return value;
   }
 }
 
 function isGenericClubToken(value: string | undefined) {
-  return value === "fc" || value === "fk" || value === "sk" || value === "sc" || value === "if";
+  return (
+    value === "af" ||
+    value === "club" ||
+    value === "ec" ||
+    value === "fc" ||
+    value === "fk" ||
+    value === "if" ||
+    value === "sc" ||
+    value === "sk"
+  );
 }
 
 function isNumericClubPrefix(value: string | undefined) {
@@ -76,7 +104,7 @@ function canonicalParticipantTokens(tokens: string[]) {
   const seen = new Set<string>();
 
   for (const token of tokens) {
-    if (!token.trim() || seen.has(token)) {
+    if (!token.trim() || isGenericClubToken(token) || seen.has(token)) {
       continue;
     }
     seen.add(token);

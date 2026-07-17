@@ -189,6 +189,80 @@ func TestDetectMatchesTeamsWithAliasesAndStripsParentheticalAnnotations(t *testi
 	})
 }
 
+func TestDetectMatchesBrazilianAndSouthAmericanClubNameVariants(t *testing.T) {
+	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	tests := []struct {
+		name      string
+		eightHome string
+		eightAway string
+		junHome   string
+		junAway   string
+	}{
+		{
+			name:      "club initials in different positions",
+			eightHome: "EC Bahia BA",
+			eightAway: "Chapecoense AF SC",
+			junHome:   "Bahia EC BA",
+			junAway:   "Chapecoense SC",
+		},
+		{
+			name:      "interior fc tokens",
+			eightHome: "Sao Bernardo FC SP",
+			eightAway: "Avai FC SC",
+			junHome:   "Sao Bernardo SP",
+			junAway:   "Avai SC",
+		},
+		{
+			name:      "ec prefixes",
+			eightHome: "EC Juventude RS",
+			eightAway: "Cuiaba EC MT",
+			junHome:   "Juventude RS",
+			junAway:   "Cuiaba MT",
+		},
+		{
+			name:      "mineiro and state abbreviation",
+			eightHome: "America FC MG",
+			eightAway: "Ceara SC CE",
+			junHome:   "America Mineiro",
+			junAway:   "Ceara CE",
+		},
+		{
+			name:      "nacional formal name",
+			eightHome: "Club Nacional de Football",
+			eightAway: "Montevideo Wanderers",
+			junHome:   "Nacional Montevideo",
+			junAway:   "Montevideo Wanderers",
+		},
+		{
+			name:      "san lorenzo formal name",
+			eightHome: "San Lorenzo de Almagro",
+			eightAway: "Deportivo Riestra",
+			junHome:   "San Lorenzo (N)",
+			junAway:   "Deportivo Riestra",
+		},
+		{
+			name:      "agropecuario formal name",
+			eightHome: "Nueva Chicago",
+			eightAway: "Club Agropecuario",
+			junHome:   "Nueva Chicago",
+			junAway:   "Club Agropecuario Argentino",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			quotes := []models.OddsQuote{
+				testQuote(now, "over", "8xbet", "default", test.eightHome, test.eightAway, "", "Over 2.5", -0.5),
+				testQuote(now, "under", "jun88", "cmd", test.junHome, test.junAway, "", "Under 2.5", -0.5),
+			}
+			if items := detect(t, detector, quotes); len(items) != 1 {
+				t.Fatalf("expected participant variants to match, got %+v", items)
+			}
+		})
+	}
+}
+
 func TestDetectMatchesTeamsWithNeutralVenueAnnotation(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })

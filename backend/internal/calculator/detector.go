@@ -683,6 +683,7 @@ func participantCandidate(outcomeName string) string {
 
 func canonicalParticipantText(value string) string {
 	canonical := canonicalText(stripParticipantAnnotations(value))
+	canonical = normalizeParticipantAliasName(canonical)
 	tokens := strings.Fields(canonical)
 	for index, token := range tokens {
 		tokens[index] = normalizeParticipantAliasToken(token)
@@ -703,7 +704,7 @@ func canonicalParticipantTokens(tokens []string) []string {
 	unique := make([]string, 0, len(tokens))
 	seen := make(map[string]struct{}, len(tokens))
 	for _, token := range tokens {
-		if strings.TrimSpace(token) == "" {
+		if strings.TrimSpace(token) == "" || isGenericClubToken(token) {
 			continue
 		}
 		if _, ok := seen[token]; ok {
@@ -750,6 +751,21 @@ func normalizeParticipantAliasToken(value string) string {
 		return "amed"
 	case "kobenhavn":
 		return "copenhagen"
+	case "mineiro":
+		return "mg"
+	default:
+		return value
+	}
+}
+
+func normalizeParticipantAliasName(value string) string {
+	switch value {
+	case "club nacional de football", "nacional de football":
+		return "nacional montevideo"
+	case "san lorenzo de almagro":
+		return "san lorenzo"
+	case "club agropecuario argentino", "agropecuario argentino":
+		return "agropecuario"
 	default:
 		return value
 	}
@@ -766,7 +782,7 @@ func isGenericParticipantLabel(value string) bool {
 
 func isGenericClubToken(value string) bool {
 	switch value {
-	case "fc", "fk", "sk", "sc", "if":
+	case "af", "club", "ec", "fc", "fk", "if", "sc", "sk":
 		return true
 	default:
 		return false
