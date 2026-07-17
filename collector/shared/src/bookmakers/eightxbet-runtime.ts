@@ -1,24 +1,19 @@
 import type { CollectContext, CollectorRuntime, OddsSnapshot } from "../contracts.js";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { writeDebugArtifacts } from "../core/debug.js";
-import { envBool, envInt } from "../core/env.js";
+import { envInt } from "../core/env.js";
 import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
 import { EightXBetNetworkFeed } from "./eightxbet-network-feed.js";
 import { EightXBetTrafficRecorder } from "./eightxbet-traffic-recorder.js";
-import { parseEightXBetExhaustiveSnapshot } from "./parsers/eightxbet-exhaustive-parser.js";
 import { streamPollIntervalMs } from "./streaming-utils.js";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 
-const EIGHTXBET_INCOMING_PATH = "/sportEvents/incoming/football?hour=6";
-const EIGHTXBET_PREFERENCES_PATH = "/mine";
+const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_CARD_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_ODDS_BUTTON_SELECTOR = 'button[data-testid^="oddsBtn-"]';
-const EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR = '[data-testid="ExhaustiveContentV4"]';
-
-type EightXBetExhaustiveOpenResult = "opened" | "missing_card" | "no_market";
 
 chromium.use(stealth());
 
@@ -45,7 +40,8 @@ export class EightXBetRuntime implements CollectorRuntime {
     const page = await this.ensurePage(targetURL);
 
     try {
-      return this.networkFeed.overlaySnapshot(await this.readSnapshot(page, targetURL));
+      await this.refreshNetworkSubscriptions(page, targetURL);
+      return this.waitForNetworkBootstrap(page);
     } catch (error) {
       if (this.shutdownRequested) {
         return emptyEightXBetSnapshot(this.collectorId);
@@ -70,11 +66,8 @@ export class EightXBetRuntime implements CollectorRuntime {
     const page = await this.ensurePage(targetURL);
 
     try {
-      let snapshot = this.networkFeed.overlaySnapshot(await this.readSnapshot(page, targetURL));
-      while (!page.isClosed() && snapshot.selections.length === 0) {
-        await page.waitForTimeout(Math.max(streamPollIntervalMs(), 250));
-        snapshot = this.networkFeed.overlaySnapshot(await this.readSnapshot(page, targetURL));
-      }
+      await this.refreshNetworkSubscriptions(page, targetURL);
+      let snapshot = await this.waitForNetworkBootstrap(page);
       await onSnapshot(snapshot, "bootstrap");
 
       this.networkFeed.activate(snapshot, async (fixtureSnapshot, fixtureId) => {
@@ -86,13 +79,9 @@ export class EightXBetRuntime implements CollectorRuntime {
 
       while (!page.isClosed()) {
         if (Date.now() - lastReconcileAt >= eightXBetReconcileIntervalMs()) {
-          snapshot = await this.readSnapshot(page, targetURL, { forceExhaustive: true });
-          if (snapshot.selections.length === 0) {
-            await installEightXBetObserver(page);
-            lastReconcileAt = Date.now();
-            continue;
-          }
-          snapshot = this.networkFeed.overlaySnapshot(snapshot);
+          await this.refreshNetworkSubscriptions(page, targetURL);
+          await this.networkFeed.flush();
+          snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
           await onSnapshot(snapshot, "bootstrap");
           await installEightXBetObserver(page);
           lastReconcileAt = Date.now();
@@ -100,15 +89,8 @@ export class EightXBetRuntime implements CollectorRuntime {
         }
 
         const changedFixtureIds = await drainEightXBetChangedFixtureIDs(page);
-        for (const fixtureId of changedFixtureIds) {
-          await addEightXBetFixtureSubscriptions(page, [fixtureId]);
-          if (this.networkFeed.hasDecodedFixture(fixtureId)) {
-            continue;
-          }
-          const fixtureSnapshot = await this.readFixtureSnapshot(page, fixtureId, targetURL);
-          if (fixtureSnapshot.selections.length > 0) {
-            await onFixtureSnapshot?.(fixtureSnapshot, "delta", fixtureId);
-          }
+        if (changedFixtureIds.length > 0) {
+          await addEightXBetFixtureSubscriptions(page, changedFixtureIds);
         }
 
         await page.waitForTimeout(Math.max(Math.floor(streamPollIntervalMs() / 2), 50));
@@ -163,7 +145,6 @@ export class EightXBetRuntime implements CollectorRuntime {
     this.page = page;
     this.targetURL = targetURL;
 
-    await bootstrapEightXBetPreferences(page, targetURL);
     await page.goto(targetURL, { waitUntil: "domcontentloaded" });
     return page;
   }
@@ -185,88 +166,24 @@ export class EightXBetRuntime implements CollectorRuntime {
     }
   }
 
-  private async readSnapshot(
-    page: Page,
-    targetURL: string,
-    options?: {
-      mode?: "bootstrap" | "delta";
-      forceExhaustive?: boolean;
-      onFixtureSnapshot?: (
-        snapshot: OddsSnapshot,
-        mode: "bootstrap" | "delta",
-        fixtureId: string
-      ) => Promise<void>;
-    }
-  ): Promise<OddsSnapshot> {
+  private async refreshNetworkSubscriptions(page: Page, targetURL: string) {
     await waitForEightXBetReady(page, targetURL);
 
     const fixtureIds = await readEightXBetFixtureIDs(page);
     await setEightXBetFixtureSubscriptions(page, fixtureIds);
     this.networkFeed.retainFixtures(fixtureIds);
-    const selections: OddsSnapshot["selections"] = [];
-    let recoverableSkipCount = 0;
-
-    for (const fixtureId of fixtureIds) {
-      if (
-        !options?.forceExhaustive &&
-        (await primeEightXBetNetworkFixture(page, fixtureId, targetURL, this.networkFeed))
-      ) {
-        continue;
-      }
-      const snapshot = await this.readFixtureSnapshot(page, fixtureId, targetURL);
-      if (snapshot.selections.length === 0) {
-        recoverableSkipCount += 1;
-        continue;
-      }
-      if (options?.onFixtureSnapshot && options.mode) {
-        await options.onFixtureSnapshot(snapshot, options.mode, fixtureId);
-      }
-      selections.push(...snapshot.selections);
-    }
-
-    if (selections.length === 0) {
-      if (
-        recoverableSkipCount > 0 ||
-        fixtureIds.some((fixtureId) => this.networkFeed.hasDecodedFixture(fixtureId))
-      ) {
-        return emptyEightXBetSnapshot(this.collectorId);
-      }
-      await writeDebugArtifacts(page, `${this.collectorId}-exhaustive-empty`);
-      throw new Error("8xbet exhaustive content did not yield any supported selections.");
-    }
-
-    return {
-      source: {
-        collectorId: this.collectorId,
-        bookmakerId: "8xbet",
-        lobbyId: "default"
-      },
-      collectedAt: new Date().toISOString(),
-      selections
-    };
   }
 
-  private async readFixtureSnapshot(page: Page, fixtureId: string, targetURL: string) {
-    const openResult = await openEightXBetExhaustiveContent(
-      page,
-      fixtureId,
-      targetURL,
-      this.collectorId
-    );
-    if (openResult !== "opened") {
-      return emptyEightXBetSnapshot(this.collectorId);
+  private async waitForNetworkBootstrap(page: Page) {
+    const deadline = Date.now() + Math.max(envInt("EIGHTXBET_NETWORK_BOOTSTRAP_MS", 5_000), 0);
+    let snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
+
+    while (!page.isClosed() && snapshot.selections.length === 0 && Date.now() < deadline) {
+      await page.waitForTimeout(Math.min(streamPollIntervalMs(), 250));
+      await this.networkFeed.flush();
+      snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
     }
 
-    const sectionHtml = await extractEightXBetSectionHtml(page, fixtureId);
-    const snapshot = parseEightXBetExhaustiveSnapshot(
-      sectionHtml,
-      page.url(),
-      this.collectorId,
-      fixtureId
-    );
-    if (snapshot.selections.length === 0 && !(await isEightXBetNoMarketVisible(page))) {
-      logEightXBetTelemetry(this.collectorId, "exhaustive_empty", `fixture=${fixtureId}`);
-    }
     return snapshot;
   }
 }
@@ -329,33 +246,6 @@ async function installEightXBetLocale(context: BrowserContext) {
   });
 }
 
-async function bootstrapEightXBetPreferences(page: Page, targetURL: string) {
-  const preferenceURL = new URL(EIGHTXBET_PREFERENCES_PATH, targetURL).toString();
-
-  try {
-    await page.goto(preferenceURL, { waitUntil: "domcontentloaded" });
-    await waitForPageSettle(page);
-    await page.evaluate(() => {
-      const entries = [
-        ["i18nextLng", "vi-VN"],
-        ["language", "vi-VN"],
-        ["lang", "vi-VN"],
-        ["sport-market-type", "ML"],
-        ["sport-match-mode", "professional"],
-        ["sport-simple-type", "asia"]
-      ] as const;
-
-      for (const [key, value] of entries) {
-        window.localStorage.setItem(key, value);
-        window.sessionStorage.setItem(key, value);
-      }
-    });
-    await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
-  } catch (error) {
-    console.warn("[8xbet-worker] bootstrap /mine preferences failed:", error);
-  }
-}
-
 async function waitForEightXBetReady(page: Page, targetURL: string) {
   await waitForPageSettle(page);
   let ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
@@ -374,7 +264,7 @@ async function waitForEightXBetReady(page: Page, targetURL: string) {
   }
 
   if (!ready) {
-    throw new Error("8xbet incoming list did not render in time.");
+    throw new Error("8xbet in-play list did not render in time.");
   }
 }
 
@@ -384,11 +274,11 @@ async function waitForPageSettle(page: Page) {
 
 function resolveEightXBetTargetURL(value: string) {
   const parsed = new URL(value);
-  if (parsed.pathname.includes("/sportEvents/")) {
+  if (parsed.pathname.includes(EIGHTXBET_INPLAY_PATH)) {
     return parsed.toString();
   }
 
-  return new URL(EIGHTXBET_INCOMING_PATH, parsed).toString();
+  return new URL(EIGHTXBET_INPLAY_PATH, parsed).toString();
 }
 
 async function readEightXBetFixtureIDs(page: Page) {
@@ -521,195 +411,6 @@ async function addEightXBetFixtureSubscriptions(page: Page, fixtureIDs: string[]
   }, fixtureIDs);
 }
 
-async function primeEightXBetNetworkFixture(
-  page: Page,
-  fixtureId: string,
-  targetURL: string,
-  networkFeed: EightXBetNetworkFeed
-) {
-  if (networkFeed.hasDecodedFixture(fixtureId)) {
-    return true;
-  }
-
-  const cardSelector = `[data-testid="simple-handicap-layout-football-${fixtureId}"]`;
-  const card = page.locator(cardSelector).first();
-  const visible = await card
-    .waitFor({ state: "visible", timeout: 1_500 })
-    .then(() => true, () => false);
-  if (!visible) {
-    return false;
-  }
-
-  const targets = [
-    `${cardSelector} [data-testid="sport-inplay-timer"]`,
-    `${cardSelector} [data-testid="simple-game-stage"]`,
-    `${cardSelector} small.line-clamp-1.text-ellipsis.text-text-2`
-  ];
-  for (const selector of targets) {
-    await page.locator(selector).first().click({ timeout: 1_500 }).catch(() => undefined);
-    if (isEightXBetLoginURL(page.url())) {
-      await recoverEightXBetInplayPage(page, targetURL);
-      continue;
-    }
-
-    const deadline = Date.now() + 1_500;
-    while (Date.now() < deadline) {
-      if (networkFeed.hasDecodedFixture(fixtureId)) {
-        return true;
-      }
-      await page.waitForTimeout(50);
-    }
-  }
-  return networkFeed.hasDecodedFixture(fixtureId);
-}
-
-async function openEightXBetExhaustiveContent(
-  page: Page,
-  fixtureId: string,
-  targetURL: string,
-  collectorId: string
-): Promise<EightXBetExhaustiveOpenResult> {
-  const cardSelector = `[data-testid="simple-handicap-layout-football-${fixtureId}"]`;
-  const attempts: Array<
-    | {
-        name: string;
-        kind: "locator";
-        selector: string;
-      }
-    | {
-        name: string;
-        kind: "position";
-        xRatio: number;
-        yRatio: number;
-      }
-  > = [
-    {
-      name: "inplay_timer",
-      kind: "locator",
-      selector: `${cardSelector} [data-testid="sport-inplay-timer"]`
-    },
-    {
-      name: "game_stage",
-      kind: "locator",
-      selector: `${cardSelector} [data-testid="simple-game-stage"]`
-    },
-    {
-      name: "team_label",
-      kind: "locator",
-      selector: `${cardSelector} small.line-clamp-1.text-ellipsis.text-text-2`
-    },
-    {
-      name: "card_top_left",
-      kind: "position",
-      xRatio: 0.14,
-      yRatio: 0.18
-    },
-    {
-      name: "card_left_body",
-      kind: "position",
-      xRatio: 0.18,
-      yRatio: 0.56
-    }
-  ];
-
-  for (const attempt of attempts) {
-    const card = page.locator(cardSelector).first();
-    const cardVisible = await card
-      .waitFor({ state: "visible", timeout: 2_000 })
-      .then(() => true, () => false);
-    if (!cardVisible) {
-      return "missing_card";
-    }
-
-    try {
-      if (attempt.kind === "locator") {
-        // Phase 4: reduced click timeout — fail fast and try next attempt
-        await page.locator(attempt.selector).first().click({ timeout: 2_000 });
-      } else {
-        const box = await card.boundingBox();
-        if (!box) {
-          throw new Error("fixture card is not measurable");
-        }
-
-        const x = clampClickOffset(box.width, attempt.xRatio);
-        const y = clampClickOffset(box.height, attempt.yRatio);
-        await card.click({
-          timeout: 2_000,
-          position: { x, y }
-        });
-      }
-    } catch {}
-
-    const openResult = await waitForEightXBetExhaustiveOpen(page, fixtureId);
-    if (openResult === "opened") {
-      await waitForPageSettle(page);
-      return "opened";
-    }
-    if (openResult === "no_market") {
-      return "no_market";
-    }
-
-    if (isEightXBetLoginURL(page.url())) {
-      await recoverEightXBetInplayPage(page, targetURL);
-      continue;
-    }
-  }
-
-  if (await isEightXBetNoMarketVisible(page)) {
-    return "no_market";
-  }
-  await writeDebugArtifacts(page, `${collectorId}-exhaustive-open-failed-${fixtureId}`);
-  throw new Error(`8xbet exhaustive content did not open for fixture ${fixtureId}.`);
-}
-
-async function waitForEightXBetExhaustiveOpen(page: Page, fixtureId: string) {
-  // Phase 4: reduced from 2500ms → 1500ms to fail fast and try next click attempt sooner
-  const contentReady = await page
-    .waitForSelector(EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR, { timeout: 1_500 })
-    .then(() => true, () => false);
-  if (!contentReady) {
-    return "missing_card" as const;
-  }
-
-  const buttonsReady = await page
-    .waitForSelector(
-      `${EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR} button[data-testid^="oddsBtn-1|${fixtureId}|"]`,
-      { timeout: 1_500 }
-    )
-    .then(() => true, () => false);
-  if (buttonsReady) {
-    return "opened" as const;
-  }
-  if (await isEightXBetNoMarketVisible(page)) {
-    return "no_market" as const;
-  }
-  return "missing_card" as const;
-}
-
-async function recoverEightXBetInplayPage(page: Page, targetURL: string) {
-  await page.goto(targetURL, { waitUntil: "domcontentloaded" }).catch(() => undefined);
-  await waitForEightXBetReady(page, targetURL);
-}
-
-function clampClickOffset(size: number, ratio: number) {
-  const raw = Math.round(size * ratio);
-  return Math.max(12, Math.min(raw, Math.max(Math.round(size) - 12, 12)));
-}
-
-function isEightXBetLoginURL(value: string) {
-  const url = value.toLowerCase();
-  return url.includes("login") || url.includes("/signin") || url.includes("/auth");
-}
-
-async function isEightXBetNoMarketVisible(page: Page) {
-  const text = await page
-    .locator(EIGHTXBET_EXHAUSTIVE_CONTENT_SELECTOR)
-    .first()
-    .textContent()
-    .catch(() => "");
-  return /\bno\s+market\b/i.test(text ?? "");
-}
-
 async function installEightXBetObserver(page: Page) {
   await page.evaluate(
     ({ cardSelector, oddsSelector }) => {
@@ -803,49 +504,6 @@ function emptyEightXBetSnapshot(collectorId: string): OddsSnapshot {
   };
 }
 
-function logEightXBetTelemetry(collectorId: string, type: string, details: string) {
-  if (!envBool("EIGHTXBET_STREAM_TELEMETRY", true)) {
-    return;
-  }
-
-  console.log(`[${collectorId}] telemetry type=${type} ${details}`);
-}
-
 function eightXBetReconcileIntervalMs() {
   return Math.max(envInt("EIGHTXBET_RECONCILE_MS", 5 * 60_000), 60_000);
-}
-
-/**
- * Phase 2 optimisation: instead of serialising the full page HTML (~500KB–2MB)
- * via page.content() and then re-parsing it with JSDOM, we extract only the
- * three DOM sections that the exhaustive parser actually needs:
- *   1. ExhaustiveContentV4  – odds buttons
- *   2. The fixture card container – team names / handicap header
- *   3. exhaustive-navigator-v4 – league name
- *
- * This reduces the CDP payload to ~20–50KB and cuts JSDOM parse time
- * proportionally, typically saving 80–95 % of the per-fixture scrape cost.
- */
-async function extractEightXBetSectionHtml(page: Page, fixtureId: string): Promise<string> {
-  return page.evaluate((fid) => {
-    const section = document.querySelector('[data-testid="ExhaustiveContentV4"]');
-    const card = document.querySelector(
-      `[data-testid="simple-handicap-layout-football-${fid}"]`
-    );
-    const navigatorEl = document.querySelector('[data-testid="exhaustive-navigator-v4"]');
-
-    // Prefer the full league-unit container so the parser can resolve the
-    // handicap header / league name from its usual ancestors.
-    const cardContainer =
-      card?.closest('[data-testid^="v4-sport-asia-simple-handicap-unit-"]') ?? card;
-
-    const parts = [
-      section?.outerHTML ?? "",
-      cardContainer?.outerHTML ?? "",
-      navigatorEl?.outerHTML ?? ""
-    ].filter(Boolean);
-
-    if (parts.length === 0) return "";
-    return `<div data-surebet-partial="eightxbet-exhaustive">${parts.join("")}</div>`;
-  }, fixtureId);
 }
