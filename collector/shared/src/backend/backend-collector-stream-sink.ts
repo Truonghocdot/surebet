@@ -47,6 +47,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
   private readonly startedAt = new Date().toISOString();
   private readonly streamURL: string;
   private latestBootstrap: OddsSnapshot | null = null;
+  private readonly latestSelections = new Map<string, OddsSelection>();
   private socket: WebSocket | null = null;
   private readyPromise: Promise<void> | null = null;
   private readyResolve: (() => void) | null = null;
@@ -65,7 +66,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
   }
 
   async pushBootstrap(snapshot: OddsSnapshot): Promise<void> {
-    this.latestBootstrap = snapshot;
+    this.replaceLatestSnapshot(snapshot);
     await this.enqueue(async () => {
       await this.ensureConnected();
       logEventStartAtNormalization(snapshot.source, snapshot.collectedAt, snapshot.selections);
@@ -79,12 +80,13 @@ export class BackendCollectorStreamSink implements CollectorSink {
       return;
     }
 
+    this.applyLatestDeltas(deltas);
     await this.enqueue(async () => {
       await this.ensureConnected();
       await this.replayLatestBootstrapIfNeeded();
 
       const upserts: any[] = [];
-      
+
       for (const delta of deltas) {
         logEventStartAtNormalization(delta.source, delta.collectedAt, [delta]);
         if (delta.op === "remove") {
@@ -148,10 +150,6 @@ export class BackendCollectorStreamSink implements CollectorSink {
         sent_at: payload.sentAt
       });
     });
-  }
-
-  setResyncSnapshot(snapshot: OddsSnapshot) {
-    this.latestBootstrap = snapshot;
   }
 
   setQuoteConfirmationHandler(handler: QuoteConfirmationHandler | null) {
@@ -301,8 +299,49 @@ export class BackendCollectorStreamSink implements CollectorSink {
       return;
     }
 
-    await this.sendBootstrapSnapshot(this.latestBootstrap);
+    await this.sendBootstrapSnapshot({
+      ...this.latestBootstrap,
+      selections: Array.from(this.latestSelections.values())
+    });
     this.pendingResync = false;
+  }
+
+  private replaceLatestSnapshot(snapshot: OddsSnapshot) {
+    this.latestBootstrap = {
+      ...snapshot,
+      selections: []
+    };
+    this.latestSelections.clear();
+    for (const selection of snapshot.selections) {
+      this.latestSelections.set(selection.outcomeId, selection);
+    }
+  }
+
+  private applyLatestDeltas(deltas: OddsDelta[]) {
+    if (!this.latestBootstrap) {
+      return;
+    }
+
+    let collectedAt = this.latestBootstrap.collectedAt;
+    let collectedAtMs = Date.parse(collectedAt);
+    for (const delta of deltas) {
+      if (delta.op === "remove") {
+        this.latestSelections.delete(delta.outcomeId);
+      } else {
+        this.latestSelections.set(delta.outcomeId, selectionFromDelta(delta));
+      }
+
+      const deltaAtMs = Date.parse(delta.collectedAt);
+      if (Number.isFinite(deltaAtMs) && (!Number.isFinite(collectedAtMs) || deltaAtMs > collectedAtMs)) {
+        collectedAt = delta.collectedAt;
+        collectedAtMs = deltaAtMs;
+      }
+    }
+
+    this.latestBootstrap = {
+      ...this.latestBootstrap,
+      collectedAt
+    };
   }
 
   private async sendBootstrapSnapshot(snapshot: OddsSnapshot) {
@@ -481,6 +520,24 @@ function slugText(value: string) {
 
 function normalizeSocketError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function selectionFromDelta(delta: OddsDelta): OddsSelection {
+  return {
+    fixtureId: delta.fixtureId,
+    sport: delta.sport,
+    homeTeam: delta.homeTeam,
+    awayTeam: delta.awayTeam,
+    leagueName: delta.leagueName,
+    matchState: delta.matchState,
+    eventStartAt: delta.eventStartAt,
+    marketId: delta.marketId,
+    outcomeId: delta.outcomeId,
+    outcomeName: delta.outcomeName,
+    odds: delta.odds,
+    availableStake: delta.availableStake,
+    suspended: delta.suspended
+  };
 }
 
 function logEventStartAtNormalization(

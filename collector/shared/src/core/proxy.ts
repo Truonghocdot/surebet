@@ -5,7 +5,7 @@ import { envBool, envInt, envString } from "./env.js";
 
 const proxyXoayEndpoint = "https://proxyxoay.shop/api/get.php";
 const defaultProxyCachePath = path.resolve("tmp/collector/proxyxoay-cache.json");
-const proxyXoayRefreshIntervalMs = 60_000;
+const proxyXoayCacheFreshMs = 60_000;
 const proxyCacheExpirySkewMs = 15_000;
 const proxyCacheFallbackGraceMs = 3 * 60_000;
 
@@ -63,24 +63,6 @@ export async function resolveCollectorProxy(): Promise<CollectorProxySettings | 
   }
 
   throw new Error(`Unsupported collector proxy mode: ${mode}`);
-}
-
-export function startCollectorProxyCacheRefresh(collectorId: string) {
-  if (resolveProxyMode() !== "proxyxoay") {
-    return () => undefined;
-  }
-
-  const intervalMs = Math.max(
-    envInt("COLLECTOR_PROXY_REFRESH_MS", proxyXoayRefreshIntervalMs),
-    proxyXoayRefreshIntervalMs
-  );
-  const timer = setInterval(() => {
-    void resolveProxyXoayProxy().catch((error) => {
-      console.warn(`[${collectorId}-worker] proxy cache refresh failed:`, error);
-    });
-  }, intervalMs);
-  timer.unref();
-  return () => clearInterval(timer);
 }
 
 export function collectorProxyDebugInfo(): CollectorProxyDebugInfo {
@@ -452,7 +434,7 @@ function isProxyCacheFresh(cache: ProxyXoayCache) {
     return false;
   }
 
-  return Date.now() - acquiredAt < proxyXoayRefreshIntervalMs;
+  return Date.now() - acquiredAt < proxyXoayCacheFreshMs;
 }
 
 function canReuseCachedProxyAfterFailure(cache: ProxyXoayCache, message: string) {

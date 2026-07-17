@@ -1,12 +1,11 @@
 import {
-  buildDeltas,
   EightXBetRuntime,
   heartbeatIntervalMs,
   heartbeatOf,
   resolveEightXBetInplayPageURL,
   type Collector,
   type CollectorSink,
-  type OddsSelection,
+  type OddsDelta,
   type OddsSnapshot
 } from "@surebet/collector-shared";
 
@@ -24,76 +23,30 @@ export class EightXBetCollector implements Collector {
 
   async stream(sink: CollectorSink) {
     let currentSnapshot: OddsSnapshot | null = null;
-    let currentSnapshotMap = new Map<string, OddsSelection>();
     let bootstrapSent = false;
     let lastHeartbeatAt = 0;
-    let activeDeltaScan:
-      | {
-          seenFixtureIds: Set<string>;
-        }
-      | null = null;
 
     const flushSnapshot = async (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => {
-      const nextSnapshot = snapshot;
       const previousSummary = currentSnapshot ? summarizeSnapshot(currentSnapshot) : null;
-      const nextSummary = summarizeSnapshot(nextSnapshot);
+      const nextSummary = summarizeSnapshot(snapshot);
       logEightXBetSnapshotTelemetry(mode, previousSummary, nextSummary);
-      if (!bootstrapSent || mode === "bootstrap" || !currentSnapshot) {
-        await sink.pushBootstrap(nextSnapshot);
-        currentSnapshot = nextSnapshot;
-        currentSnapshotMap = selectionMap(nextSnapshot);
-        bootstrapSent = true;
-        activeDeltaScan = null;
-        await maybeHeartbeat(nextSnapshot);
-        return;
-      }
-
-      const nextSnapshotMap = selectionMap(nextSnapshot);
-      const deltas = buildDisappearedFixtureDeltas(
-        nextSnapshot,
-        currentSnapshotMap,
-        nextSnapshotMap,
-        activeDeltaScan?.seenFixtureIds ?? new Set<string>()
-      );
-      if (deltas.length > 0) {
-        await sink.pushDelta(deltas);
-      }
-      currentSnapshot = nextSnapshot;
-      currentSnapshotMap = nextSnapshotMap;
-      activeDeltaScan = null;
-      await maybeHeartbeat(nextSnapshot);
+      await sink.pushBootstrap(snapshot);
+      currentSnapshot = snapshot;
+      bootstrapSent = true;
+      await maybeHeartbeat(snapshot);
     };
 
-    const flushFixtureSnapshot = async (
-      snapshot: OddsSnapshot,
-      mode: "bootstrap" | "delta",
-      fixtureId: string
-    ) => {
-      if (mode !== "delta" || !bootstrapSent || !currentSnapshot) {
+    const flushFixtureDeltas = async (deltas: OddsDelta[]) => {
+      if (deltas.length === 0 || !bootstrapSent || !currentSnapshot) {
         return;
       }
 
-      if (!activeDeltaScan) {
-        activeDeltaScan = {
-          seenFixtureIds: new Set<string>()
-        };
-      }
-
-      activeDeltaScan.seenFixtureIds.add(fixtureId);
-      const previousFixtureMap = selectFixtureOutcomes(currentSnapshotMap, fixtureId);
-      const nextFixtureMap = selectionMap(snapshot);
-      const deltas = buildDeltas(snapshot, previousFixtureMap, nextFixtureMap);
-      if (deltas.length > 0) {
-        await sink.pushDelta(deltas);
-      }
-      replaceFixtureOutcomes(currentSnapshotMap, fixtureId, nextFixtureMap);
+      await sink.pushDelta(deltas);
       currentSnapshot = {
         ...currentSnapshot,
-        collectedAt: snapshot.collectedAt,
-        selections: Array.from(currentSnapshotMap.values())
+        collectedAt: latestDeltaTimestamp(deltas, currentSnapshot.collectedAt)
       };
-      sink.setResyncSnapshot?.(currentSnapshot);
-      await maybeHeartbeat(snapshot);
+      await maybeHeartbeat(currentSnapshot);
     };
 
     const maybeHeartbeat = async (snapshot: OddsSnapshot) => {
@@ -129,8 +82,8 @@ export class EightXBetCollector implements Collector {
       async (snapshot, mode) => {
         await flushSnapshot(snapshot, mode);
       },
-      async (snapshot, mode, fixtureId) => {
-        await flushFixtureSnapshot(snapshot, mode, fixtureId);
+      async (deltas) => {
+        await flushFixtureDeltas(deltas);
       }
     );
 
@@ -142,15 +95,6 @@ export class EightXBetCollector implements Collector {
       await this.inplayRuntime.close();
     }
   }
-}
-
-function selectionMap(snapshot: OddsSnapshot) {
-  const map = new Map<string, OddsSelection>();
-  for (let i = 0; i < snapshot.selections.length; i++) {
-    const selection = snapshot.selections[i];
-    map.set(selection.outcomeId, selection);
-  }
-  return map;
 }
 
 function summarizeSnapshot(snapshot: OddsSnapshot) {
@@ -165,64 +109,15 @@ function summarizeSnapshot(snapshot: OddsSnapshot) {
   return { fixtures: fixtures.size, markets: markets.size, outcomes };
 }
 
-function selectFixtureOutcomes(snapshotMap: Map<string, OddsSelection>, fixtureId: string) {
-  const map = new Map<string, OddsSelection>();
-  for (const [outcomeId, selection] of snapshotMap.entries()) {
-    if (selection.fixtureId !== fixtureId) {
-      continue;
-    }
-    map.set(outcomeId, selection);
-  }
-  return map;
-}
-
-function replaceFixtureOutcomes(
-  snapshotMap: Map<string, OddsSelection>,
-  fixtureId: string,
-  nextFixtureMap: Map<string, OddsSelection>
-) {
-  for (const [outcomeId, selection] of snapshotMap.entries()) {
-    if (selection.fixtureId === fixtureId) {
-      snapshotMap.delete(outcomeId);
+function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
+  let latest = Date.parse(fallback);
+  for (const delta of deltas) {
+    const value = Date.parse(delta.collectedAt);
+    if (Number.isFinite(value) && (!Number.isFinite(latest) || value > latest)) {
+      latest = value;
     }
   }
-  for (const [outcomeId, selection] of nextFixtureMap.entries()) {
-    snapshotMap.set(outcomeId, selection);
-  }
-}
-
-function buildDisappearedFixtureDeltas(
-  snapshot: OddsSnapshot,
-  previous: Map<string, OddsSelection>,
-  next: Map<string, OddsSelection>,
-  seenFixtureIds: Set<string>
-) {
-  const deltas = [];
-  for (const [outcomeId, selection] of previous.entries()) {
-    if (next.has(outcomeId) || seenFixtureIds.has(selection.fixtureId)) {
-      continue;
-    }
-
-    deltas.push({
-      source: snapshot.source,
-      collectedAt: snapshot.collectedAt,
-      fixtureId: selection.fixtureId,
-      sport: selection.sport,
-      homeTeam: selection.homeTeam,
-      awayTeam: selection.awayTeam,
-      leagueName: selection.leagueName,
-      matchState: selection.matchState,
-      eventStartAt: selection.eventStartAt,
-      marketId: selection.marketId,
-      outcomeId: selection.outcomeId,
-      outcomeName: selection.outcomeName,
-      odds: selection.odds,
-      availableStake: selection.availableStake,
-      suspended: true,
-      op: "remove" as const
-    });
-  }
-  return deltas;
+  return Number.isFinite(latest) ? new Date(latest).toISOString() : fallback;
 }
 
 function logEightXBetSnapshotTelemetry(

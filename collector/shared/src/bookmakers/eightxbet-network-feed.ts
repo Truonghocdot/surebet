@@ -1,6 +1,7 @@
 import type { Page, Response, WebSocket as PlaywrightWebSocket } from "playwright";
-import type { OddsSelection, OddsSnapshot } from "../contracts.js";
-import { envBool } from "../core/env.js";
+import type { OddsDelta, OddsSelection, OddsSnapshot } from "../contracts.js";
+import { envBool, envInt } from "../core/env.js";
+import { buildDeltas } from "./streaming-utils.js";
 
 type SupportedMarketCode = "ah" | "ah_1st" | "ou" | "ou_1st";
 
@@ -16,11 +17,16 @@ type FeedFixtureState = {
   metadata?: EightXBetFixtureMetadata;
   markets: Map<SupportedMarketCode, unknown>;
   seenMarkets: Set<SupportedMarketCode>;
+  selectionsByMarket: Map<SupportedMarketCode, OddsSelection[]>;
+  deliveredSelections: Map<string, OddsSelection>;
+  pendingMarkets: Set<SupportedMarketCode>;
   occurredAt: string;
-  lastDeliveredSignature?: string;
+  lastEventFull: boolean;
+  lastTouchedMarkets: SupportedMarketCode[];
 };
 
-type FeedSnapshotListener = (snapshot: OddsSnapshot, fixtureId: string) => Promise<void>;
+type FeedDeltaListener = (deltas: OddsDelta[], fixtureId: string) => Promise<void>;
+type FixtureDiscoveryListener = (fixtureId: string) => Promise<void> | void;
 
 type FixtureSnapshotWaiter = {
   resolve: (snapshot: OddsSnapshot) => void;
@@ -32,9 +38,12 @@ const supportedMarketCodes = new Set<SupportedMarketCode>(["ah", "ah_1st", "ou",
 export class EightXBetNetworkFeed {
   private readonly fixtures = new Map<string, FeedFixtureState>();
   private readonly pendingFixtureIds = new Set<string>();
-  private listener: FeedSnapshotListener | null = null;
+  private listener: FeedDeltaListener | null = null;
+  private fixtureDiscoveryListener: FixtureDiscoveryListener | null = null;
   private deliveryQueue = Promise.resolve();
   private deliveryRunning = false;
+  private lastTelemetryAt = 0;
+  private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly fixtureWaiters = new Map<string, Set<FixtureSnapshotWaiter>>();
 
   constructor(private readonly collectorId: string) {}
@@ -63,17 +72,40 @@ export class EightXBetNetworkFeed {
     };
   }
 
-  activate(bootstrap: OddsSnapshot, listener: FeedSnapshotListener) {
+  activate(
+    bootstrap: OddsSnapshot,
+    listener: FeedDeltaListener,
+    fixtureDiscoveryListener?: FixtureDiscoveryListener
+  ) {
     this.seedMetadata(bootstrap);
     this.listener = listener;
-    for (const fixtureId of this.fixtures.keys()) {
+    this.fixtureDiscoveryListener = fixtureDiscoveryListener ?? null;
+    const bootstrapByFixture = groupSelectionsByFixture(bootstrap.selections);
+    for (const [fixtureId, state] of this.fixtures) {
+      state.deliveredSelections = new Map(
+        (bootstrapByFixture.get(fixtureId) ?? []).map((selection) => [
+          selection.outcomeId,
+          selection
+        ])
+      );
+      for (const code of state.seenMarkets) {
+        state.pendingMarkets.add(code);
+      }
       this.emitFixture(fixtureId);
     }
   }
 
   deactivate() {
     this.listener = null;
+    this.fixtureDiscoveryListener = null;
     this.pendingFixtureIds.clear();
+    for (const state of this.fixtures.values()) {
+      state.pendingMarkets.clear();
+    }
+    for (const timer of this.deliveryRetryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.deliveryRetryTimers.clear();
     for (const waiters of this.fixtureWaiters.values()) {
       for (const waiter of waiters) {
         clearTimeout(waiter.timer);
@@ -95,7 +127,7 @@ export class EightXBetNetworkFeed {
         selections.push(...(domByFixture.get(fixtureId) ?? []));
         continue;
       }
-      selections.push(...buildSelections(state));
+      selections.push(...allSelections(state));
     }
 
     return {
@@ -206,6 +238,7 @@ export class EightXBetNetworkFeed {
         leagueName: first.leagueName ?? "",
         eventStartAt: first.eventStartAt
       };
+      rebuildMarketSelections(current, current.seenMarkets);
     }
   }
 
@@ -214,6 +247,7 @@ export class EightXBetNetworkFeed {
     if (!fixtureId) {
       return;
     }
+    const isNewFixture = !this.fixtures.has(fixtureId);
     const home = objectValue(value.home);
     const away = objectValue(value.away);
     const current = this.ensureState(fixtureId);
@@ -224,7 +258,14 @@ export class EightXBetNetworkFeed {
       leagueName: String(value.tnName ?? current.metadata?.leagueName ?? "").trim(),
       eventStartAt: timestampOf(value.kickoffTime ?? value.kickoff) || current.metadata?.eventStartAt
     };
+    rebuildMarketSelections(current, current.seenMarkets);
+    if (isNewFixture) {
+      this.notifyFixtureDiscovered(fixtureId);
+    }
     if (current.seenMarkets.size > 0) {
+      for (const code of current.seenMarkets) {
+        current.pendingMarkets.add(code);
+      }
       this.emitFixture(fixtureId);
     }
   }
@@ -269,16 +310,14 @@ export class EightXBetNetworkFeed {
     }
 
     current.occurredAt = occurredAt || new Date().toISOString();
-    if (full) {
-      this.resolveFixtureWaiters(fixtureId);
+    current.lastEventFull = full;
+    current.lastTouchedMarkets = Array.from(touchedMarkets);
+    rebuildMarketSelections(current, touchedMarkets);
+    for (const code of touchedMarkets) {
+      current.pendingMarkets.add(code);
     }
-    if (envBool("EIGHTXBET_STREAM_TELEMETRY", true)) {
-      const sourceLagMs = Math.max(Date.now() - new Date(current.occurredAt).getTime(), 0);
-      console.log(
-        `[8xbet-network] event fixture=${fixtureId} mode=${full ? "init" : "update"}` +
-          ` markets=${Array.from(touchedMarkets).join(",")}` +
-          ` outcomes=${buildSelections(current).length} source_lag_ms=${sourceLagMs}`
-      );
+    if (full) {
+      this.resolveFixtureWaiters(fixtureId, allSelections(current));
     }
     this.emitFixture(fixtureId);
   }
@@ -316,22 +355,33 @@ export class EightXBetNetworkFeed {
       for (const fixtureId of fixtureIds) {
         const listener = this.listener;
         const state = this.fixtures.get(fixtureId);
-        if (!listener || !state?.metadata || state.seenMarkets.size === 0) {
+        if (!listener || !state?.metadata || state.pendingMarkets.size === 0) {
           continue;
         }
 
-        const selections = buildSelections(state);
-        const signature = fixtureDeliverySignature(state, selections);
-        if (state.lastDeliveredSignature === signature) {
-          continue;
-        }
-
+        const touchedMarkets = new Set(state.pendingMarkets);
+        state.pendingMarkets.clear();
+        const previous = selectDeliveredMarkets(state, touchedMarkets);
+        const selections = selectionsForMarkets(state, touchedMarkets);
         const snapshot = this.fixtureSnapshot(fixtureId, state, selections);
+        const deltas = buildDeltas(snapshot, previous, selectionMap(selections));
+        this.logTelemetry(fixtureId, state);
 
         try {
-          await listener(snapshot, fixtureId);
-          state.lastDeliveredSignature = signature;
+          if (deltas.length > 0) {
+            await listener(deltas, fixtureId);
+          }
+          replaceDeliveredMarkets(state, touchedMarkets, selections);
+          const retryTimer = this.deliveryRetryTimers.get(fixtureId);
+          if (retryTimer) {
+            clearTimeout(retryTimer);
+            this.deliveryRetryTimers.delete(fixtureId);
+          }
         } catch (error) {
+          for (const code of touchedMarkets) {
+            state.pendingMarkets.add(code);
+          }
+          this.scheduleDeliveryRetry(fixtureId);
           console.warn(`[8xbet-network] fixture delivery failed fixture=${fixtureId}:`, error);
         }
       }
@@ -344,14 +394,19 @@ export class EightXBetNetworkFeed {
       state = {
         markets: new Map(),
         seenMarkets: new Set(),
-        occurredAt: new Date().toISOString()
+        selectionsByMarket: new Map(),
+        deliveredSelections: new Map(),
+        pendingMarkets: new Set(),
+        occurredAt: new Date().toISOString(),
+        lastEventFull: false,
+        lastTouchedMarkets: []
       };
       this.fixtures.set(fixtureId, state);
     }
     return state;
   }
 
-  private resolveFixtureWaiters(fixtureId: string) {
+  private resolveFixtureWaiters(fixtureId: string, selections: OddsSelection[]) {
     const waiters = this.fixtureWaiters.get(fixtureId);
     const state = this.fixtures.get(fixtureId);
     if (!waiters || !state?.metadata) {
@@ -359,7 +414,7 @@ export class EightXBetNetworkFeed {
     }
 
     this.fixtureWaiters.delete(fixtureId);
-    const snapshot = this.fixtureSnapshot(fixtureId, state, buildSelections(state));
+    const snapshot = this.fixtureSnapshot(fixtureId, state, selections);
     for (const waiter of waiters) {
       clearTimeout(waiter.timer);
       waiter.resolve(snapshot);
@@ -381,41 +436,139 @@ export class EightXBetNetworkFeed {
       selections
     };
   }
+
+  private notifyFixtureDiscovered(fixtureId: string) {
+    if (!this.fixtureDiscoveryListener) {
+      return;
+    }
+    void Promise.resolve(this.fixtureDiscoveryListener(fixtureId)).catch((error) => {
+      console.warn(`[8xbet-network] fixture subscription failed fixture=${fixtureId}:`, error);
+    });
+  }
+
+  private scheduleDeliveryRetry(fixtureId: string) {
+    if (this.deliveryRetryTimers.has(fixtureId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.deliveryRetryTimers.delete(fixtureId);
+      this.emitFixture(fixtureId);
+    }, 1_000);
+    timer.unref();
+    this.deliveryRetryTimers.set(fixtureId, timer);
+  }
+
+  private logTelemetry(fixtureId: string, state: FeedFixtureState) {
+    if (!envBool("EIGHTXBET_STREAM_TELEMETRY", true)) {
+      return;
+    }
+    const now = Date.now();
+    const intervalMs = Math.max(envInt("EIGHTXBET_STREAM_TELEMETRY_MS", 5_000), 1_000);
+    if (now - this.lastTelemetryAt < intervalMs) {
+      return;
+    }
+    this.lastTelemetryAt = now;
+    const sourceLagMs = Math.max(now - new Date(state.occurredAt).getTime(), 0);
+    console.log(
+      `[8xbet-network] event fixture=${fixtureId} mode=${state.lastEventFull ? "init" : "update"}` +
+        ` markets=${state.lastTouchedMarkets.join(",")}` +
+        ` outcomes=${selectionCount(state)} source_lag_ms=${sourceLagMs}`
+    );
+  }
 }
 
-function buildSelections(state: FeedFixtureState) {
-  if (!state.metadata) {
-    return [];
+function rebuildMarketSelections(
+  state: FeedFixtureState,
+  marketCodes: Iterable<SupportedMarketCode>
+) {
+  for (const code of marketCodes) {
+    state.selectionsByMarket.set(code, buildMarketSelections(state, code));
   }
+}
+
+function buildMarketSelections(state: FeedFixtureState, code: SupportedMarketCode) {
+  if (!state.metadata) return [];
+  const market = state.markets.get(code);
+  if (!Array.isArray(market)) return [];
+  return code === "ah" || code === "ah_1st"
+    ? buildHandicapSelections(state.metadata, code, market)
+    : buildOverUnderSelections(state.metadata, code, market);
+}
+
+function allSelections(state: FeedFixtureState) {
   const result: OddsSelection[] = [];
   for (const code of supportedMarketCodes) {
-    const market = state.markets.get(code);
-    if (!Array.isArray(market)) {
-      continue;
-    }
-    if (code === "ah" || code === "ah_1st") {
-      result.push(...buildHandicapSelections(state.metadata, code, market));
-    } else {
-      result.push(...buildOverUnderSelections(state.metadata, code, market));
+    result.push(...(state.selectionsByMarket.get(code) ?? []));
+  }
+  return result;
+}
+
+function selectionsForMarkets(
+  state: FeedFixtureState,
+  marketCodes: Iterable<SupportedMarketCode>
+) {
+  const result: OddsSelection[] = [];
+  for (const code of marketCodes) {
+    result.push(...(state.selectionsByMarket.get(code) ?? []));
+  }
+  return result;
+}
+
+function selectionMap(selections: OddsSelection[]) {
+  return new Map(selections.map((selection) => [selection.outcomeId, selection]));
+}
+
+function selectDeliveredMarkets(
+  state: FeedFixtureState,
+  marketCodes: Set<SupportedMarketCode>
+) {
+  const result = new Map<string, OddsSelection>();
+  for (const [outcomeId, selection] of state.deliveredSelections) {
+    const code = marketCodeForSelection(selection);
+    if (code && marketCodes.has(code)) {
+      result.set(outcomeId, selection);
     }
   }
   return result;
 }
 
-function fixtureDeliverySignature(state: FeedFixtureState, selections: OddsSelection[]) {
-  return JSON.stringify([
-    state.metadata?.homeTeam ?? "",
-    state.metadata?.awayTeam ?? "",
-    state.metadata?.leagueName ?? "",
-    state.metadata?.eventStartAt ?? "",
-    selections.map((selection) => [
-      selection.marketId,
-      selection.outcomeId,
-      selection.odds,
-      selection.availableStake,
-      selection.suspended
-    ])
-  ]);
+function replaceDeliveredMarkets(
+  state: FeedFixtureState,
+  marketCodes: Set<SupportedMarketCode>,
+  selections: OddsSelection[]
+) {
+  for (const [outcomeId, selection] of state.deliveredSelections) {
+    const code = marketCodeForSelection(selection);
+    if (code && marketCodes.has(code)) {
+      state.deliveredSelections.delete(outcomeId);
+    }
+  }
+  for (const selection of selections) {
+    state.deliveredSelections.set(selection.outcomeId, selection);
+  }
+}
+
+function marketCodeForSelection(selection: OddsSelection): SupportedMarketCode | null {
+  switch (selection.marketId) {
+    case "hdp-ah":
+      return "ah";
+    case "hdp-ah-1st":
+      return "ah_1st";
+    case "o-u-ou":
+      return "ou";
+    case "o-u-ou-1st":
+      return "ou_1st";
+    default:
+      return null;
+  }
+}
+
+function selectionCount(state: FeedFixtureState) {
+  let count = 0;
+  for (const selections of state.selectionsByMarket.values()) {
+    count += selections.length;
+  }
+  return count;
 }
 
 function buildHandicapSelections(
@@ -585,7 +738,12 @@ export function buildEightXBetNetworkFixtureSnapshot(options: {
     metadata: options.metadata,
     markets: new Map(),
     seenMarkets: new Set(),
-    occurredAt: options.occurredAt
+    selectionsByMarket: new Map(),
+    deliveredSelections: new Map(),
+    pendingMarkets: new Set(),
+    occurredAt: options.occurredAt,
+    lastEventFull: true,
+    lastTouchedMarkets: []
   };
   for (const [rawCode, market] of Object.entries(options.markets)) {
     const code = normalizeMarketCode(rawCode);
@@ -593,6 +751,7 @@ export function buildEightXBetNetworkFixtureSnapshot(options: {
     state.seenMarkets.add(code);
     state.markets.set(code, market);
   }
+  rebuildMarketSelections(state, state.seenMarkets);
   return {
     source: {
       collectorId: options.collectorId ?? "8xbet",
@@ -600,7 +759,7 @@ export function buildEightXBetNetworkFixtureSnapshot(options: {
       lobbyId: "default" as const
     },
     collectedAt: options.occurredAt,
-    selections: buildSelections(state)
+    selections: allSelections(state)
   } satisfies OddsSnapshot;
 }
 

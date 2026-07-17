@@ -5,7 +5,9 @@ import type {
   CollectorHeartbeat,
   CollectorSink,
   OddsDelta,
+  OddsSelection,
   OddsSnapshot,
+  QuoteConfirmationRequest,
   StreamingCollectorRuntime
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
@@ -47,35 +49,31 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         const initialHtml = await extractCmdMatchHtml(target);
         const initialSnapshot = parseJun88CmdSnapshot(initialHtml, target.url(), this.collectorId);
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
-        let activeSnapshot = initialSnapshot;
+        let activeSnapshot: OddsSnapshot = {
+          ...initialSnapshot,
+          selections: []
+        };
         let activeSnapshotMap = selectionMap(initialSnapshot);
         let streamFailure: Error | null = null;
         sink.setQuoteConfirmationHandler?.(async (request) => {
-          target = await resolveCmdContentTarget(page);
-          const confirmationSnapshot = parseJun88CmdSnapshot(
-            await extractCmdMatchHtml(target),
-            target.url(),
-            this.collectorId
-          );
-          const selection = confirmationSnapshot.selections.find(
-            (item) =>
-              item.fixtureId === request.fixtureId &&
-              item.marketId === request.marketId &&
-              item.outcomeId === request.outcomeId
-          );
+          let selection: OddsSelection | null;
+          try {
+            selection = await readCmdConfirmedSelection(target, request);
+          } catch {
+            target = await resolveCmdContentTarget(page);
+            selection = await readCmdConfirmedSelection(target, request);
+          }
           return {
-            observedAt: confirmationSnapshot.collectedAt,
-            selection: selection ?? null
+            observedAt: new Date().toISOString(),
+            selection
           };
         });
         await installCmdDeltaBinding(page, async (deltas) => {
           applyDeltasToSelectionMap(activeSnapshotMap, deltas);
           activeSnapshot = {
             ...activeSnapshot,
-            collectedAt: latestDeltaTimestamp(deltas, activeSnapshot.collectedAt),
-            selections: Array.from(activeSnapshotMap.values())
+            collectedAt: latestDeltaTimestamp(deltas, activeSnapshot.collectedAt)
           };
-          sink.setResyncSnapshot?.(activeSnapshot);
           try {
             await sink.pushDelta(deltas);
           } catch (error) {
@@ -109,7 +107,10 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
               activeSnapshotMap,
               reconciledSnapshotMap
             ).filter((delta) => delta.op === "remove");
-            activeSnapshot = reconciledSnapshot;
+            activeSnapshot = {
+              ...reconciledSnapshot,
+              selections: []
+            };
             activeSnapshotMap = reconciledSnapshotMap;
             await installCmdObserver(target, reconciledSnapshot);
             await sink.pushBootstrap(reconciledSnapshot);
@@ -135,6 +136,34 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
       }
     });
   }
+}
+
+async function readCmdConfirmedSelection(
+  target: Page | Frame,
+  request: QuoteConfirmationRequest
+): Promise<OddsSelection | null> {
+  return target.evaluate(({ fixtureId, marketId, outcomeId }) => {
+    const state = (
+      window as typeof window & {
+        __surebet_cmd_stream__?: {
+          byRow?: Record<string, OddsSelection[]>;
+        };
+      }
+    ).__surebet_cmd_stream__;
+    const rows = state?.byRow;
+    if (!rows) {
+      return null;
+    }
+
+    const selection = (rows[fixtureId] ?? []).find(
+      (item) =>
+        item.fixtureId === fixtureId &&
+        item.marketId === marketId &&
+        item.outcomeId === outcomeId
+    );
+
+    return selection ? { ...selection } : null;
+  }, request);
 }
 
 function requireLobbyConfig(lobbyId: "cmd") {

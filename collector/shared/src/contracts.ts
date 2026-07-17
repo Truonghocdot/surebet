@@ -99,7 +99,6 @@ export interface CollectorSink {
   pushBootstrap(snapshot: OddsSnapshot): Promise<void>;
   pushDelta(deltas: OddsDelta[]): Promise<void>;
   heartbeat(payload: CollectorHeartbeat): Promise<void>;
-  setResyncSnapshot?(snapshot: OddsSnapshot): void;
   setQuoteConfirmationHandler?(handler: QuoteConfirmationHandler | null): void;
 }
 
