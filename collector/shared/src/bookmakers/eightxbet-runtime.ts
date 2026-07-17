@@ -20,7 +20,6 @@ import stealth from "puppeteer-extra-plugin-stealth";
 const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_CARD_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
-const EIGHTXBET_FIXTURE_DISCOVERY_BINDING = "__surebet_8xbet_fixture_discovered__";
 
 chromium.use(stealth());
 
@@ -172,7 +171,6 @@ export class EightXBetRuntime implements CollectorRuntime {
     await installEightXBetSocketSubscriptionBridge(context);
 
     const page = await context.newPage();
-    await installEightXBetFixtureDiscovery(page);
     this.detachNetworkFeed = this.networkFeed.attach(page);
     this.detachTrafficRecorder = this.trafficRecorder.attach(page);
     this.context = context;
@@ -327,80 +325,6 @@ async function readEightXBetFixtureIDs(page: Page) {
 
     return Array.from(new Set(ids));
   }, EIGHTXBET_CARD_SELECTOR);
-}
-
-async function installEightXBetFixtureDiscovery(page: Page) {
-  await page.exposeBinding(EIGHTXBET_FIXTURE_DISCOVERY_BINDING, (_source, value: unknown) => {
-    const fixtureIds = Array.isArray(value)
-      ? value.map(String).filter((fixtureId) => /^\d+$/.test(fixtureId))
-      : [];
-    if (fixtureIds.length === 0 || page.isClosed()) {
-      return;
-    }
-    void addEightXBetFixtureSubscriptions(page, fixtureIds).catch((error) => {
-      console.warn("[8xbet-network] card subscription callback failed:", error);
-    });
-  });
-
-  await page.addInitScript(
-    ({ bindingName, cardSelector }) => {
-      const win = window as typeof window & {
-        [key: string]: unknown;
-        __surebet_8xbet_fixture_observer__?: MutationObserver;
-      };
-      const pending = new Set<string>();
-      let scheduled = false;
-
-      const fixtureIdOf = (element: Element) =>
-        element.getAttribute("data-testid")?.match(/football-(\d+)/i)?.[1] ?? "";
-      const flush = () => {
-        scheduled = false;
-        const fixtureIds = Array.from(pending);
-        pending.clear();
-        if (fixtureIds.length === 0) return;
-        const binding = win[bindingName];
-        if (typeof binding === "function") {
-          void Promise.resolve(binding(fixtureIds)).catch(() => undefined);
-        }
-      };
-      const queue = (fixtureId: string) => {
-        if (!fixtureId) return;
-        pending.add(fixtureId);
-        if (!scheduled) {
-          scheduled = true;
-          queueMicrotask(flush);
-        }
-      };
-      const scan = (node: Node) => {
-        if (!(node instanceof Element)) return;
-        if (node.matches(cardSelector)) queue(fixtureIdOf(node));
-        for (const card of node.querySelectorAll(cardSelector)) {
-          queue(fixtureIdOf(card));
-        }
-      };
-      const start = () => {
-        win.__surebet_8xbet_fixture_observer__?.disconnect();
-        scan(document.documentElement);
-        const observer = new MutationObserver((mutations) => {
-          for (const mutation of mutations) {
-            for (const node of mutation.addedNodes) scan(node);
-          }
-        });
-        observer.observe(document.documentElement, { childList: true, subtree: true });
-        win.__surebet_8xbet_fixture_observer__ = observer;
-      };
-
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", start, { once: true });
-      } else {
-        start();
-      }
-    },
-    {
-      bindingName: EIGHTXBET_FIXTURE_DISCOVERY_BINDING,
-      cardSelector: EIGHTXBET_CARD_SELECTOR
-    }
-  );
 }
 
 async function installEightXBetSocketSubscriptionBridge(context: BrowserContext) {
