@@ -47,7 +47,6 @@ type OddsStateRepository struct {
 	client            *redis.Client
 	cacheMu           sync.RWMutex
 	current           map[string]map[string]models.OddsQuote
-	sourceSeen        map[string]time.Time
 	finishedRetention time.Duration
 	overallRetention  time.Duration
 	historyTTL        time.Duration
@@ -60,7 +59,6 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 	return &OddsStateRepository{
 		client:            client,
 		current:           make(map[string]map[string]models.OddsQuote),
-		sourceSeen:        make(map[string]time.Time),
 		finishedRetention: defaultFinishedRetention,
 		overallRetention:  defaultOverallRetention,
 		historyTTL:        defaultHistoryTTL,
@@ -72,12 +70,11 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 
 func (r *OddsStateRepository) ObserveSource(
 	_ context.Context,
-	source dto.CollectorSource,
+	_ dto.CollectorSource,
 	_ time.Time,
 ) error {
-	r.cacheMu.Lock()
-	r.sourceSeen[currentCacheKey(source)] = time.Now().UTC()
-	r.cacheMu.Unlock()
+	// A heartbeat proves only that the collector connection is alive. It cannot
+	// establish that any individual quote is still offered by the bookmaker.
 	return nil
 }
 
@@ -120,7 +117,6 @@ func (r *OddsStateRepository) WarmCurrentCache(ctx context.Context) error {
 
 	r.cacheMu.Lock()
 	r.current = loaded
-	r.sourceSeen = make(map[string]time.Time)
 	r.cacheMu.Unlock()
 	return nil
 }
@@ -436,12 +432,7 @@ func (r *OddsStateRepository) listCurrent(
 			LobbyID:     source.LobbyID,
 		}
 		sourceKey := currentCacheKey(sourceRef)
-		sourceSeenAt := r.sourceSeen[sourceKey]
 		for _, item := range r.current[sourceKey] {
-			if options.DetectorMarketsOnly && sourceSeenAt.After(item.CollectedAt) {
-				item.CollectedAt = sourceSeenAt
-				item.LastObservedAt = sourceSeenAt
-			}
 			if fixtureID != "" && item.FixtureID != fixtureID {
 				continue
 			}

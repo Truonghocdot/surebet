@@ -107,7 +107,7 @@ func TestOddsStateRepositoryCurrentReadsDoNotRoundTripToRedis(t *testing.T) {
 	}
 }
 
-func TestOddsStateRepositoryUsesSourceHeartbeatForDetectorFreshness(t *testing.T) {
+func TestOddsStateRepositoryDoesNotUseSourceHeartbeatForDetectorFreshness(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
 
@@ -131,13 +131,10 @@ func TestOddsStateRepositoryUsesSourceHeartbeatForDetectorFreshness(t *testing.T
 	}
 	items, err = repo.ListCurrentDetectorCandidatesBySource(context.Background(), minObservedAt)
 	if err != nil {
-		t.Fatalf("list heartbeat-backed detector candidates: %v", err)
+		t.Fatalf("list detector candidates after heartbeat: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("expected heartbeat-backed candidate, got %+v", items)
-	}
-	if !items[0].CollectedAt.After(minObservedAt) {
-		t.Fatalf("expected detector quote time to derive from source heartbeat, got %s", items[0].CollectedAt)
+	if len(items) != 0 {
+		t.Fatalf("heartbeat must not revive a stale quote, got %+v", items)
 	}
 }
 

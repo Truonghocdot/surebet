@@ -15,6 +15,8 @@ import type {
   OpportunityBoardOutcome
 } from "@/features/dashboard/schemas/crm-schemas";
 
+const MAX_SOURCE_AGE_MS = 60_000;
+
 export function OpportunitiesScreen() {
   const query = useOpportunityBoardQuery();
   const realtimeStatus = useRealtimeWebSocket();
@@ -65,6 +67,13 @@ function RealtimeIndicator({ status }: { status: "connecting" | "live" | "reconn
 }
 
 function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
+  const now = useBoardClock();
+  const fixtures = board.items.filter((fixture) => isFixtureFresh(fixture, now));
+
+  if (fixtures.length === 0) {
+    return <EmptyBoard />;
+  }
+
   return (
     <div className="overflow-x-auto pb-2">
       <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
@@ -86,12 +95,32 @@ function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
             <th className="border-b border-[color:var(--line)] px-4 py-3 font-semibold">Tài xỉu</th>
           </tr>
         </thead>
-        {board.items.map((fixture) => (
+        {fixtures.map((fixture) => (
           <FixtureRows fixture={fixture} key={fixture.id} />
         ))}
       </table>
     </div>
   );
+}
+
+function useBoardClock() {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return now;
+}
+
+function isFixtureFresh(fixture: OpportunityBoardFixture, now: number) {
+  return fixture.sources.every((source) => isFreshTimestamp(source.latest_collected_at, now));
+}
+
+function isFreshTimestamp(value: string, now: number) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && now - timestamp <= MAX_SOURCE_AGE_MS;
 }
 
 function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
