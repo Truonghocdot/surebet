@@ -38,6 +38,7 @@ export const matchedFixtureSourceSchema = z.object({
   source_id: z.string(),
   bookmaker_id: z.string(),
   lobby_id: z.string(),
+  fixture_id: z.string(),
   home_team: z.string(),
   away_team: z.string(),
   match_state: z.string(),

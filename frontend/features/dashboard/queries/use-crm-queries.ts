@@ -8,9 +8,13 @@ import {
   fetchOpportunityBoard,
   fetchOpportunities
 } from "@/features/dashboard/api/mock-dashboard-api";
-import type { OpportunityBoard } from "@/features/dashboard/schemas/crm-schemas";
+import type {
+  MatchedFixturesSnapshot,
+  OpportunityBoard
+} from "@/features/dashboard/schemas/crm-schemas";
 import { backendWebSocketURL } from "@/lib/realtime-url";
 import {
+  applyRealtimeMatchedFixtures,
   applyRealtimeOddsQuotes,
   type RealtimeOddsQuote
 } from "@/lib/realtime-opportunity-board";
@@ -133,6 +137,14 @@ export function useRealtimeWebSocket() {
                 crmQueryKeys.opportunityBoard,
                 (current) => current
                   ? applyRealtimeOddsQuotes(current, quotes).board
+                  : current
+              );
+            }
+            if (quotes.length > 0) {
+              queryClient.setQueryData<MatchedFixturesSnapshot>(
+                crmQueryKeys.matchedFixtures,
+                (current) => current
+                  ? applyRealtimeMatchedFixtures(current, quotes)
                   : current
               );
             }

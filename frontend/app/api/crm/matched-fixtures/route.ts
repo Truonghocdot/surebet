@@ -9,10 +9,13 @@ import {
   type FixtureIdentityIndexEntry
 } from "@/lib/fixture-identity";
 
+export const dynamic = "force-dynamic";
+
 type MutableSource = {
   source_id: string;
   bookmaker_id: string;
   lobby_id: string;
+  fixture_id: string;
   home_team: string;
   away_team: string;
   match_state: string;
@@ -54,6 +57,7 @@ export async function GET() {
             source_id: source.source_id,
             bookmaker_id: source.bookmaker_id,
             lobby_id: source.lobby_id,
+            fixture_id: source.fixture_id,
             home_team: source.home_team,
             away_team: source.away_team,
             match_state: source.match_state,
@@ -80,15 +84,22 @@ export async function GET() {
       .map((item) => item.latest_collected_at)
       .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null;
 
-    return NextResponse.json({
-      summary: {
-        matched_fixtures: items.length,
-        active_sources: activeSources,
-        total_quotes: items.reduce((sum, item) => sum + item.quote_count, 0),
-        latest_collected_at: latestCollectedAt
+    return NextResponse.json(
+      {
+        summary: {
+          matched_fixtures: items.length,
+          active_sources: activeSources,
+          total_quotes: items.reduce((sum, item) => sum + item.quote_count, 0),
+          latest_collected_at: latestCollectedAt
+        },
+        items
       },
-      items
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0"
+        }
+      }
+    );
   } catch (error) {
     return NextResponse.json(
       {
@@ -143,6 +154,7 @@ function groupMatchedFixtures(items: BackendOdds[]) {
       source_id: sourceID,
       bookmaker_id: item.bookmaker_id,
       lobby_id: item.lobby_id,
+      fixture_id: item.fixture_id,
       home_team: item.home_team,
       away_team: item.away_team,
       match_state: normalizeMatchState(item.match_state),

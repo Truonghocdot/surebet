@@ -55,6 +55,7 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         };
         let activeSnapshotMap = selectionMap(initialSnapshot);
         let streamFailure: Error | null = null;
+        let lastDeltaAt = Date.now();
         sink.setQuoteConfirmationHandler?.(async (request) => {
           let selection: OddsSelection | null;
           try {
@@ -69,6 +70,7 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
           };
         });
         await installCmdDeltaBinding(page, async (deltas) => {
+          lastDeltaAt = Date.now();
           applyDeltasToSelectionMap(activeSnapshotMap, deltas);
           activeSnapshot = {
             ...activeSnapshot,
@@ -91,6 +93,34 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
         while (!page.isClosed()) {
           if (streamFailure) {
             throw streamFailure;
+          }
+
+          if (Date.now() - lastDeltaAt >= cmdStaleReloadIntervalMs()) {
+            console.warn(
+              `[${this.collectorId}] no quote delta for ${Date.now() - lastDeltaAt}ms; reloading CMD page`
+            );
+            await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
+            await page.waitForTimeout(Math.max(envInt("COLLECT_PAGE_SETTLE_MS", 1_000), 0));
+            target = await resolveCmdContentTarget(page);
+            const refreshedHtml = await extractCmdMatchHtml(target);
+            const refreshedSnapshot = parseJun88CmdSnapshot(
+              refreshedHtml,
+              target.url(),
+              this.collectorId
+            );
+            assertSnapshotHasSelections(refreshedSnapshot, this.collectorId);
+            activeSnapshot = {
+              ...refreshedSnapshot,
+              selections: []
+            };
+            activeSnapshotMap = selectionMap(refreshedSnapshot);
+            await installCmdObserver(target, refreshedSnapshot);
+            await sink.pushBootstrap(refreshedSnapshot);
+            await sink.heartbeat(heartbeatOf(refreshedSnapshot.source));
+            lastDeltaAt = Date.now();
+            lastHeartbeatAt = lastDeltaAt;
+            lastReconcileAt = lastDeltaAt;
+            continue;
           }
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
@@ -228,7 +258,7 @@ async function waitForFrameContent(frame: Frame) {
   throw new Error("Jun88 CMD frame did not render match content in time.");
 }
 
-async function installCmdObserver(
+export async function installCmdObserver(
   target: Page | Frame,
   snapshot: {
     source: CollectorSource;
@@ -248,14 +278,16 @@ async function installCmdObserver(
   );
 
   const script = `
-    ((seededFingerprints, bindingName) => {
+    ((seededFingerprints, bindingName, scanIntervalMs) => {
       const win = window;
       if (!win.__surebet_cmd_stream__) {
-        win.__surebet_cmd_stream__ = { queue: [], seen: {}, byRow: {} };
+        win.__surebet_cmd_stream__ = { queue: [], seen: {}, byRow: {}, rowFingerprints: {} };
       }
       const state = win.__surebet_cmd_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
+      state.rowFingerprints = {};
       if (state.observer) state.observer.disconnect();
+      if (state.scanTimer) clearInterval(state.scanTimer);
 
       const text = (node) => (node && node.textContent ? node.textContent.replace(/\\s+/g, " ").trim() : "");
       const normalizeToken = (value) =>
@@ -406,6 +438,11 @@ async function installCmdObserver(
       const syncRow = (rowNode, emit) => {
         const rowKey = rowNode.getAttribute("groupid") || rowNode.id || "";
         if (!rowKey) return;
+        const groupRows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))
+          .filter((node) => (node.getAttribute("groupid") || node.id || "") === rowKey);
+        const rowFingerprint = fingerprintRows(groupRows);
+        if (emit && state.rowFingerprints[rowKey] === rowFingerprint) return;
+        state.rowFingerprints[rowKey] = rowFingerprint;
         const current = parseMatchGroup(rowKey);
         const previous = state.byRow[rowKey] || [];
         const currentMap = Object.fromEntries(current.map((item) => [item.outcomeId, item]));
@@ -462,6 +499,18 @@ async function installCmdObserver(
         state.byRow[rowKey] = current;
       };
 
+      const fingerprintRows = (rows) => rows.map((row) => {
+        const attributes = Array.from(row.querySelectorAll("a, button, input")).map((node) => [
+          node.className || "",
+          node.getAttribute("aria-disabled") || "",
+          node.getAttribute("disabled") || "",
+          node.getAttribute("data-odds") || "",
+          node.getAttribute("data-value") || "",
+          node.getAttribute("value") || ""
+        ].join("|")).join(";");
+        return text(row) + "|" + attributes;
+      }).join("\\u0001");
+
       const removeRow = (rowNode) => {
         const rowKey = rowNode.getAttribute("groupid") || rowNode.id || "";
         if (!rowKey || !state.byRow[rowKey]) return;
@@ -505,6 +554,12 @@ async function installCmdObserver(
           const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
           const row = target && target.closest ? target.closest(".match.default-match, .match.copy-match") : null;
           if (row) rows.add(row);
+          for (const added of Array.from(mutation.addedNodes || [])) {
+            if (added instanceof Element) {
+              if (added.matches(".match.default-match, .match.copy-match")) rows.add(added);
+              for (const nested of Array.from(added.querySelectorAll?.(".match.default-match, .match.copy-match") || [])) rows.add(nested);
+            }
+          }
           for (const removed of Array.from(mutation.removedNodes || [])) {
             if (removed instanceof Element) {
               if (removed.matches(".match.default-match, .match.copy-match")) removedRows.push(removed);
@@ -527,14 +582,37 @@ async function installCmdObserver(
         childList: true,
         characterData: true,
         attributes: true,
-        attributeFilter: ["class", "disabled", "aria-disabled"]
+        attributeFilter: ["class", "disabled", "aria-disabled", "value", "data-odds", "data-value"]
       });
       state.observer = observer;
+
+      state.scanTimer = setInterval(() => {
+        const rows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"));
+        const groupedRows = new Map();
+        for (const row of rows) {
+          const rowKey = row.getAttribute("groupid") || row.id || "";
+          if (!rowKey) continue;
+          const groupRows = groupedRows.get(rowKey) || [];
+          groupRows.push(row);
+          groupedRows.set(rowKey, groupRows);
+        }
+        for (const [rowKey, groupRows] of groupedRows) {
+          const fingerprint = fingerprintRows(groupRows);
+          if (state.rowFingerprints[rowKey] !== fingerprint) syncRow(groupRows[0], true);
+        }
+
+        if (state.queue.length > 0 && typeof win[bindingName] === "function") {
+          const batch = state.queue.splice(0, state.queue.length);
+          Promise.resolve(win[bindingName](batch)).catch(() => {
+            state.queue.unshift(...batch);
+          });
+        }
+      }, scanIntervalMs);
     })
   `;
 
   await target.evaluate(
-    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)})`
+    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)}, ${cmdDomScanIntervalMs()})`
   );
 }
 
@@ -604,4 +682,12 @@ function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
 
 function cmdReconcileIntervalMs() {
   return Math.max(envInt("CMD_RECONCILE_MS", 5 * 60_000), 60_000);
+}
+
+function cmdDomScanIntervalMs() {
+  return Math.max(envInt("CMD_DOM_SCAN_MS", 500), 100);
+}
+
+function cmdStaleReloadIntervalMs() {
+  return Math.max(envInt("CMD_STALE_RELOAD_MS", 30_000), 10_000);
 }

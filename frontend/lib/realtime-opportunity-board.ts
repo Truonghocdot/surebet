@@ -1,4 +1,7 @@
-import type { OpportunityBoard } from "@/features/dashboard/schemas/crm-schemas";
+import type {
+  MatchedFixturesSnapshot,
+  OpportunityBoard
+} from "@/features/dashboard/schemas/crm-schemas";
 
 export type RealtimeOddsQuote = {
   bookmaker_id: string;
@@ -122,6 +125,60 @@ export function applyRealtimeOddsQuotes(
   };
 }
 
+export function applyRealtimeMatchedFixtures(
+  snapshot: MatchedFixturesSnapshot,
+  quotes: RealtimeOddsQuote[]
+) {
+  if (quotes.length === 0) {
+    return snapshot;
+  }
+
+  const updates = new Map(quotes.map((quote) => [sourceFixtureKey(quote), quote]));
+  let changed = false;
+  let summaryLatest = snapshot.summary.latest_collected_at;
+  const items = snapshot.items.map((fixture) => {
+    let fixtureLatest = fixture.latest_collected_at;
+    let fixtureChanged = false;
+    const sources = fixture.sources.map((source) => {
+      const update = updates.get(sourceFixtureKey({
+        bookmaker_id: source.bookmaker_id,
+        lobby_id: source.lobby_id,
+        fixture_id: source.fixture_id
+      }));
+      if (!update) {
+        return source;
+      }
+
+      changed = true;
+      fixtureChanged = true;
+      fixtureLatest = latestTimestamp(fixtureLatest, update.collected_at);
+      summaryLatest = latestTimestamp(summaryLatest ?? "", update.collected_at);
+      return {
+        ...source,
+        latest_collected_at: latestTimestamp(
+          source.latest_collected_at,
+          update.collected_at
+        )
+      };
+    });
+
+    return fixtureChanged
+      ? { ...fixture, latest_collected_at: fixtureLatest, sources }
+      : fixture;
+  });
+
+  return changed
+    ? {
+        ...snapshot,
+        summary: {
+          ...snapshot.summary,
+          latest_collected_at: summaryLatest
+        },
+        items
+      }
+    : snapshot;
+}
+
 function clearSurebetLegs(boardSources: OpportunityBoard["items"][number]["sources"]) {
   return boardSources.map((source) => ({
     ...source,
@@ -154,6 +211,16 @@ function quoteKey(quote: {
     quote.fixture_id,
     quote.outcome_id
   ]
+    .map((value) => value.trim().toLowerCase())
+    .join("\u0000");
+}
+
+function sourceFixtureKey(quote: {
+  bookmaker_id: string;
+  lobby_id: string;
+  fixture_id: string;
+}) {
+  return [quote.bookmaker_id, quote.lobby_id, quote.fixture_id]
     .map((value) => value.trim().toLowerCase())
     .join("\u0000");
 }

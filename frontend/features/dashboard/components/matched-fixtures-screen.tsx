@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DataPanel } from "@/components/dashboard/data-panel";
 import { SectionHeader } from "@/components/dashboard/section-header";
@@ -13,6 +14,7 @@ import type {
 
 export function MatchedFixturesScreen() {
   const query = useMatchedFixturesQuery();
+  useFreshnessClock();
 
   return (
     <div className="dashboard-page">
@@ -109,6 +111,15 @@ export function MatchedFixturesScreen() {
       </QueryShell>
     </div>
   );
+}
+
+function useFreshnessClock() {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setTick((value) => value + 1), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
 }
 
 function MatchedFixtureCard({ item }: { item: MatchedFixture }) {

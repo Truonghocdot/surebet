@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { OpportunityBoard } from "@/features/dashboard/schemas/crm-schemas";
 import {
+  applyRealtimeMatchedFixtures,
   applyRealtimeOddsQuotes,
   type RealtimeOddsQuote
 } from "@/lib/realtime-opportunity-board";
@@ -40,6 +41,69 @@ test("requests reconciliation when a new standard outcome is not on the board", 
 
   assert.equal(result.changed, false);
   assert.equal(result.needsReconcile, true);
+});
+
+test("patches matched fixture source timestamps directly from websocket quotes", () => {
+  const snapshot = {
+    summary: {
+      matched_fixtures: 1,
+      active_sources: 2,
+      total_quotes: 4,
+      latest_collected_at: "2026-07-18T08:00:00Z"
+    },
+    items: [
+      {
+        id: "fixture-match",
+        fixture_marker: "home vs away",
+        match_name: "Home vs Away",
+        league_names: ["League"],
+        match_state: "live",
+        source_count: 2,
+        quote_count: 4,
+        market_count: 1,
+        latest_collected_at: "2026-07-18T08:00:00Z",
+        sources: [
+          {
+            source_id: "8xbet/default",
+            bookmaker_id: "8xbet",
+            lobby_id: "default",
+            fixture_id: "fixture-8x",
+            home_team: "Home",
+            away_team: "Away",
+            match_state: "live",
+            quote_count: 2,
+            market_count: 1,
+            latest_collected_at: "2026-07-18T08:00:00Z"
+          },
+          {
+            source_id: "jun88/cmd",
+            bookmaker_id: "jun88",
+            lobby_id: "cmd",
+            fixture_id: "fixture-cmd",
+            home_team: "Home FC",
+            away_team: "Away FC",
+            match_state: "live",
+            quote_count: 2,
+            market_count: 1,
+            latest_collected_at: "2026-07-18T08:00:00Z"
+          }
+        ]
+      }
+    ]
+  };
+  const next = applyRealtimeMatchedFixtures(snapshot, [
+    realtimeQuote({ collected_at: "2026-07-18T08:00:02Z" })
+  ]);
+
+  assert.equal(next.summary.latest_collected_at, "2026-07-18T08:00:02Z");
+  assert.equal(
+    next.items[0].sources[0].latest_collected_at,
+    "2026-07-18T08:00:02Z"
+  );
+  assert.equal(
+    next.items[0].sources[1].latest_collected_at,
+    "2026-07-18T08:00:00Z"
+  );
 });
 
 function realtimeQuote(
