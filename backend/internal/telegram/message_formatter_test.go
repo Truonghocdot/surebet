@@ -39,7 +39,7 @@ func TestFormatSurebetMessageAt_FormatsOpportunityLikeDashboardCard(t *testing.T
 
 	got := formatSurebetMessageAt(item, now, time.UTC)
 	want := `<b>Arsenal &amp; Chelsea</b>
-Tài/Xỉu 2.5
+Toàn trận (FT) | Tài/Xỉu 2.5
 
 <b>8xbet / BTI</b>
 Tài 2.5 | <code>-0.67</code>
@@ -83,7 +83,7 @@ func TestFormatSurebetMessageAt_FormatsHandicapFallbacks(t *testing.T) {
 
 	got := formatSurebetMessageAt(item, now, time.UTC)
 	want := `<b>Team A vs Team B</b>
-Kèo chấp 0.5
+Toàn trận (FT) | Kèo chấp 0.5
 
 <b>m9bet / -</b>
 Team A -0.5 | <code>0.91</code>
@@ -113,5 +113,24 @@ func TestFormatSurebetMessageAtKeepsRawOddsPrecision(t *testing.T) {
 	}
 	if strings.Contains(message, "Tỷ trọng vốn") || strings.Contains(message, "Lãi surebet") || strings.Contains(message, "Lệch tiền") {
 		t.Fatalf("expected odds-only message, got:\n%s", message)
+	}
+}
+
+func TestFormatSurebetMessageAt_ShowsFirstHalfPeriod(t *testing.T) {
+	now := time.Date(2026, 7, 18, 14, 0, 0, 0, time.UTC)
+	item := dto.SurebetView{
+		FixtureID:  "France vs England",
+		MarketName: "over-under",
+		DetectedAt: now,
+		ExpiresAt:  now.Add(time.Minute),
+		Legs: []dto.SurebetLegView{
+			{BookmakerID: "8xbet", LobbyID: "default", MarketID: "o-u-ou-1st", OutcomeName: "Over 1", Odds: -0.81},
+			{BookmakerID: "jun88", LobbyID: "cmd", MarketID: "o-u-ou-1st", OutcomeName: "Under 1", Odds: 0.93},
+		},
+	}
+
+	message := formatSurebetMessageAt(item, now, time.UTC)
+	if !strings.Contains(message, "Hiệp 1 (1H) | Tài/Xỉu 1") {
+		t.Fatalf("expected first-half label in message, got:\n%s", message)
 	}
 }

@@ -18,6 +18,36 @@ const parentheticalPattern = /\s*\([^)]*\)/gu;
 const danglingParenthesisPattern = /\s*\(.*$/u;
 export const FIXTURE_SIMILARITY_THRESHOLD = 0.4;
 const WORD_SIMILARITY_THRESHOLD = 0.4;
+const nationalTeamAliases = [
+  { code: "eng", names: ["england", "anh"] },
+  { code: "fra", names: ["france", "phap"] },
+  { code: "deu", names: ["germany", "duc"] },
+  { code: "ita", names: ["italy", "y"] },
+  { code: "esp", names: ["spain", "tay ban nha"] },
+  { code: "prt", names: ["portugal", "bo dao nha"] },
+  { code: "nld", names: ["netherlands", "holland", "ha lan"] },
+  { code: "bel", names: ["belgium", "bi"] },
+  { code: "che", names: ["switzerland", "thuy si"] },
+  { code: "aut", names: ["austria", "ao"] },
+  { code: "dnk", names: ["denmark", "dan mach"] },
+  { code: "swe", names: ["sweden", "thuy dien"] },
+  { code: "nor", names: ["norway", "na uy"] },
+  { code: "fin", names: ["finland", "phan lan"] },
+  { code: "pol", names: ["poland", "ba lan"] },
+  { code: "cze", names: ["czechia", "czech republic", "sec"] },
+  { code: "grc", names: ["greece", "hy lap"] },
+  { code: "tur", names: ["turkey", "turkiye", "tho nhi ky"] },
+  { code: "rus", names: ["russia", "nga"] },
+  { code: "ukr", names: ["ukraine", "ukraina"] },
+  { code: "usa", names: ["united states", "usa", "my"] },
+  { code: "bra", names: ["brazil"] },
+  { code: "arg", names: ["argentina"] },
+  { code: "jpn", names: ["japan", "nhat ban"] },
+  { code: "kor", names: ["south korea", "korea republic", "han quoc"] },
+  { code: "chn", names: ["china", "china pr", "trung quoc"] },
+  { code: "aus", names: ["australia", "uc"] },
+  { code: "vnm", names: ["vietnam", "viet nam"] }
+] as const;
 
 export function createFixtureIdentity({
   homeTeam,
@@ -40,11 +70,53 @@ export function createFixtureIdentity({
 
 function canonicalParticipantName(value: string) {
   const canonical = canonicalText(stripParticipantAnnotations(value.normalize("NFKD")));
+  const nationalTeam = canonicalNationalTeamName(canonical);
+  if (nationalTeam) {
+    return nationalTeam;
+  }
   const tokens = canonical
     .split(" ")
     .filter(Boolean);
   const normalizedTokens = canonicalParticipantTokens(tokens);
   return normalizedTokens.length > 0 ? normalizedTokens.join(" ") : canonical;
+}
+
+function canonicalNationalTeamName(value: string) {
+  for (const country of nationalTeamAliases) {
+    for (const name of country.names) {
+      if (value === name) {
+        return `nation-${country.code}`;
+      }
+      if (!value.startsWith(`${name} `)) {
+        continue;
+      }
+      const qualifier = canonicalNationalTeamQualifier(value.slice(name.length + 1));
+      if (qualifier) {
+        return `nation-${country.code} ${qualifier}`;
+      }
+    }
+  }
+  return "";
+}
+
+function canonicalNationalTeamQualifier(value: string) {
+  const qualifiers: string[] = [];
+  for (const token of value.split(" ").filter(Boolean)) {
+    if (token === "w" || token === "woman" || token === "women" || token === "nu") {
+      qualifiers.push("women");
+      continue;
+    }
+    if (token === "olympic" || token === "olympics") {
+      qualifiers.push("olympic");
+      continue;
+    }
+    if (token === "b" || token === "c" || /^u\d{1,2}$/.test(token)) {
+      qualifiers.push(token);
+      continue;
+    }
+    return "";
+  }
+  return qualifiers.sort((left, right) => left.localeCompare(right)).join(" ");
 }
 
 function stripParticipantAnnotations(value: string) {

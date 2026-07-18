@@ -32,7 +32,92 @@ var (
 	danglingParenthesisPattern = regexp.MustCompile(`\s*\(.*$`)
 	whitespacePattern          = regexp.MustCompile(`\s+`)
 	separatorNormalizer        = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+	nationalTeamAgePattern     = regexp.MustCompile(`^u\d{1,2}$`)
+	nationalTeamAliases        = []nationalTeamAlias{
+		// Châu Âu
+		{code: "eng", names: []string{"england", "anh"}},
+		{code: "fra", names: []string{"france", "phap"}},
+		{code: "deu", names: []string{"germany", "duc"}},
+		{code: "ita", names: []string{"italy", "y"}},
+		{code: "esp", names: []string{"spain", "tay ban nha"}},
+		{code: "prt", names: []string{"portugal", "bo dao nha"}},
+		{code: "nld", names: []string{"netherlands", "holland", "ha lan"}},
+		{code: "bel", names: []string{"belgium", "bi"}},
+		{code: "che", names: []string{"switzerland", "thuy si"}},
+		{code: "aut", names: []string{"austria", "ao"}},
+		{code: "dnk", names: []string{"denmark", "dan mach"}},
+		{code: "swe", names: []string{"sweden", "thuy dien"}},
+		{code: "nor", names: []string{"norway", "na uy"}},
+		{code: "fin", names: []string{"finland", "phan lan"}},
+		{code: "pol", names: []string{"poland", "ba lan"}},
+		{code: "cze", names: []string{"czechia", "czech republic", "sec"}},
+		{code: "grc", names: []string{"greece", "hy lap"}},
+		{code: "tur", names: []string{"turkey", "turkiye", "tho nhi ky"}},
+		{code: "rus", names: []string{"russia", "nga"}},
+		{code: "ukr", names: []string{"ukraine", "ukraina"}},
+		{code: "sco", names: []string{"scotland"}},
+		{code: "irl", names: []string{"ireland", "republic of ireland"}},
+		{code: "cro", names: []string{"croatia"}},
+		{code: "srb", names: []string{"serbia"}},
+		{code: "svk", names: []string{"slovakia"}},
+		{code: "hun", names: []string{"hungary"}},
+		{code: "rou", names: []string{"romania"}},
+		{code: "alb", names: []string{"albania"}},
+		{code: "svn", names: []string{"slovenia"}},
+		{code: "wal", names: []string{"wales", "xu gan"}},
+		{code: "bih", names: []string{"bosnia", "bosnia herzegovina", "bosnia and herzegovina"}},
+		{code: "mne", names: []string{"montenegro"}},
+		{code: "mkd", names: []string{"north macedonia", "macedonia"}},
+		{code: "isl", names: []string{"iceland"}},
+		{code: "geo", names: []string{"georgia"}},
+		// Châu Mỹ
+		{code: "usa", names: []string{"united states", "usa", "my"}},
+		{code: "bra", names: []string{"brazil"}},
+		{code: "arg", names: []string{"argentina"}},
+		{code: "mex", names: []string{"mexico"}},
+		{code: "col", names: []string{"colombia"}},
+		{code: "chl", names: []string{"chile"}},
+		{code: "per", names: []string{"peru"}},
+		{code: "ury", names: []string{"uruguay"}},
+		{code: "ecu", names: []string{"ecuador"}},
+		{code: "ven", names: []string{"venezuela"}},
+		{code: "can", names: []string{"canada"}},
+		// Châu Á
+		{code: "jpn", names: []string{"japan", "nhat ban"}},
+		{code: "kor", names: []string{"south korea", "korea republic", "han quoc"}},
+		{code: "chn", names: []string{"china", "china pr", "trung quoc"}},
+		{code: "aus", names: []string{"australia", "uc"}},
+		{code: "vnm", names: []string{"vietnam", "viet nam"}},
+		{code: "tha", names: []string{"thailand", "thai lan"}},
+		{code: "idn", names: []string{"indonesia"}},
+		{code: "mys", names: []string{"malaysia"}},
+		{code: "phl", names: []string{"philippines"}},
+		{code: "irn", names: []string{"iran"}},
+		{code: "sau", names: []string{"saudi arabia"}},
+		{code: "qat", names: []string{"qatar"}},
+		{code: "uae", names: []string{"united arab emirates", "uae"}},
+		{code: "ind", names: []string{"india"}},
+		{code: "uzb", names: []string{"uzbekistan"}},
+		{code: "kaz", names: []string{"kazakhstan"}},
+		{code: "prk", names: []string{"north korea", "korea dpr"}},
+		// Châu Phi
+		{code: "mar", names: []string{"morocco", "ma roc"}},
+		{code: "nga", names: []string{"nigeria"}},
+		{code: "sen", names: []string{"senegal"}},
+		{code: "egy", names: []string{"egypt", "ai cap"}},
+		{code: "gha", names: []string{"ghana"}},
+		{code: "civ", names: []string{"ivory coast", "cote d ivoire"}},
+		{code: "cmr", names: []string{"cameroon"}},
+		{code: "zaf", names: []string{"south africa"}},
+		{code: "tun", names: []string{"tunisia"}},
+		{code: "alg", names: []string{"algeria"}},
+	}
 )
+
+type nationalTeamAlias struct {
+	code  string
+	names []string
+}
 
 type detector struct {
 	now func() time.Time
@@ -367,12 +452,24 @@ func normalizeMarketKind(marketID, marketName string) marketKind {
 
 func isSupportedOverUnderMarket(canonicalID, canonicalName string) bool {
 	switch canonicalID {
-	case "o u ou", "o u ou 1st", "ta i xi u ou", "ta i xi u ou 1st", "ft over under", "1h over under":
+	case
+		// Nhà cái Việt Nam (BTi, CMD, IBC, M8)
+		"o u ou", "o u ou 1st",
+		"ta i xi u ou", "ta i xi u ou 1st",
+		// Format chuẩn hóa
+		"ft over under", "1h over under", "2h over under",
+		// Viết tắt ngắn
+		"ou", "ou 1st",
+		// Bet365 / Pinnacle style
+		"total goals", "total goals 1st half",
+		"asian total", "asian total 1st half":
 		return true
 	}
 
 	switch canonicalName {
-	case "over under", "ft over under", "1h over under":
+	case
+		"over under", "ft over under", "1h over under", "2h over under",
+		"total goals", "asian total":
 		return true
 	}
 
@@ -381,12 +478,23 @@ func isSupportedOverUnderMarket(canonicalID, canonicalName string) bool {
 
 func isSupportedHandicapMarket(canonicalID, canonicalName string) bool {
 	switch canonicalID {
-	case "hdp ah", "hdp ah 1st", "cu o c cha p ah", "cu o c cha p ah 1st", "ft handicap", "1h handicap":
+	case
+		// Nhà cái Việt Nam (BTi, CMD, IBC, M8)
+		"hdp ah", "hdp ah 1st",
+		"cu o c cha p ah", "cu o c cha p ah 1st",
+		// Format chuẩn hóa
+		"ft handicap", "1h handicap", "2h handicap",
+		// Viết tắt ngắn
+		"ah", "ah 1st",
+		// Bet365 / Pinnacle style
+		"asian handicap", "asian handicap 1st half":
 		return true
 	}
 
 	switch canonicalName {
-	case "handicap", "ft handicap", "1h handicap":
+	case
+		"handicap", "ft handicap", "1h handicap", "2h handicap",
+		"asian handicap":
 		return true
 	}
 
@@ -940,6 +1048,11 @@ func normalizeMarketPeriod(marketID, marketName string) string {
 		strings.Contains(combined, "first half"),
 		strings.Contains(combined, "hiep 1"):
 		return "1h"
+	case strings.Contains(combined, "2h"),
+		strings.Contains(combined, "2nd half"),
+		strings.Contains(combined, "second half"),
+		strings.Contains(combined, "hiep 2"):
+		return "2h"
 	default:
 		return "ft"
 	}
@@ -1000,12 +1113,57 @@ func participantCandidate(outcomeName string) string {
 
 func canonicalParticipantText(value string) string {
 	canonical := canonicalText(stripParticipantAnnotations(value))
+	if nationalTeam, ok := canonicalNationalTeamName(canonical); ok {
+		return nationalTeam
+	}
 	tokens := strings.Fields(canonical)
 	tokens = canonicalParticipantTokens(tokens)
 	if len(tokens) == 0 {
 		return canonical
 	}
 	return strings.Join(tokens, " ")
+}
+
+func canonicalNationalTeamName(value string) (string, bool) {
+	for _, country := range nationalTeamAliases {
+		for _, name := range country.names {
+			if value == name {
+				return "nation-" + country.code, true
+			}
+			if !strings.HasPrefix(value, name+" ") {
+				continue
+			}
+			qualifier, ok := canonicalNationalTeamQualifier(strings.TrimPrefix(value, name+" "))
+			if ok {
+				return "nation-" + country.code + " " + qualifier, true
+			}
+		}
+	}
+	return "", false
+}
+
+func canonicalNationalTeamQualifier(value string) (string, bool) {
+	qualifiers := make([]string, 0)
+	for _, token := range strings.Fields(value) {
+		switch token {
+		case "w", "woman", "women", "nu":
+			qualifiers = append(qualifiers, "women")
+		case "olympic", "olympics":
+			qualifiers = append(qualifiers, "olympic")
+		case "b", "c":
+			qualifiers = append(qualifiers, token)
+		default:
+			if !nationalTeamAgePattern.MatchString(token) {
+				return "", false
+			}
+			qualifiers = append(qualifiers, token)
+		}
+	}
+	if len(qualifiers) == 0 {
+		return "", false
+	}
+	sort.Strings(qualifiers)
+	return strings.Join(qualifiers, " "), true
 }
 
 func canonicalParticipantTokens(tokens []string) []string {
@@ -1058,7 +1216,17 @@ func stripParticipantAnnotations(value string) string {
 
 func isGenericParticipantLabel(value string) bool {
 	switch value {
-	case "draw", "hoa", "hoa n", "even", "odd", "over", "under", "tai", "xiu":
+	case
+		// Kết quả chung
+		"draw", "hoa", "hoa n",
+		// Chẵn/lẻ
+		"even", "odd",
+		// Over/Under
+		"over", "under", "tai", "xiu",
+		// Nhãn đội chung (một số nhà cái)
+		"home", "away",
+		// Nhãn số thứ tự
+		"1", "2":
 		return true
 	default:
 		return false
@@ -1067,7 +1235,22 @@ func isGenericParticipantLabel(value string) bool {
 
 func isGenericClubToken(value string) bool {
 	switch value {
-	case "af", "club", "ec", "fc", "fk", "if", "sc", "sk", "team":
+	case
+		// Viết tắt câu lạc bộ phổ biến
+		"ac", "af", "afc",
+		"bk",
+		"cf", "cfc", "club",
+		"de",
+		"ec",
+		"fc", "fd", "fk", "fs",
+		"if", "il", "is",
+		"nk", "ns",
+		"pk", "ps",
+		"rc", "rfc",
+		"sc", "sd", "sf", "sk", "sp", "ss",
+		"team",
+		"ud", "united", "utd", "us",
+		"vfc":
 		return true
 	default:
 		return false

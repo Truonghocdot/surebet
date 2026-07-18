@@ -189,6 +189,32 @@ func TestDetectMatchesTeamsWithAliasesAndStripsParentheticalAnnotations(t *testi
 	})
 }
 
+func TestDetectMatchesVietnameseAndEnglishNationalTeamNames(t *testing.T) {
+	now := time.Date(2026, 7, 18, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuote(now, "over", "8xbet", "default", "Pháp", "Anh", "", "Over 2.5", -0.5),
+		testQuote(now, "under", "jun88", "cmd", "France", "England", "", "Under 2.5", -0.5),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 1 {
+		t.Fatalf("expected Pháp vs Anh to match France vs England, got %+v", items)
+	}
+}
+
+func TestNationalTeamNormalizationPreservesYouthQualifier(t *testing.T) {
+	left := canonicalParticipantText("Pháp U21")
+	right := canonicalParticipantText("France U21")
+	if left != right || left != "nation-fra u21" {
+		t.Fatalf("expected equivalent U21 national teams, got %q and %q", left, right)
+	}
+
+	club := canonicalParticipantText("Paris France FC")
+	if club == "nation-fra" {
+		t.Fatalf("country normalization must not replace a country token inside club name: %q", club)
+	}
+}
+
 func TestDetectMatchesBrazilianAndSouthAmericanClubNameVariants(t *testing.T) {
 	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })

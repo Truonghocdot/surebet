@@ -97,17 +97,20 @@ func deriveTelegramOpportunityPresentation(item dto.SurebetView) formattedOpport
 func deriveTelegramMarketDisplayLabel(item dto.SurebetView) string {
 	marketKind := detectTelegramMarketKind(item)
 	line := resolveTelegramPrimaryLine(item)
+	baseLabel := ""
 
 	switch {
 	case marketKind == telegramMarketKindOverUnder && line != "":
-		return "Tài/Xỉu " + normalizeTelegramLineForDisplay(line)
+		baseLabel = "Tài/Xỉu " + normalizeTelegramLineForDisplay(line)
 	case marketKind == telegramMarketKindHandicap && line != "":
-		return "Kèo chấp " + normalizeTelegramHandicapLineForDisplay(line)
+		baseLabel = "Kèo chấp " + normalizeTelegramHandicapLineForDisplay(line)
 	case marketKind == telegramMarketKindOneXTwo:
-		return "1X2"
+		baseLabel = "1X2"
 	default:
-		return beautifyTelegramRawText(item.MarketName)
+		baseLabel = beautifyTelegramRawText(item.MarketName)
 	}
+
+	return deriveTelegramPeriodDisplayLabel(item) + " | " + baseLabel
 }
 
 func deriveTelegramOutcomeDisplayLabel(leg dto.SurebetLegView, item dto.SurebetView) string {
@@ -218,9 +221,54 @@ func canonicalTelegramText(value string) string {
 	return strings.TrimSpace(normalized)
 }
 
+func deriveTelegramPeriodDisplayLabel(item dto.SurebetView) string {
+	switch detectTelegramPeriod(item) {
+	case "1H":
+		return "Hiệp 1 (1H)"
+	case "2H":
+		return "Hiệp 2 (2H)"
+	default:
+		return "Toàn trận (FT)"
+	}
+}
+
+func detectTelegramPeriod(item dto.SurebetView) string {
+	parts := make([]string, 0, len(item.Legs)+1)
+	parts = append(parts, item.MarketName)
+	for _, leg := range item.Legs {
+		parts = append(parts, leg.MarketID)
+	}
+
+	combined := canonicalTelegramText(strings.Join(parts, " "))
+	switch {
+	case strings.Contains(combined, "1h"),
+		hasTelegramCanonicalToken(combined, "1st"),
+		strings.Contains(combined, "1st half"),
+		strings.Contains(combined, "first half"),
+		strings.Contains(combined, "hiep 1"):
+		return "1H"
+	case strings.Contains(combined, "2h"),
+		strings.Contains(combined, "2nd half"),
+		strings.Contains(combined, "second half"),
+		strings.Contains(combined, "hiep 2"):
+		return "2H"
+	default:
+		return "FT"
+	}
+}
+
 func containsTelegramOneOf(value string, patterns []string) bool {
 	for _, pattern := range patterns {
 		if strings.Contains(value, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTelegramCanonicalToken(value, token string) bool {
+	for _, part := range strings.Fields(value) {
+		if part == token {
 			return true
 		}
 	}
