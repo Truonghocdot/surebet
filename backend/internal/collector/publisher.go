@@ -97,6 +97,7 @@ func BuildOddsUpdatedEvent(sourceID, bookmakerID, lobbyID string, quotes []model
 			OutcomeID:      quote.OutcomeID,
 			Odds:           quote.Odds,
 			AvailableStake: quote.AvailableStake,
+			Suspended:      quote.Suspended,
 			CollectedAt:    quote.CollectedAt,
 		})
 	}

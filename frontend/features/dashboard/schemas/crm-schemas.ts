@@ -70,6 +70,7 @@ export const matchedFixturesSnapshotSchema = z.object({
 });
 
 export const opportunityBoardOutcomeSchema = z.object({
+  fixture_id: z.string(),
   outcome_id: z.string(),
   outcome_name: z.string(),
   side: z.string(),

@@ -31,6 +31,7 @@ type OddsQuotePayload struct {
 	OutcomeID      string    `json:"outcome_id"`
 	Odds           float64   `json:"odds"`
 	AvailableStake float64   `json:"available_stake"`
+	Suspended      bool      `json:"suspended"`
 	CollectedAt    time.Time `json:"collected_at"`
 }
 

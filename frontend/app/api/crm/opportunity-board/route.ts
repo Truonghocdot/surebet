@@ -7,6 +7,8 @@ import {
   fetchBackendOpportunities
 } from "@/lib/server-dashboard-data";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const [user, odds, rawOpportunities] = await Promise.all([
@@ -16,9 +18,16 @@ export async function GET() {
     ]);
     const opportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
 
-    return NextResponse.json({
-      items: buildCurrentOpportunityBoard(opportunities, odds)
-    });
+    return NextResponse.json(
+      {
+        items: buildCurrentOpportunityBoard(opportunities, odds)
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0"
+        }
+      }
+    );
   } catch (error) {
     return NextResponse.json(
       {

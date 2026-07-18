@@ -8,7 +8,12 @@ import {
   fetchOpportunityBoard,
   fetchOpportunities
 } from "@/features/dashboard/api/mock-dashboard-api";
+import type { OpportunityBoard } from "@/features/dashboard/schemas/crm-schemas";
 import { backendWebSocketURL } from "@/lib/realtime-url";
+import {
+  applyRealtimeOddsQuotes,
+  type RealtimeOddsQuote
+} from "@/lib/realtime-opportunity-board";
 
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
@@ -35,7 +40,7 @@ export function useOpportunityBoardQuery() {
   return useQuery({
     queryKey: crmQueryKeys.opportunityBoard,
     queryFn: fetchOpportunityBoard,
-    refetchInterval: 5_000,
+    refetchInterval: 15_000,
     refetchIntervalInBackground: false
   });
 }
@@ -61,26 +66,43 @@ export function useRealtimeWebSocket() {
     let closed = false;
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastRefreshAt = 0;
+    let boardRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let secondaryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastBoardRefreshAt = 0;
+    let lastSecondaryRefreshAt = 0;
 
-    const flushRealtimeQueries = () => {
-      refreshTimer = null;
-      lastRefreshAt = Date.now();
+    const flushBoardQuery = () => {
+      boardRefreshTimer = null;
+      lastBoardRefreshAt = Date.now();
+      void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunityBoard });
+    };
+
+    const flushSecondaryQueries = () => {
+      secondaryRefreshTimer = null;
+      lastSecondaryRefreshAt = Date.now();
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunities });
-      void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunityBoard });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.matchedFixtures });
     };
 
-    const scheduleRealtimeRefresh = () => {
-      if (refreshTimer || closed) {
+    const scheduleBoardRefresh = () => {
+      if (boardRefreshTimer || closed) {
         return;
       }
 
-      const elapsed = Date.now() - lastRefreshAt;
-      const delay = elapsed >= 300 ? 0 : 300 - elapsed;
-      refreshTimer = setTimeout(flushRealtimeQueries, delay);
+      const elapsed = Date.now() - lastBoardRefreshAt;
+      const delay = elapsed >= 1_000 ? 0 : 1_000 - elapsed;
+      boardRefreshTimer = setTimeout(flushBoardQuery, delay);
+    };
+
+    const scheduleSecondaryRefresh = () => {
+      if (secondaryRefreshTimer || closed) {
+        return;
+      }
+
+      const elapsed = Date.now() - lastSecondaryRefreshAt;
+      const delay = elapsed >= 5_000 ? 0 : 5_000 - elapsed;
+      secondaryRefreshTimer = setTimeout(flushSecondaryQueries, delay);
     };
 
     const connect = () => {
@@ -92,18 +114,32 @@ export function useRealtimeWebSocket() {
 
       socket.onopen = () => {
         setStatus("live");
-        scheduleRealtimeRefresh();
+        scheduleBoardRefresh();
+        scheduleSecondaryRefresh();
       };
 
       socket.onmessage = (event) => {
         try {
-          const message = JSON.parse(String(event.data)) as { type?: string };
+          const message = JSON.parse(String(event.data)) as RealtimeMessage;
           if (message.type === "connected") {
             setStatus("live");
             return;
           }
           if (message.type === "odds_updated") {
-            scheduleRealtimeRefresh();
+            const quotes = extractRealtimeOddsQuotes(message);
+            const hasBoardQuote = quotes.some(isRealtimeBoardQuote);
+            if (hasBoardQuote) {
+              queryClient.setQueryData<OpportunityBoard>(
+                crmQueryKeys.opportunityBoard,
+                (current) => current
+                  ? applyRealtimeOddsQuotes(current, quotes).board
+                  : current
+              );
+            }
+            if (quotes.length === 0 || hasBoardQuote) {
+              scheduleBoardRefresh();
+            }
+            scheduleSecondaryRefresh();
             setStatus("live");
           }
         } catch {
@@ -131,12 +167,59 @@ export function useRealtimeWebSocket() {
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
       }
-      if (refreshTimer) {
-        clearTimeout(refreshTimer);
+      if (boardRefreshTimer) {
+        clearTimeout(boardRefreshTimer);
+      }
+      if (secondaryRefreshTimer) {
+        clearTimeout(secondaryRefreshTimer);
       }
       socket?.close();
     };
   }, [queryClient]);
 
   return status;
+}
+
+type RealtimeMessage = {
+  type?: string;
+  payload?: {
+    payload?: {
+      quotes?: unknown[];
+    };
+  };
+};
+
+function extractRealtimeOddsQuotes(message: RealtimeMessage): RealtimeOddsQuote[] {
+  const quotes = message.payload?.payload?.quotes;
+  if (!Array.isArray(quotes)) {
+    return [];
+  }
+
+  return quotes.filter(isRealtimeOddsQuote);
+}
+
+function isRealtimeOddsQuote(value: unknown): value is RealtimeOddsQuote {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const quote = value as Partial<RealtimeOddsQuote>;
+  return (
+    typeof quote.bookmaker_id === "string" &&
+    typeof quote.lobby_id === "string" &&
+    typeof quote.fixture_id === "string" &&
+    typeof quote.market_id === "string" &&
+    typeof quote.outcome_id === "string" &&
+    typeof quote.odds === "number" &&
+    typeof quote.collected_at === "string"
+  );
+}
+
+function isRealtimeBoardQuote(quote: RealtimeOddsQuote) {
+  const marketID = quote.market_id.trim().toLowerCase();
+  return (
+    marketID === "hdp-ah" ||
+    marketID === "hdp-ah-1st" ||
+    marketID === "o-u-ou" ||
+    marketID === "o-u-ou-1st"
+  );
 }

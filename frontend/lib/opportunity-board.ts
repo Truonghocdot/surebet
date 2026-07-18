@@ -15,6 +15,7 @@ import {
 type MarketType = "handicap" | "over_under";
 
 type BoardOutcome = {
+  fixture_id: string;
   outcome_id: string;
   outcome_name: string;
   side: string;
@@ -246,6 +247,7 @@ function groupMatchedFixtures(
       outcomes: []
     };
     const outcome: BoardOutcome = {
+      fixture_id: quote.fixture_id,
       outcome_id: quote.outcome_id,
       outcome_name: quote.outcome_name,
       side: quote.side || inferSide(marketType, quote.outcome_name),
