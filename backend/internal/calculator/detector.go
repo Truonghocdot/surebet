@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	detectorMaxQuoteAge  = 300 * time.Second
-	detectorMaxQuoteSkew = 5 * time.Minute
-	arbitrageTolerance   = 1e-9
+	detectorMaxQuoteAge        = 300 * time.Second
+	detectorMaxQuoteSkew       = 5 * time.Minute
+	fixtureSimilarityThreshold = 0.40
+	wordSimilarityThreshold    = 0.40
+	arbitrageTolerance         = 1e-9
 )
 
 var (
@@ -107,6 +109,7 @@ const (
 
 type eventIdentity struct {
 	fixtureKey   string
+	matchKey     string
 	sport        string
 	participants [2]string
 }
@@ -130,7 +133,6 @@ type normalizedQuote struct {
 }
 
 type quoteBucket struct {
-	fixtureKey string
 	sport      string
 	marketName string
 	marketKind marketKind
@@ -270,6 +272,7 @@ func normalizeQuotes(
 		})
 	}
 
+	assignEventMatchKeys(result)
 	return result
 }
 
@@ -390,12 +393,146 @@ func isSupportedHandicapMarket(canonicalID, canonicalName string) bool {
 	return false
 }
 
+type indexedEvent struct {
+	indexKey  string
+	sourceKey string
+	event     eventIdentity
+}
+
+type eventCluster struct {
+	key            string
+	representative eventIdentity
+	sources        map[string]struct{}
+}
+
+type eventMatchCandidate struct {
+	eventIndex   int
+	clusterIndex int
+	score        float64
+}
+
+func assignEventMatchKeys(quotes []normalizedQuote) {
+	eventsBySource := make(map[string]map[string]indexedEvent)
+	for _, quote := range quotes {
+		indexKey := sourceEventKey(quote)
+		if eventsBySource[quote.sourceKey] == nil {
+			eventsBySource[quote.sourceKey] = make(map[string]indexedEvent)
+		}
+		eventsBySource[quote.sourceKey][indexKey] = indexedEvent{
+			indexKey:  indexKey,
+			sourceKey: quote.sourceKey,
+			event:     quote.event,
+		}
+	}
+
+	sourceKeys := make([]string, 0, len(eventsBySource))
+	for sourceKey := range eventsBySource {
+		sourceKeys = append(sourceKeys, sourceKey)
+	}
+	sort.Strings(sourceKeys)
+
+	clusters := make([]*eventCluster, 0)
+	matchKeyByEvent := make(map[string]string)
+	for _, sourceKey := range sourceKeys {
+		events := make([]indexedEvent, 0, len(eventsBySource[sourceKey]))
+		for _, event := range eventsBySource[sourceKey] {
+			events = append(events, event)
+		}
+		sort.Slice(events, func(i, j int) bool {
+			return events[i].indexKey < events[j].indexKey
+		})
+
+		candidates := make([]eventMatchCandidate, 0)
+		for eventIndex, event := range events {
+			for clusterIndex, cluster := range clusters {
+				if event.event.sport != cluster.representative.sport {
+					continue
+				}
+				if _, exists := cluster.sources[sourceKey]; exists {
+					continue
+				}
+				score := fixtureSimilarity(event.event, cluster.representative)
+				if score <= fixtureSimilarityThreshold {
+					continue
+				}
+				candidates = append(candidates, eventMatchCandidate{
+					eventIndex:   eventIndex,
+					clusterIndex: clusterIndex,
+					score:        score,
+				})
+			}
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			if candidates[i].score != candidates[j].score {
+				return candidates[i].score > candidates[j].score
+			}
+			leftEvent := events[candidates[i].eventIndex].indexKey
+			rightEvent := events[candidates[j].eventIndex].indexKey
+			if leftEvent != rightEvent {
+				return leftEvent < rightEvent
+			}
+			return clusters[candidates[i].clusterIndex].key <
+				clusters[candidates[j].clusterIndex].key
+		})
+
+		assignedEvents := make(map[int]struct{})
+		assignedClusters := make(map[int]struct{})
+		for _, candidate := range candidates {
+			if _, assigned := assignedEvents[candidate.eventIndex]; assigned {
+				continue
+			}
+			if _, assigned := assignedClusters[candidate.clusterIndex]; assigned {
+				continue
+			}
+			event := events[candidate.eventIndex]
+			cluster := clusters[candidate.clusterIndex]
+			cluster.sources[sourceKey] = struct{}{}
+			matchKeyByEvent[event.indexKey] = cluster.key
+			assignedEvents[candidate.eventIndex] = struct{}{}
+			assignedClusters[candidate.clusterIndex] = struct{}{}
+		}
+
+		for eventIndex, event := range events {
+			if _, assigned := assignedEvents[eventIndex]; assigned {
+				continue
+			}
+			clusterKey := uniqueEventClusterKey(clusters, event.event.fixtureKey)
+			clusters = append(clusters, &eventCluster{
+				key:            clusterKey,
+				representative: event.event,
+				sources:        map[string]struct{}{sourceKey: {}},
+			})
+			matchKeyByEvent[event.indexKey] = clusterKey
+		}
+	}
+
+	for index := range quotes {
+		quotes[index].event.matchKey = matchKeyByEvent[sourceEventKey(quotes[index])]
+	}
+}
+
+func uniqueEventClusterKey(clusters []*eventCluster, base string) string {
+	used := make(map[string]struct{}, len(clusters))
+	for _, cluster := range clusters {
+		used[cluster.key] = struct{}{}
+	}
+	if _, exists := used[base]; !exists {
+		return base
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := base + " #" + strconv.Itoa(suffix)
+		if _, exists := used[candidate]; !exists {
+			return candidate
+		}
+	}
+}
+
 func groupQuotes(quotes []normalizedQuote) map[string]*quoteBucket {
 	result := make(map[string]*quoteBucket)
 	for _, item := range quotes {
 		key := strings.Join([]string{
 			item.event.sport,
-			item.event.fixtureKey,
+			item.event.matchKey,
 			item.periodKey,
 			string(item.marketKind),
 			item.line.key,
@@ -404,7 +541,6 @@ func groupQuotes(quotes []normalizedQuote) map[string]*quoteBucket {
 		bucket, ok := result[key]
 		if !ok {
 			bucket = &quoteBucket{
-				fixtureKey: item.event.fixtureKey,
 				sport:      item.event.sport,
 				marketName: chooseMarketName(item.quote, item.marketKind),
 				marketKind: item.marketKind,
@@ -485,7 +621,7 @@ func detectHandicapSurebets(
 		for j := i + 1; j < len(quotes); j++ {
 			left, right := quotes[i], quotes[j]
 			if sameSource(left, right) ||
-				left.participant == right.participant ||
+				participantsMatch(left.participant, right.participant) ||
 				!sameEvent(left.event, right.event) {
 				continue
 			}
@@ -522,7 +658,187 @@ func sourceEventKey(item normalizedQuote) string {
 }
 
 func sameEvent(left, right eventIdentity) bool {
-	return left.sport == right.sport && left.fixtureKey == right.fixtureKey
+	return left.sport == right.sport && left.matchKey != "" && left.matchKey == right.matchKey
+}
+
+func fixtureSimilarity(left, right eventIdentity) float64 {
+	directMatches, directValid := fixtureOrientationMatches(
+		left.participants[0],
+		left.participants[1],
+		right.participants[0],
+		right.participants[1],
+	)
+	reversedMatches, reversedValid := fixtureOrientationMatches(
+		left.participants[0],
+		left.participants[1],
+		right.participants[1],
+		right.participants[0],
+	)
+	matches := directMatches
+	if !directValid || (reversedValid && reversedMatches > matches) {
+		matches = reversedMatches
+	}
+	if (!directValid && !reversedValid) || matches == 0 {
+		return 0
+	}
+
+	leftTokenCount := participantTokenCount(left.participants[0]) +
+		participantTokenCount(left.participants[1])
+	rightTokenCount := participantTokenCount(right.participants[0]) +
+		participantTokenCount(right.participants[1])
+	denominator := maxInt(leftTokenCount, rightTokenCount)
+	if denominator == 0 {
+		return 0
+	}
+	return float64(matches) / float64(denominator)
+}
+
+func fixtureOrientationMatches(leftHome, leftAway, rightHome, rightAway string) (int, bool) {
+	homeMatches := participantTokenMatches(leftHome, rightHome)
+	awayMatches := participantTokenMatches(leftAway, rightAway)
+	if homeMatches == 0 || awayMatches == 0 {
+		return 0, false
+	}
+	return homeMatches + awayMatches, true
+}
+
+func participantsMatch(left, right string) bool {
+	denominator := maxInt(participantTokenCount(left), participantTokenCount(right))
+	if denominator == 0 {
+		return false
+	}
+	return float64(participantTokenMatches(left, right))/float64(denominator) >
+		fixtureSimilarityThreshold
+}
+
+func participantTokenCount(value string) int {
+	return len(strings.Fields(value))
+}
+
+func participantTokenMatches(left, right string) int {
+	leftTokens := strings.Fields(left)
+	rightTokens := strings.Fields(right)
+	if len(leftTokens) == 0 || len(rightTokens) == 0 {
+		return 0
+	}
+
+	adjacency := make([][]int, len(leftTokens))
+	for leftIndex, leftToken := range leftTokens {
+		for rightIndex, rightToken := range rightTokens {
+			if wordsMatch(leftToken, rightToken) {
+				adjacency[leftIndex] = append(adjacency[leftIndex], rightIndex)
+			}
+		}
+	}
+
+	matchedLeftByRight := make([]int, len(rightTokens))
+	for index := range matchedLeftByRight {
+		matchedLeftByRight[index] = -1
+	}
+	matches := 0
+	for leftIndex := range leftTokens {
+		seenRight := make([]bool, len(rightTokens))
+		if matchParticipantToken(leftIndex, adjacency, matchedLeftByRight, seenRight) {
+			matches++
+		}
+	}
+	return matches
+}
+
+func matchParticipantToken(
+	leftIndex int,
+	adjacency [][]int,
+	matchedLeftByRight []int,
+	seenRight []bool,
+) bool {
+	for _, rightIndex := range adjacency[leftIndex] {
+		if seenRight[rightIndex] {
+			continue
+		}
+		seenRight[rightIndex] = true
+		if matchedLeftByRight[rightIndex] == -1 ||
+			matchParticipantToken(
+				matchedLeftByRight[rightIndex],
+				adjacency,
+				matchedLeftByRight,
+				seenRight,
+			) {
+			matchedLeftByRight[rightIndex] = leftIndex
+			return true
+		}
+	}
+	return false
+}
+
+func wordsMatch(left, right string) bool {
+	if left == right {
+		return true
+	}
+	leftRunes := []rune(left)
+	rightRunes := []rune(right)
+	if len(leftRunes) < 4 || len(rightRunes) < 4 {
+		return false
+	}
+	return wordSimilarity(leftRunes, rightRunes) > wordSimilarityThreshold
+}
+
+func wordSimilarity(left, right []rune) float64 {
+	denominator := maxInt(len(left), len(right))
+	if denominator == 0 {
+		return 1
+	}
+	return 1 - float64(levenshteinDistance(left, right))/float64(denominator)
+}
+
+func levenshteinDistance(left, right []rune) int {
+	previous := make([]int, len(right)+1)
+	for index := range previous {
+		previous[index] = index
+	}
+	for leftIndex, leftRune := range left {
+		current := make([]int, len(right)+1)
+		current[0] = leftIndex + 1
+		for rightIndex, rightRune := range right {
+			cost := 0
+			if leftRune != rightRune {
+				cost = 1
+			}
+			current[rightIndex+1] = minInt(
+				current[rightIndex]+1,
+				previous[rightIndex+1]+1,
+				previous[rightIndex]+cost,
+			)
+		}
+		previous = current
+	}
+	return previous[len(right)]
+}
+
+func matchedFixtureKey(left, right eventIdentity) string {
+	if left.matchKey != "" && left.matchKey == right.matchKey {
+		return left.matchKey
+	}
+	if left.fixtureKey < right.fixtureKey {
+		return left.fixtureKey
+	}
+	return right.fixtureKey
+}
+
+func maxInt(left, right int) int {
+	if right > left {
+		return right
+	}
+	return left
+}
+
+func minInt(values ...int) int {
+	result := values[0]
+	for _, value := range values[1:] {
+		if value < result {
+			result = value
+		}
+	}
+	return result
 }
 
 func sameSource(left, right normalizedQuote) bool {
@@ -564,17 +880,18 @@ func buildOpportunity(
 	}
 
 	expectedReturn := (1 / combinedProbability) - 1
+	fixtureKey := matchedFixtureKey(left.event, right.event)
 	return models.SurebetOpportunity{
 		ID: opportunityID(
 			bucket.sport,
-			bucket.fixtureKey,
+			fixtureKey,
 			bucket.marketKind,
 			bucket.periodKey,
 			bucket.lineKey,
 			left.quote.ID,
 			right.quote.ID,
 		),
-		FixtureID:        bucket.fixtureKey,
+		FixtureID:        fixtureKey,
 		Sport:            bucket.sport,
 		MarketName:       bucket.marketName,
 		ProfitPercentage: round(expectedReturn * 100),
@@ -683,11 +1000,7 @@ func participantCandidate(outcomeName string) string {
 
 func canonicalParticipantText(value string) string {
 	canonical := canonicalText(stripParticipantAnnotations(value))
-	canonical = normalizeParticipantAliasName(canonical)
 	tokens := strings.Fields(canonical)
-	for index, token := range tokens {
-		tokens[index] = normalizeParticipantAliasToken(token)
-	}
 	tokens = canonicalParticipantTokens(tokens)
 	if len(tokens) == 0 {
 		return canonical
@@ -743,34 +1056,6 @@ func stripParticipantAnnotations(value string) string {
 	return danglingParenthesisPattern.ReplaceAllString(withoutBalanced, "")
 }
 
-func normalizeParticipantAliasToken(value string) string {
-	switch value {
-	case "akademia":
-		return "academy"
-	case "amedspor":
-		return "amed"
-	case "kobenhavn":
-		return "copenhagen"
-	case "mineiro":
-		return "mg"
-	default:
-		return value
-	}
-}
-
-func normalizeParticipantAliasName(value string) string {
-	switch value {
-	case "club nacional de football", "nacional de football":
-		return "nacional montevideo"
-	case "san lorenzo de almagro":
-		return "san lorenzo"
-	case "club agropecuario argentino", "agropecuario argentino":
-		return "agropecuario"
-	default:
-		return value
-	}
-}
-
 func isGenericParticipantLabel(value string) bool {
 	switch value {
 	case "draw", "hoa", "hoa n", "even", "odd", "over", "under", "tai", "xiu":
@@ -782,7 +1067,7 @@ func isGenericParticipantLabel(value string) bool {
 
 func isGenericClubToken(value string) bool {
 	switch value {
-	case "af", "club", "ec", "fc", "fk", "if", "sc", "sk":
+	case "af", "club", "ec", "fc", "fk", "if", "sc", "sk", "team":
 		return true
 	default:
 		return false

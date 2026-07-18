@@ -3,7 +3,11 @@ import {
   fetchBackendOdds,
   type BackendOdds
 } from "@/lib/server-dashboard-data";
-import { canonicalFixtureKey } from "@/lib/fixture-identity";
+import {
+  createFixtureIdentity,
+  indexFixtureIdentities,
+  type FixtureIdentityIndexEntry
+} from "@/lib/fixture-identity";
 
 type MutableSource = {
   source_id: string;
@@ -100,17 +104,15 @@ export async function GET() {
 
 function groupMatchedFixtures(items: BackendOdds[]) {
   const grouped = new Map<string, MutableFixture>();
+  const fixtureIndex = buildFixtureIdentityIndex(items);
 
   for (const item of items) {
-    const marker = canonicalFixtureKey({
-      homeTeam: item.home_team,
-      awayTeam: item.away_team
-    });
+    const sourceID = `${item.bookmaker_id}/${item.lobby_id || "chung"}`;
+    const sourceFixtureID = sourceFixtureIdentityID(item, sourceID);
+    const marker = fixtureIndex.get(sourceFixtureID);
     if (!marker) {
       continue;
     }
-
-    const sourceID = `${item.bookmaker_id}/${item.lobby_id || "chung"}`;
     const marketID = marketMarker(item);
     const current = grouped.get(marker);
     const fixture = current ?? {
@@ -161,6 +163,39 @@ function groupMatchedFixtures(items: BackendOdds[]) {
   }
 
   return Array.from(grouped.values());
+}
+
+function buildFixtureIdentityIndex(items: BackendOdds[]) {
+  const entries = new Map<string, FixtureIdentityIndexEntry>();
+  for (const item of items) {
+    const identity = createFixtureIdentity({
+      homeTeam: item.home_team,
+      awayTeam: item.away_team
+    });
+    if (!identity) {
+      continue;
+    }
+    const sourceID = `${item.bookmaker_id}/${item.lobby_id || "chung"}`;
+    const id = sourceFixtureIdentityID(item, sourceID, identity.key);
+    entries.set(id, { id, sourceId: sourceID, identity });
+  }
+  return indexFixtureIdentities(Array.from(entries.values()));
+}
+
+function sourceFixtureIdentityID(
+  item: BackendOdds,
+  sourceID: string,
+  fallbackFixtureID = ""
+) {
+  const fixtureID =
+    item.fixture_id ||
+    fallbackFixtureID ||
+    createFixtureIdentity({
+      homeTeam: item.home_team,
+      awayTeam: item.away_team
+    })?.key ||
+    "";
+  return `${sourceID}\u0000${fixtureID}`;
 }
 
 function marketMarker(item: BackendOdds) {

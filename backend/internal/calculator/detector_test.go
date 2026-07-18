@@ -248,6 +248,27 @@ func TestDetectMatchesBrazilianAndSouthAmericanClubNameVariants(t *testing.T) {
 			junHome:   "Nueva Chicago",
 			junAway:   "Club Agropecuario Argentino",
 		},
+		{
+			name:      "balcatta optional fc suffix",
+			eightHome: "Balcatta Etna FC",
+			eightAway: "Stirling Macedonia FC",
+			junHome:   "Balcatta Etna",
+			junAway:   "Stirling Macedonia FC",
+		},
+		{
+			name:      "australian acronyms",
+			eightHome: "UNSW FC",
+			eightAway: "NWS Spirit FC",
+			junHome:   "UNSW FC",
+			junAway:   "NWS Spirit FC",
+		},
+		{
+			name:      "gremio formal name",
+			eightHome: "Mirassol FC SP",
+			eightAway: "Gremio FBPA RS",
+			junHome:   "Mirassol SP",
+			junAway:   "Gremio Porto Alegrense",
+		},
 	}
 
 	for _, test := range tests {
@@ -260,6 +281,34 @@ func TestDetectMatchesBrazilianAndSouthAmericanClubNameVariants(t *testing.T) {
 				t.Fatalf("expected participant variants to match, got %+v", items)
 			}
 		})
+	}
+}
+
+func TestDetectTokenIndexUsesHighestOneToOneFixtureMatch(t *testing.T) {
+	now := time.Date(2026, 7, 18, 0, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuote(now, "city-over", "8xbet", "default", "Manchester City", "Chelsea", "", "Over 2.5", -0.5),
+		testQuote(now, "united-over", "8xbet", "default", "Manchester United", "Chelsea", "", "Over 2.5", -0.5),
+		testQuote(now, "city-under", "jun88", "cmd", "Manchester City FC", "Chelsea FC", "", "Under 2.5", -0.5),
+		testQuote(now, "united-under", "jun88", "cmd", "Manchester United FC", "Chelsea FC", "", "Under 2.5", -0.5),
+	}
+
+	items := detect(t, detector, quotes)
+	if len(items) != 2 {
+		t.Fatalf("expected two one-to-one fixture matches, got %+v", items)
+	}
+	fixtureIDs := map[string]bool{}
+	for _, item := range items {
+		fixtureIDs[item.FixtureID] = true
+	}
+	for _, expected := range []string{
+		"chelsea vs city manchester",
+		"chelsea vs manchester united",
+	} {
+		if !fixtureIDs[expected] {
+			t.Fatalf("expected fixture %q in %+v", expected, fixtureIDs)
+		}
 	}
 }
 

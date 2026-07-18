@@ -75,7 +75,7 @@ func (s *ConfirmationService) ConfirmCurrentSurebet(
 	ctx context.Context,
 	opportunityID string,
 ) (dto.SurebetView, bool, error) {
-	if s == nil || s.current == nil || s.confirmer == nil || s.detector == nil {
+	if s == nil || s.current == nil {
 		return dto.SurebetView{}, false, fmt.Errorf("surebet confirmation is not configured")
 	}
 
@@ -92,10 +92,15 @@ func (s *ConfirmationService) ConfirmCurrentSurebet(
 			break
 		}
 	}
-	if !found || len(current.Legs) != 2 {
+	if !found || len(current.Legs) != 2 ||
+		(!current.ExpiresAt.IsZero() && !current.ExpiresAt.After(time.Now().UTC())) {
 		return dto.SurebetView{}, false, nil
 	}
-	return s.confirmCandidateUncached(ctx, current)
+
+	// ListCurrentSurebets re-runs the detector against Redis current-state. Requiring
+	// the same opportunity ID here avoids making Telegram delivery depend on a
+	// bookmaker emitting another INIT frame inside a short RPC timeout.
+	return current, true, nil
 }
 
 func (s *ConfirmationService) ListConfirmedSurebets(ctx context.Context) ([]dto.SurebetView, error) {

@@ -10,15 +10,11 @@ import (
 	"surebet/backend/internal/dto"
 )
 
-func TestConfirmationServiceRecomputesWithLiveCollectorOdds(t *testing.T) {
+func TestConfirmationServiceRechecksCurrentDetectorResultWithoutCollectorRoundTrip(t *testing.T) {
 	candidate := confirmationCandidate()
-	confirmer := confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
-		"8xbet": -0.92,
-		"jun88": 0.96,
-	}}
 	service := NewConfirmationService(
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
-		confirmer,
+		nil,
 		calculator.NewDetector(),
 	)
 
@@ -29,20 +25,17 @@ func TestConfirmationServiceRecomputesWithLiveCollectorOdds(t *testing.T) {
 	if !active || confirmed.ID != candidate.ID || len(confirmed.Legs) != 2 {
 		t.Fatalf("unexpected confirmed opportunity: active=%t item=%+v", active, confirmed)
 	}
-	if confirmed.Legs[0].Odds == candidate.Legs[0].Odds &&
-		confirmed.Legs[1].Odds == candidate.Legs[1].Odds {
-		t.Fatal("expected confirmation to use collector odds instead of cached candidate odds")
+	if confirmed.Legs[0].Odds != candidate.Legs[0].Odds ||
+		confirmed.Legs[1].Odds != candidate.Legs[1].Odds {
+		t.Fatal("confirmation must return the latest detector legs")
 	}
 }
 
-func TestConfirmationServiceRejectsOpportunityAfterOddsMove(t *testing.T) {
+func TestConfirmationServiceRejectsOpportunityMissingFromCurrentDetectorResult(t *testing.T) {
 	candidate := confirmationCandidate()
 	service := NewConfirmationService(
-		confirmationReaderStub{items: []dto.SurebetView{candidate}},
-		confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
-			"8xbet": 0.80,
-			"jun88": 0.90,
-		}},
+		confirmationReaderStub{items: nil},
+		nil,
 		calculator.NewDetector(),
 	)
 
@@ -51,7 +44,25 @@ func TestConfirmationServiceRejectsOpportunityAfterOddsMove(t *testing.T) {
 		t.Fatalf("confirm current surebet: %v", err)
 	}
 	if active {
-		t.Fatal("opportunity must be rejected after collector odds no longer form a surebet")
+		t.Fatal("opportunity missing from the current detector result must be rejected")
+	}
+}
+
+func TestConfirmationServiceRejectsExpiredCurrentOpportunity(t *testing.T) {
+	candidate := confirmationCandidate()
+	candidate.ExpiresAt = time.Now().UTC().Add(-time.Second)
+	service := NewConfirmationService(
+		confirmationReaderStub{items: []dto.SurebetView{candidate}},
+		nil,
+		calculator.NewDetector(),
+	)
+
+	_, active, err := service.ConfirmCurrentSurebet(context.Background(), candidate.ID)
+	if err != nil {
+		t.Fatalf("confirm current surebet: %v", err)
+	}
+	if active {
+		t.Fatal("expired opportunity must be rejected")
 	}
 }
 
