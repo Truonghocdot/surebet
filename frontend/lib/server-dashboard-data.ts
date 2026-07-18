@@ -12,6 +12,7 @@ export type BackendOpportunity = {
   legs: Array<{
     bookmaker_id: string;
     lobby_id: string;
+    fixture_id: string;
     market_id: string;
     outcome_id: string;
     outcome_name: string;
@@ -49,25 +50,6 @@ export type BackendOdds = {
 
 export async function fetchBackendOpportunities() {
   const payload = await fetchBackendJSON<{ data: BackendOpportunity[] }>("/v1/surebets");
-  return payload.data ?? [];
-}
-
-export async function fetchBackendConfirmedOpportunities() {
-  const internalToken = (
-    process.env.SUREBET_INTERNAL_TOKEN ?? process.env.TELEGRAM_BOT_TOKEN ?? ""
-  ).trim();
-  if (!internalToken) {
-    throw new Error("SUREBET_INTERNAL_TOKEN chưa được cấu hình cho frontend server.");
-  }
-
-  const payload = await fetchBackendJSON<{ data: BackendOpportunity[] }>(
-    "/v2/internal/surebets/confirmed",
-    {
-      headers: {
-        "X-Surebet-Internal-Token": internalToken
-      }
-    }
-  );
   return payload.data ?? [];
 }
 

@@ -15,7 +15,7 @@ import type {
   OpportunityBoardOutcome
 } from "@/features/dashboard/schemas/crm-schemas";
 
-const MAX_CONFIRMED_AGE_MS = 10_000;
+const MAX_OPPORTUNITY_AGE_MS = 15_000;
 
 export function OpportunitiesScreen() {
   const query = useOpportunityBoardQuery();
@@ -24,8 +24,8 @@ export function OpportunitiesScreen() {
   return (
     <div className="dashboard-page">
       <SectionHeader
-        eyebrow="So sánh kèo"
-        title="Bảng trận khớp giữa các nhà cái"
+        eyebrow="Cơ hội trực tiếp"
+        title="Hai cửa đang tạo lợi nhuận"
       />
 
       <DataPanel description="" title="Danh sách so sánh">
@@ -115,12 +115,18 @@ function useBoardClock() {
 }
 
 function isFixtureFresh(fixture: OpportunityBoardFixture, now: number) {
-  return fixture.has_surebet && isFreshTimestamp(fixture.confirmed_at, now);
+  const expiresAt = new Date(fixture.expires_at).getTime();
+  return (
+    fixture.has_surebet &&
+    isFreshTimestamp(fixture.confirmed_at, now) &&
+    Number.isFinite(expiresAt) &&
+    now <= expiresAt
+  );
 }
 
 function isFreshTimestamp(value: string, now: number) {
   const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) && now - timestamp <= MAX_CONFIRMED_AGE_MS;
+  return Number.isFinite(timestamp) && now - timestamp <= MAX_OPPORTUNITY_AGE_MS;
 }
 
 function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
@@ -157,15 +163,18 @@ function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; r
       <div className="max-w-[268px]">
         <div className="flex flex-wrap items-start gap-2">
           <p className="font-semibold leading-5 text-[var(--ink)]">{fixture.match_name}</p>
-          {fixture.has_surebet ? (
-            <span className="rounded border border-emerald-600/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800">
-              Khớp
-            </span>
-          ) : null}
+          <span className="rounded border border-emerald-600/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800">
+            +{fixture.profit_percentage.toFixed(2)}%
+          </span>
         </div>
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
           {fixture.league_names.length > 0 ? fixture.league_names.join(", ") : "Chưa rõ giải"}
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[var(--muted)]">
+          <span>{marketLabel(fixture.market_name)}</span>
+          <span aria-hidden="true">·</span>
+          <span>{oddsProfileLabel(fixture.odds_profile)}</span>
+        </div>
         <div className="mt-3 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
           <span>{matchStateLabel(fixture.match_state)}</span>
           <span>{formatFreshness(fixture.latest_collected_at)}</span>
@@ -289,9 +298,35 @@ function outcomeLabel(
 function EmptyBoard() {
   return (
     <div className="border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
-      <p className="font-semibold text-[var(--ink)]">Chưa có cơ hội đã được xác nhận</p>
+      <p className="font-semibold text-[var(--ink)]">Chưa có cơ hội hiện tại</p>
     </div>
   );
+}
+
+function marketLabel(value: string) {
+  if (value === "hdp-ah") {
+    return "Kèo chấp";
+  }
+  if (value === "hdp-ah-1st") {
+    return "Kèo chấp hiệp 1";
+  }
+  if (value === "o-u-ou") {
+    return "Tài xỉu";
+  }
+  if (value === "o-u-ou-1st") {
+    return "Tài xỉu hiệp 1";
+  }
+  return value;
+}
+
+function oddsProfileLabel(value: OpportunityBoardFixture["odds_profile"]) {
+  if (value === "two_negative") {
+    return "Hai cửa âm";
+  }
+  if (value === "one_negative_one_positive") {
+    return "Một âm, một dương";
+  }
+  return "Chưa phân loại";
 }
 
 function formatFreshness(value: string) {

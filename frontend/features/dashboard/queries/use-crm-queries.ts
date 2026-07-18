@@ -34,7 +34,9 @@ export function useOpportunitiesQuery() {
 export function useOpportunityBoardQuery() {
   return useQuery({
     queryKey: crmQueryKeys.opportunityBoard,
-    queryFn: fetchOpportunityBoard
+    queryFn: fetchOpportunityBoard,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false
   });
 }
 

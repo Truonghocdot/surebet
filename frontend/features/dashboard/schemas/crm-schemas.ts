@@ -19,6 +19,7 @@ export const opportunitySchema = z.object({
     z.object({
       bookmaker_id: z.string(),
       lobby_id: z.string(),
+      fixture_id: z.string(),
       market_id: z.string(),
       outcome_id: z.string(),
       outcome_name: z.string(),
@@ -97,8 +98,17 @@ export const opportunityBoardFixtureSchema = z.object({
   id: z.string(),
   match_name: z.string(),
   match_state: z.string(),
+  market_name: z.string(),
+  profit_percentage: z.number(),
+  expected_return: z.number(),
+  odds_profile: z.enum([
+    "one_negative_one_positive",
+    "two_negative",
+    "unknown"
+  ]),
   latest_collected_at: z.string(),
   confirmed_at: z.string(),
+  expires_at: z.string(),
   league_names: z.array(z.string()),
   has_surebet: z.boolean(),
   sources: z.array(opportunityBoardSourceSchema)
