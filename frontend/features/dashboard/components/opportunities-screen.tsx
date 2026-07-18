@@ -15,20 +15,18 @@ import type {
   OpportunityBoardOutcome
 } from "@/features/dashboard/schemas/crm-schemas";
 
-const MAX_OPPORTUNITY_AGE_MS = 15_000;
-
 export function OpportunitiesScreen() {
   const query = useOpportunityBoardQuery();
   const realtimeStatus = useRealtimeWebSocket();
 
   return (
-    <div className="dashboard-page">
+    <div className="dashboard-page min-w-0 [&>*]:min-w-0">
       <SectionHeader
-        eyebrow="Cơ hội trực tiếp"
-        title="Hai cửa đang tạo lợi nhuận"
+        eyebrow="So sánh trực tiếp"
+        title="Các trận đang khớp giữa hai sảnh"
       />
 
-      <DataPanel description="" title="Danh sách so sánh">
+      <DataPanel description="" title="Bảng odds hiện tại">
         <RealtimeIndicator status={realtimeStatus} />
 
         <QueryShell<OpportunityBoard> {...query}>
@@ -67,15 +65,14 @@ function RealtimeIndicator({ status }: { status: "connecting" | "live" | "reconn
 }
 
 function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
-  const now = useBoardClock();
-  const fixtures = board.items.filter((fixture) => isFixtureFresh(fixture, now));
+  const fixtures = board.items.filter(isCurrentMatchedFixture);
 
   if (fixtures.length === 0) {
     return <EmptyBoard />;
   }
 
   return (
-    <div className="overflow-x-auto pb-2">
+    <div className="min-w-0 max-w-full overflow-x-auto pb-2">
       <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
         <colgroup>
           <col className="w-[300px]" />
@@ -103,30 +100,8 @@ function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
   );
 }
 
-function useBoardClock() {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(interval);
-  }, []);
-
-  return now;
-}
-
-function isFixtureFresh(fixture: OpportunityBoardFixture, now: number) {
-  const expiresAt = new Date(fixture.expires_at).getTime();
-  return (
-    fixture.has_surebet &&
-    isFreshTimestamp(fixture.confirmed_at, now) &&
-    Number.isFinite(expiresAt) &&
-    now <= expiresAt
-  );
-}
-
-function isFreshTimestamp(value: string, now: number) {
-  const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) && now - timestamp <= MAX_OPPORTUNITY_AGE_MS;
+function isCurrentMatchedFixture(fixture: OpportunityBoardFixture) {
+  return fixture.match_state !== "finished" && fixture.sources.length >= 2;
 }
 
 function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
@@ -163,18 +138,22 @@ function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; r
       <div className="max-w-[268px]">
         <div className="flex flex-wrap items-start gap-2">
           <p className="font-semibold leading-5 text-[var(--ink)]">{fixture.match_name}</p>
-          <span className="rounded border border-emerald-600/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800">
-            +{fixture.profit_percentage.toFixed(2)}%
-          </span>
+          {fixture.has_surebet ? (
+            <span className="rounded border border-emerald-600/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800">
+              +{fixture.profit_percentage.toFixed(2)}%
+            </span>
+          ) : null}
         </div>
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
           {fixture.league_names.length > 0 ? fixture.league_names.join(", ") : "Chưa rõ giải"}
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[var(--muted)]">
-          <span>{marketLabel(fixture.market_name)}</span>
-          <span aria-hidden="true">·</span>
-          <span>{oddsProfileLabel(fixture.odds_profile)}</span>
-        </div>
+        {fixture.has_surebet ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[var(--muted)]">
+            <span>{marketLabel(fixture.market_name)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{oddsProfileLabel(fixture.odds_profile)}</span>
+          </div>
+        ) : null}
         <div className="mt-3 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
           <span>{matchStateLabel(fixture.match_state)}</span>
           <span>{formatFreshness(fixture.latest_collected_at)}</span>
@@ -298,7 +277,7 @@ function outcomeLabel(
 function EmptyBoard() {
   return (
     <div className="border border-dashed border-[color:var(--line)] bg-[var(--surface-soft)] px-6 py-10 text-center">
-      <p className="font-semibold text-[var(--ink)]">Chưa có cơ hội hiện tại</p>
+      <p className="font-semibold text-[var(--ink)]">Chưa có trận khớp hiện tại</p>
     </div>
   );
 }
