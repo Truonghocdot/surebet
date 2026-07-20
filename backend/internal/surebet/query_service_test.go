@@ -65,7 +65,7 @@ func TestQueryServiceSharesDetectorRunAcrossConcurrentRequests(t *testing.T) {
 		t.Fatalf("expected one detector run, got %d", calls)
 	}
 
-	service.Trigger()
+	service.Trigger(nil)
 	if _, err := service.ListCurrentSurebets(context.Background()); err != nil {
 		t.Fatalf("list after invalidation: %v", err)
 	}

@@ -129,6 +129,9 @@ type CollectorConfirmedSelection struct {
 	Odds           float64 `json:"odds"`
 	AvailableStake float64 `json:"available_stake"`
 	Suspended      bool    `json:"suspended"`
+	SourceEventID  string  `json:"source_event_id,omitempty"`
+	RawOdds        float64 `json:"raw_odds,omitempty"`
+	OddsFormat     string  `json:"odds_format,omitempty"`
 }
 
 type CollectorConfirmQuoteResponse struct {

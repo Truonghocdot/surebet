@@ -1,38 +1,29 @@
 # Surebet Platform
 
-Bộ khung kiến trúc production-grade cho nền tảng Surebet + Auto Bet realtime.
+Hệ thống theo dõi kèo realtime từ `8xbet/default` và `jun88/cmd`, xác nhận lại cơ hội trực tiếp tại collector trước khi gửi Telegram.
 
-Repository này hiện dừng ở mức kiến trúc, contract, topology và hạ tầng scaffold. Chưa triển khai logic đặt cược hay logic bookmaker cụ thể.
+## Thành phần
 
-## Cấu trúc repository
+- `collector/`: hai Playwright worker, network-first cho 8xbet và DOM stream cho Jun88 CMD.
+- `backend/`: Go API, collector WebSocket ingest, Redis current-state, detector và Telegram worker.
+- `frontend/`: dashboard Next.js cho trận khớp, cơ hội và cấu hình vận hành.
+- `deploy/`: Compose local và production.
 
-- `backend/`: contract backend Go, API scaffold, worker scaffold, domain model và topology
-- `collector/`: workspace Node.js cho collector Playwright theo từng bookmaker/lobby
-- `frontend/`: scaffold dashboard Next.js
-- `deploy/`: ví dụ cấu hình môi trường và tài nguyên bootstrap hạ tầng
-- `docs/`: tài liệu kiến trúc, sơ đồ phụ thuộc, quy ước và roadmap
+## Chạy local
 
-## Khởi động nhanh
+```bash
+docker compose -f deploy/docker-compose.yml up -d postgres redis backend-api telegram-worker
+cd collector && npm run run:8xbet-worker
+cd collector && npm run run:jun88-cmd-worker
+cd frontend && npm run dev
+```
 
-1. Xem [docs/architecture.md](docs/architecture.md).
-2. Khởi động hạ tầng với `docker compose up -d postgres redis rabbitmq`.
-3. Chạy backend API bằng `cd backend && go run ./cmd/api`.
+## Kiểm tra
 
-## Phạm vi hiện tại
+```bash
+cd backend && go test ./...
+cd collector && npm run typecheck && npm run test:eightxbet-network-feed
+cd frontend && npm run build
+```
 
-- Domain model cho PostgreSQL và contract cho dữ liệu lịch sử
-- Event contract strongly typed
-- Queue topology và quy ước Redis key
-- Interface cho feature switch và validation pipeline
-- Entrypoint cho API và worker
-- Docker Compose cho hạ tầng local và service scaffold
-
-## Chủ động để lại cho bước sau
-
-- Logic tính surebet
-- Luật chấm điểm rủi ro
-- Adapter thực thi theo từng bookmaker
-- Triển khai Playwright thực tế
-- Tích hợp authentication provider
-- Implement persistence adapter
-# surebet
+Kiến trúc runtime được mô tả tại [docs/architecture.md](docs/architecture.md).

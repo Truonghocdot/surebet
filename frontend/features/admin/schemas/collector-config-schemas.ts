@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const collectorConfigSchema = z.object({
-  eightxbet_page_url: z.string(),
   eightxbet_base_url: z.string(),
   eightxbet_inplay_page_url: z.string().default(""),
   jun88_base_url: z.string(),

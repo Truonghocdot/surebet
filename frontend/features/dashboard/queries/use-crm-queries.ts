@@ -5,38 +5,34 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchDashboardSnapshot,
   fetchMatchedFixtures,
-  fetchOpportunityBoard,
-  fetchOpportunities
-} from "@/features/dashboard/api/mock-dashboard-api";
-import type {
-  MatchedFixturesSnapshot,
-  OpportunityBoard
+  fetchOpportunityBoard
+} from "@/features/dashboard/api/crm-api";
+import {
+  opportunitySchema,
+  type MatchedFixturesSnapshot,
+  type OpportunityBoard
 } from "@/features/dashboard/schemas/crm-schemas";
 import { backendWebSocketURL } from "@/lib/realtime-url";
+import { useSessionStore } from "@/features/auth/store/session-store";
+import { isOpportunityVisibleForRole } from "@/lib/opportunity-visibility";
 import {
   applyRealtimeMatchedFixtures,
   applyRealtimeOddsQuotes,
+  applyRealtimeVerification,
+  type RealtimeVerificationEvent,
   type RealtimeOddsQuote
 } from "@/lib/realtime-opportunity-board";
 
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
   matchedFixtures: ["crm", "matched-fixtures"] as const,
-  opportunityBoard: ["crm", "opportunity-board"] as const,
-  opportunities: ["crm", "opportunities"] as const
+  opportunityBoard: ["crm", "opportunity-board"] as const
 };
 
 export function useDashboardSnapshotQuery() {
   return useQuery({
     queryKey: crmQueryKeys.dashboard,
     queryFn: fetchDashboardSnapshot
-  });
-}
-
-export function useOpportunitiesQuery() {
-  return useQuery({
-    queryKey: crmQueryKeys.opportunities,
-    queryFn: fetchOpportunities
   });
 }
 
@@ -60,6 +56,7 @@ type RealtimeStatus = "connecting" | "live" | "reconnecting";
 
 export function useRealtimeWebSocket() {
   const queryClient = useQueryClient();
+  const role = useSessionStore((state) => state.user?.role);
   const [status, setStatus] = useState<RealtimeStatus>("connecting");
 
   useEffect(() => {
@@ -85,7 +82,6 @@ export function useRealtimeWebSocket() {
       secondaryRefreshTimer = null;
       lastSecondaryRefreshAt = Date.now();
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
-      void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunities });
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.matchedFixtures });
     };
 
@@ -154,6 +150,21 @@ export function useRealtimeWebSocket() {
             scheduleSecondaryRefresh();
             setStatus("live");
           }
+          if (message.type === "surebet_verification_updated") {
+            const verification = extractRealtimeVerification(message);
+            if (verification && (
+              !verification.opportunity ||
+              isOpportunityVisibleForRole(verification.opportunity, role)
+            )) {
+              queryClient.setQueryData<OpportunityBoard>(
+                crmQueryKeys.opportunityBoard,
+                (current) => current
+                  ? applyRealtimeVerification(current, verification)
+                  : current
+              );
+            }
+            setStatus("live");
+          }
         } catch {
           setStatus("reconnecting");
         }
@@ -187,7 +198,7 @@ export function useRealtimeWebSocket() {
       }
       socket?.close();
     };
-  }, [queryClient]);
+  }, [queryClient, role]);
 
   return status;
 }
@@ -195,11 +206,36 @@ export function useRealtimeWebSocket() {
 type RealtimeMessage = {
   type?: string;
   payload?: {
+    opportunity_id?: unknown;
+    status?: unknown;
+    reason?: unknown;
+    confirmed_at?: unknown;
+    valid_until?: unknown;
+    opportunity?: unknown;
     payload?: {
       quotes?: unknown[];
     };
   };
 };
+
+function extractRealtimeVerification(
+  message: RealtimeMessage
+): RealtimeVerificationEvent | null {
+  const payload = message.payload;
+  if (!payload || typeof payload.opportunity_id !== "string" ||
+    (payload.status !== "confirmed" && payload.status !== "rejected" && payload.status !== "expired")) {
+    return null;
+  }
+  const opportunity = opportunitySchema.safeParse(payload.opportunity);
+  return {
+    opportunity_id: payload.opportunity_id,
+    status: payload.status,
+    reason: typeof payload.reason === "string" ? payload.reason : undefined,
+    confirmed_at: typeof payload.confirmed_at === "string" ? payload.confirmed_at : undefined,
+    valid_until: typeof payload.valid_until === "string" ? payload.valid_until : undefined,
+    opportunity: opportunity.success ? opportunity.data : undefined
+  };
+}
 
 function extractRealtimeOddsQuotes(message: RealtimeMessage): RealtimeOddsQuote[] {
   const quotes = message.payload?.payload?.quotes;

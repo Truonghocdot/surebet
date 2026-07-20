@@ -31,6 +31,7 @@ type SurebetQueryService interface {
 
 type SurebetConfirmationService interface {
 	ConfirmCurrentSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
+	GetVerifiedSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
 	ListConfirmedSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
 
@@ -75,7 +76,31 @@ func (s *Server) registerRoutes() {
 	v2 := s.engine.Group("/v2")
 	v2.GET("/collector/stream", s.handleCollectorStream)
 	v2.POST("/internal/surebets/:id/confirm", s.handleConfirmSurebet)
+	v2.GET("/internal/surebets/:id/verified", s.handleGetVerifiedSurebet)
 	v2.GET("/internal/surebets/confirmed", s.handleListConfirmedSurebets)
+}
+
+func (s *Server) handleGetVerifiedSurebet(ctx *gin.Context) {
+	if s.deps.SurebetConfirm == nil {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "surebet confirmation is not configured"})
+		return
+	}
+	if !s.requireInternalToken(ctx) {
+		return
+	}
+	item, found, err := s.deps.SurebetConfirm.GetVerifiedSurebet(
+		ctx.Request.Context(),
+		strings.TrimSpace(ctx.Param("id")),
+	)
+	if err != nil {
+		ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	if !found {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "verified surebet expired"})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{"data": item})
 }
 
 func (s *Server) handleHealth(ctx *gin.Context) {

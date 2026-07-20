@@ -22,6 +22,8 @@ const (
 	detectorMaxQuoteSkew       = 5 * time.Minute
 	fixtureSimilarityThreshold = 0.40
 	wordSimilarityThreshold    = 0.40
+	fixtureMatchMargin         = 0.15
+	fixtureStartTimeTolerance  = 15 * time.Minute
 	arbitrageTolerance         = 1e-9
 )
 
@@ -193,10 +195,13 @@ const (
 )
 
 type eventIdentity struct {
-	fixtureKey   string
-	matchKey     string
-	sport        string
-	participants [2]string
+	fixtureKey      string
+	matchKey        string
+	sport           string
+	participants    [2]string
+	eventStartAt    *time.Time
+	matchConfidence float64
+	matchAmbiguous  bool
 }
 
 type normalizedLine struct {
@@ -387,6 +392,7 @@ func normalizeEventIdentity(quote models.OddsQuote) (eventIdentity, bool) {
 		fixtureKey:   participants[0] + " vs " + participants[1],
 		sport:        sport,
 		participants: participants,
+		eventStartAt: quote.EventStartAt,
 	}
 
 	return event, true
@@ -541,6 +547,8 @@ func assignEventMatchKeys(quotes []normalizedQuote) {
 
 	clusters := make([]*eventCluster, 0)
 	matchKeyByEvent := make(map[string]string)
+	matchConfidenceByEvent := make(map[string]float64)
+	matchAmbiguousByEvent := make(map[string]bool)
 	for _, sourceKey := range sourceKeys {
 		events := make([]indexedEvent, 0, len(eventsBySource[sourceKey]))
 		for _, event := range eventsBySource[sourceKey] {
@@ -594,8 +602,15 @@ func assignEventMatchKeys(quotes []normalizedQuote) {
 			}
 			event := events[candidate.eventIndex]
 			cluster := clusters[candidate.clusterIndex]
+			exactMatch := event.event.fixtureKey == cluster.representative.fixtureKey
+			ambiguous := !exactMatch && matchCandidateIsAmbiguous(candidate, candidates)
+			if eventStartTimesConflict(event.event, cluster.representative) {
+				ambiguous = true
+			}
 			cluster.sources[sourceKey] = struct{}{}
 			matchKeyByEvent[event.indexKey] = cluster.key
+			matchConfidenceByEvent[event.indexKey] = candidate.score
+			matchAmbiguousByEvent[event.indexKey] = ambiguous
 			assignedEvents[candidate.eventIndex] = struct{}{}
 			assignedClusters[candidate.clusterIndex] = struct{}{}
 		}
@@ -611,12 +626,41 @@ func assignEventMatchKeys(quotes []normalizedQuote) {
 				sources:        map[string]struct{}{sourceKey: {}},
 			})
 			matchKeyByEvent[event.indexKey] = clusterKey
+			matchConfidenceByEvent[event.indexKey] = 1
 		}
 	}
 
 	for index := range quotes {
-		quotes[index].event.matchKey = matchKeyByEvent[sourceEventKey(quotes[index])]
+		key := sourceEventKey(quotes[index])
+		quotes[index].event.matchKey = matchKeyByEvent[key]
+		quotes[index].event.matchConfidence = matchConfidenceByEvent[key]
+		quotes[index].event.matchAmbiguous = matchAmbiguousByEvent[key]
 	}
+}
+
+func matchCandidateIsAmbiguous(target eventMatchCandidate, candidates []eventMatchCandidate) bool {
+	for _, candidate := range candidates {
+		if candidate.eventIndex == target.eventIndex && candidate.clusterIndex != target.clusterIndex &&
+			target.score-candidate.score < fixtureMatchMargin {
+			return true
+		}
+		if candidate.clusterIndex == target.clusterIndex && candidate.eventIndex != target.eventIndex &&
+			target.score-candidate.score < fixtureMatchMargin {
+			return true
+		}
+	}
+	return false
+}
+
+func eventStartTimesConflict(left, right eventIdentity) bool {
+	if left.eventStartAt == nil || right.eventStartAt == nil {
+		return false
+	}
+	delta := left.eventStartAt.UTC().Sub(right.eventStartAt.UTC())
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta > fixtureStartTimeTolerance
 }
 
 func uniqueEventClusterKey(clusters []*eventCluster, base string) string {
@@ -1007,6 +1051,8 @@ func buildOpportunity(
 		Currency:         "",
 		DetectedAt:       now,
 		ExpiresAt:        expiresAt,
+		MatchConfidence:  math.Min(left.event.matchConfidence, right.event.matchConfidence),
+		MatchAmbiguous:   left.event.matchAmbiguous || right.event.matchAmbiguous,
 		Legs:             buildLegs(left, right, combinedProbability),
 	}, true
 }
@@ -1025,6 +1071,7 @@ func buildLegs(left, right normalizedQuote, combinedProbability float64) []model
 			OutcomeName: left.quote.OutcomeName,
 			Odds:        left.quote.Odds,
 			Stake:       round(leftStake),
+			ObservedAt:  left.quote.LastObservedAt,
 		},
 		{
 			BookmakerID: right.quote.BookmakerID,
@@ -1035,6 +1082,7 @@ func buildLegs(left, right normalizedQuote, combinedProbability float64) []model
 			OutcomeName: right.quote.OutcomeName,
 			Odds:        right.quote.Odds,
 			Stake:       round(rightStake),
+			ObservedAt:  right.quote.LastObservedAt,
 		},
 	}
 }
@@ -1249,7 +1297,7 @@ func isGenericClubToken(value string) bool {
 		"rc", "rfc",
 		"sc", "sd", "sf", "sk", "sp", "ss",
 		"team",
-		"ud", "united", "utd", "us",
+		"ud", "utd", "us",
 		"vfc":
 		return true
 	default:

@@ -13,6 +13,15 @@ export type EightXBetFixtureMetadata = {
   eventStartAt?: string;
 };
 
+export type EightXBetOddsFormatDiagnostics = {
+  destination: string;
+  priceDisplay: string;
+  rawOddsSamples: number[];
+  observationCount: number;
+  healthy: boolean;
+  unhealthyReason: string;
+};
+
 type FeedFixtureState = {
   metadata?: EightXBetFixtureMetadata;
   markets: Map<SupportedMarketCode, unknown>;
@@ -23,17 +32,13 @@ type FeedFixtureState = {
   occurredAt: string;
   lastEventFull: boolean;
   lastTouchedMarkets: SupportedMarketCode[];
+  sourceEventId: string;
+  oddsFormat: "indonesian";
   retired: boolean;
 };
 
 type FeedDeltaListener = (deltas: OddsDelta[], fixtureId: string) => Promise<void>;
 type ActiveFixtureListener = (fixtureIds: string[]) => Promise<void> | void;
-
-type FixtureSnapshotWaiter = {
-  resolve: (snapshot: OddsSnapshot) => void;
-  reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
-};
 
 const supportedMarketCodes = new Set<SupportedMarketCode>(["ah", "ah_1st", "ou", "ou_1st"]);
 export class EightXBetNetworkFeed {
@@ -50,12 +55,18 @@ export class EightXBetNetworkFeed {
   private lastCoverageSignature = "";
   private metadataFixtureTotal = 0;
   private metadataGeneration = 0;
+  private latestSportsAPIOrigin = "";
+  private latestOddsDestination = "";
+  private priceDisplay = "";
+  private rawOddsSamples: number[] = [];
+  private formatObservationCount = 0;
+  private formatUnhealthyReason = "";
   private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private readonly fixtureWaiters = new Map<string, Set<FixtureSnapshotWaiter>>();
 
   constructor(private readonly collectorId: string) {}
 
   attach(page: Page) {
+    this.resetOddsFormatObservation(true);
     const metadataGeneration = ++this.metadataGeneration;
     this.activeMetadataFixtureIds = null;
     this.lastNotifiedFixtureSignature = "";
@@ -125,13 +136,6 @@ export class EightXBetNetworkFeed {
       clearTimeout(timer);
     }
     this.deliveryRetryTimers.clear();
-    for (const waiters of this.fixtureWaiters.values()) {
-      for (const waiter of waiters) {
-        clearTimeout(waiter.timer);
-        waiter.reject(new Error("8xbet network feed stopped before quote confirmation"));
-      }
-    }
-    this.fixtureWaiters.clear();
   }
 
   overlaySnapshot(domSnapshot: OddsSnapshot) {
@@ -169,6 +173,71 @@ export class EightXBetNetworkFeed {
       : null;
   }
 
+  oddsFormatDiagnostics(): EightXBetOddsFormatDiagnostics {
+    return {
+      destination: this.latestOddsDestination,
+      priceDisplay: this.priceDisplay,
+      rawOddsSamples: [...this.rawOddsSamples],
+      observationCount: this.formatObservationCount,
+      healthy:
+        this.formatUnhealthyReason === "" &&
+        this.priceDisplay === "pd1" &&
+        this.rawOddsSamples.length >= 2,
+      unhealthyReason: this.formatUnhealthyReason
+    };
+  }
+
+  resetOddsFormatObservation(clearQuotes = false) {
+    this.priceDisplay = "";
+    this.latestOddsDestination = "";
+    this.rawOddsSamples = [];
+    this.formatObservationCount = 0;
+    this.formatUnhealthyReason = "";
+    if (!clearQuotes) {
+      return;
+    }
+    this.fixtures.clear();
+    this.pendingFixtureIds.clear();
+    this.activeMetadataFixtureIds = null;
+    this.metadataFixtureTotal = 0;
+    this.latestSportsAPIOrigin = "";
+    for (const timer of this.deliveryRetryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.deliveryRetryTimers.clear();
+  }
+
+  hardConfirmationURL(fixtureId: string) {
+    if (!this.latestSportsAPIOrigin || this.priceDisplay !== "pd1" || !/^\d+$/.test(fixtureId)) {
+      return "";
+    }
+    const target = new URL("/product/business/sport/inplay/match", this.latestSportsAPIOrigin);
+    target.searchParams.set("sid", "1");
+    target.searchParams.set("iid", fixtureId);
+    target.searchParams.set("language", "en-us");
+    return target.toString();
+  }
+
+  async applyFullMatchPayload(payload: unknown) {
+    const parsed = parseEightXBetFullMatchPayload(payload);
+    if (!parsed) {
+      return null;
+    }
+    this.applyMetadata(parsed.match);
+    this.applyMarkets(
+      parsed.fixtureId,
+      objectValue(parsed.match.market),
+      [],
+      true,
+      parsed.occurredAt,
+      parsed.sourceEventId,
+      "indonesian"
+    );
+    await this.flush();
+    const state = this.fixtures.get(parsed.fixtureId);
+    return state ? this.fixtureSnapshot(parsed.fixtureId, state, allSelections(state)) : null;
+  }
+
   coverageStats() {
     const activeFixtureIds = this.activeMetadataFixtureIds ?? new Set<string>();
     let decodedFixtures = 0;
@@ -196,30 +265,12 @@ export class EightXBetNetworkFeed {
     await this.deliveryQueue;
   }
 
-  waitForNextFixtureSnapshot(fixtureId: string, timeoutMs: number) {
-    return new Promise<OddsSnapshot>((resolve, reject) => {
-      const waiters = this.fixtureWaiters.get(fixtureId) ?? new Set<FixtureSnapshotWaiter>();
-      const waiter: FixtureSnapshotWaiter = {
-        resolve,
-        reject,
-        timer: setTimeout(() => {
-          waiters.delete(waiter);
-          if (waiters.size === 0) {
-            this.fixtureWaiters.delete(fixtureId);
-          }
-          reject(new Error(`8xbet quote confirmation timed out for fixture ${fixtureId}`));
-        }, timeoutMs)
-      };
-      waiters.add(waiter);
-      this.fixtureWaiters.set(fixtureId, waiters);
-    });
-  }
-
   private async ingestResponse(response: Response, metadataGeneration: number) {
     const url = response.url();
     if (!isSportsMetadataResponse(url) && !isSportsMatchResponse(url)) {
       return;
     }
+    this.latestSportsAPIOrigin = new URL(url).origin;
 
     const payload = await response.json().catch(() => null);
     if (
@@ -242,21 +293,19 @@ export class EightXBetNetworkFeed {
       return;
     }
 
-    const match = extractMatchResponse(payload);
-    if (!match) {
+    const parsed = parseEightXBetFullMatchPayload(payload);
+    if (!parsed) {
       return;
     }
-    const fixtureId = stringID(match.iid);
-    if (!fixtureId) {
-      return;
-    }
-    this.applyMetadata(match);
+    this.applyMetadata(parsed.match);
     this.applyMarkets(
-      fixtureId,
-      objectValue(match.market),
+      parsed.fixtureId,
+      objectValue(parsed.match.market),
       [],
       true,
-      timestampOf(match.time ?? match.timestamp)
+      parsed.occurredAt,
+      parsed.sourceEventId,
+      "indonesian"
     );
   }
 
@@ -265,13 +314,36 @@ export class EightXBetNetworkFeed {
     if (!parsed) {
       return;
     }
+    this.formatObservationCount += 1;
+    this.latestOddsDestination = parsed.destination;
+    this.priceDisplay = parsed.priceDisplay;
+    if (parsed.priceDisplay !== "pd1") {
+      this.formatUnhealthyReason = parsed.priceDisplay
+        ? `unexpected odds destination ${parsed.priceDisplay}`
+        : "odds destination did not include a price-display suffix";
+      return;
+    }
+
+    const rawSamples = rawOddsSamplesFromMarkets(parsed.markets);
+    if (rawSamples.some((value) => value <= 0)) {
+      this.formatUnhealthyReason = "pd1 contained non-positive raw odds; refusing to guess the odds format";
+      return;
+    }
+    if (rawSamples.length > 0) {
+      this.rawOddsSamples = [...this.rawOddsSamples, ...rawSamples].slice(-8);
+    }
+    if (this.formatUnhealthyReason) {
+      return;
+    }
 
     this.applyMarkets(
       parsed.fixtureId,
       parsed.markets,
       parsed.removedMarkets,
       parsed.full,
-      parsed.occurredAt
+      parsed.occurredAt,
+      parsed.sourceEventId,
+      "indonesian"
     );
   }
 
@@ -331,7 +403,9 @@ export class EightXBetNetworkFeed {
     markets: Record<string, unknown>,
     removedMarkets: string[],
     full: boolean,
-    occurredAt: string
+    occurredAt: string,
+    sourceEventId: string,
+    oddsFormat: "indonesian"
   ) {
     if (
       this.activeMetadataFixtureIds &&
@@ -373,15 +447,14 @@ export class EightXBetNetworkFeed {
     }
 
     current.occurredAt = occurredAt || new Date().toISOString();
+    current.sourceEventId = sourceEventId;
+    current.oddsFormat = oddsFormat;
     current.lastEventFull = full;
     current.lastTouchedMarkets = Array.from(touchedMarkets);
     rebuildMarketSelections(current, touchedMarkets);
     this.logCoverage();
     for (const code of touchedMarkets) {
       current.pendingMarkets.add(code);
-    }
-    if (full) {
-      this.resolveFixtureWaiters(fixtureId, allSelections(current));
     }
     this.emitFixture(fixtureId);
   }
@@ -467,26 +540,13 @@ export class EightXBetNetworkFeed {
         occurredAt: new Date().toISOString(),
         lastEventFull: false,
         lastTouchedMarkets: [],
+        sourceEventId: "",
+        oddsFormat: "indonesian",
         retired: false
       };
       this.fixtures.set(fixtureId, state);
     }
     return state;
-  }
-
-  private resolveFixtureWaiters(fixtureId: string, selections: OddsSelection[]) {
-    const waiters = this.fixtureWaiters.get(fixtureId);
-    const state = this.fixtures.get(fixtureId);
-    if (!waiters || !state?.metadata) {
-      return;
-    }
-
-    this.fixtureWaiters.delete(fixtureId);
-    const snapshot = this.fixtureSnapshot(fixtureId, state, selections);
-    for (const waiter of waiters) {
-      clearTimeout(waiter.timer);
-      waiter.resolve(snapshot);
-    }
   }
 
   private fixtureSnapshot(
@@ -525,15 +585,6 @@ export class EightXBetNetworkFeed {
     for (const [fixtureId, state] of this.fixtures) {
       if (active.has(fixtureId) || state.retired) {
         continue;
-      }
-
-      const waiters = this.fixtureWaiters.get(fixtureId);
-      if (waiters) {
-        this.fixtureWaiters.delete(fixtureId);
-        for (const waiter of waiters) {
-          clearTimeout(waiter.timer);
-          waiter.reject(new Error(`8xbet fixture ${fixtureId} is no longer active`));
-        }
       }
 
       if (!this.listener || !state.metadata || state.deliveredSelections.size === 0) {
@@ -641,8 +692,8 @@ function buildMarketSelections(state: FeedFixtureState, code: SupportedMarketCod
   const market = state.markets.get(code);
   if (!Array.isArray(market)) return [];
   return code === "ah" || code === "ah_1st"
-    ? buildHandicapSelections(state.metadata, code, market)
-    : buildOverUnderSelections(state.metadata, code, market);
+    ? buildHandicapSelections(state, code, market)
+    : buildOverUnderSelections(state, code, market);
 }
 
 function allSelections(state: FeedFixtureState) {
@@ -722,59 +773,67 @@ function selectionCount(state: FeedFixtureState) {
 }
 
 function buildHandicapSelections(
-  metadata: EightXBetFixtureMetadata,
+  state: FeedFixtureState,
   code: "ah" | "ah_1st",
   lines: unknown[]
 ) {
+  const metadata = state.metadata!;
   const marketId = code === "ah" ? "hdp-ah" : "hdp-ah-1st";
   const result: OddsSelection[] = [];
   for (const rawLine of lines) {
     const line = objectValue(rawLine);
     const lineValue = normalizeAsianLine(String(line.k ?? ""));
-    const homeOdds = normalizeFeedOdds(line.h);
-    const awayOdds = normalizeFeedOdds(line.a);
-    if (!lineValue || homeOdds === null || awayOdds === null) {
+    const homeRawOdds = parseRawFeedOdds(line.h);
+    const awayRawOdds = parseRawFeedOdds(line.a);
+    const homeOdds = normalizeIndonesianToMalayOdds(homeRawOdds);
+    const awayOdds = normalizeIndonesianToMalayOdds(awayRawOdds);
+    if (!lineValue || homeOdds === null || awayOdds === null || homeRawOdds === null || awayRawOdds === null) {
       continue;
     }
     const homeOutcome = `${metadata.homeTeam} ${lineValue}`.trim();
     const awayOutcome = `${metadata.awayTeam} ${invertAsianLine(lineValue)}`.trim();
     result.push(
-      selectionOf(metadata, marketId, homeOutcome, homeOdds),
-      selectionOf(metadata, marketId, awayOutcome, awayOdds)
+      selectionOf(state, marketId, homeOutcome, homeOdds, homeRawOdds),
+      selectionOf(state, marketId, awayOutcome, awayOdds, awayRawOdds)
     );
   }
   return result;
 }
 
 function buildOverUnderSelections(
-  metadata: EightXBetFixtureMetadata,
+  state: FeedFixtureState,
   code: "ou" | "ou_1st",
   lines: unknown[]
 ) {
+  const metadata = state.metadata!;
   const marketId = code === "ou" ? "o-u-ou" : "o-u-ou-1st";
   const result: OddsSelection[] = [];
   for (const rawLine of lines) {
     const line = objectValue(rawLine);
     const lineValue = String(line.k ?? "").trim();
-    const overOdds = normalizeFeedOdds(line.ov);
-    const underOdds = normalizeFeedOdds(line.ud);
-    if (!lineValue || overOdds === null || underOdds === null) {
+    const overRawOdds = parseRawFeedOdds(line.ov);
+    const underRawOdds = parseRawFeedOdds(line.ud);
+    const overOdds = normalizeIndonesianToMalayOdds(overRawOdds);
+    const underOdds = normalizeIndonesianToMalayOdds(underRawOdds);
+    if (!lineValue || overOdds === null || underOdds === null || overRawOdds === null || underRawOdds === null) {
       continue;
     }
     result.push(
-      selectionOf(metadata, marketId, `Over ${lineValue}`, overOdds),
-      selectionOf(metadata, marketId, `Under ${lineValue}`, underOdds)
+      selectionOf(state, marketId, `Over ${lineValue}`, overOdds, overRawOdds),
+      selectionOf(state, marketId, `Under ${lineValue}`, underOdds, underRawOdds)
     );
   }
   return result;
 }
 
 function selectionOf(
-  metadata: EightXBetFixtureMetadata,
+  state: FeedFixtureState,
   marketId: string,
   outcomeName: string,
-  odds: number
+  odds: number,
+  rawOdds: number
 ): OddsSelection {
+  const metadata = state.metadata!;
   return {
     fixtureId: metadata.fixtureId,
     sport: "football",
@@ -788,16 +847,52 @@ function selectionOf(
     outcomeName,
     odds,
     availableStake: 0,
-    suspended: false
+    suspended: false,
+    sourceEventId: state.sourceEventId,
+    rawOdds,
+    oddsFormat: state.oddsFormat
   };
 }
 
-function normalizeFeedOdds(value: unknown) {
+function parseRawFeedOdds(value: unknown) {
   const parsed = Number.parseFloat(String(value ?? ""));
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return null;
   }
-  const malay = parsed > 1 ? -1 / parsed : parsed;
+  return parsed;
+}
+
+function rawOddsSamplesFromMarkets(markets: Record<string, unknown>) {
+  const result: number[] = [];
+  for (const [rawCode, rawMarket] of Object.entries(markets)) {
+    const code = normalizeMarketCode(rawCode);
+    if (!code || !Array.isArray(rawMarket)) {
+      continue;
+    }
+    const fields = code === "ah" || code === "ah_1st"
+      ? ["h", "a"]
+      : ["ov", "ud"];
+    for (const rawLine of rawMarket) {
+      const line = objectValue(rawLine);
+      for (const field of fields) {
+        const value = Number.parseFloat(String(line[field] ?? ""));
+        if (Number.isFinite(value)) {
+          result.push(value);
+        }
+        if (result.length >= 8) {
+          return result;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+export function normalizeIndonesianToMalayOdds(value: number | null) {
+  if (value === null || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  const malay = value > 1 ? -1 / value : value;
   return Math.round(malay * 100) / 100;
 }
 
@@ -867,15 +962,40 @@ export function parseEightXBetOddsDiffFrame(frame: string) {
       return null;
     }
     return {
+      destination,
       fixtureId,
       markets: objectValue(objectBody.market),
       removedMarkets: stringArray(objectBody.removeMarket),
       full: String(objectBody.sendType ?? "").toUpperCase() === "INIT",
-      occurredAt: timestampOf(objectBody.nwTimestamp ?? objectBody._msgId)
+      occurredAt: timestampOf(objectBody.nwTimestamp ?? objectBody._msgId),
+      sourceEventId: String(objectBody._msgId ?? objectBody.nwTimestamp ?? "").trim(),
+      priceDisplay: priceDisplayFromDestination(destination)
     };
   } catch {
     return null;
   }
+}
+
+export function parseEightXBetFullMatchPayload(payload: unknown) {
+  const root = objectValue(payload);
+  if (Number(root.code ?? 0) !== 0) {
+    return null;
+  }
+  const match = extractMatchResponse(root);
+  if (!match) {
+    return null;
+  }
+  const fixtureId = stringID(match.iid);
+  if (!fixtureId) {
+    return null;
+  }
+  const eventValue = root.nwTimestamp ?? match.nwTimestamp ?? root.time ?? match.time ?? match.timestamp;
+  return {
+    fixtureId,
+    match,
+    occurredAt: timestampOf(eventValue),
+    sourceEventId: String(eventValue ?? "").trim()
+  };
 }
 
 export function buildEightXBetNetworkFixtureSnapshot(options: {
@@ -894,6 +1014,8 @@ export function buildEightXBetNetworkFixtureSnapshot(options: {
     occurredAt: options.occurredAt,
     lastEventFull: true,
     lastTouchedMarkets: [],
+    sourceEventId: options.occurredAt,
+    oddsFormat: "indonesian",
     retired: false
   };
   for (const [rawCode, market] of Object.entries(options.markets)) {
@@ -1053,6 +1175,10 @@ function stringID(value: unknown) {
 
 function fixtureIDFromDestination(destination: string) {
   return destination.match(/\/topic\/odds-diff\/match\/(\d+)/)?.[1] ?? "";
+}
+
+function priceDisplayFromDestination(destination: string) {
+  return destination.match(/\/topic\/odds-diff\/match\/\d+\/(pd\d+)(?:\/|$)/i)?.[1]?.toLowerCase() ?? "";
 }
 
 function isSportsWebSocket(url: string) {

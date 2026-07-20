@@ -49,14 +49,15 @@ type OddsQuote struct {
 }
 
 type SurebetLeg struct {
-	BookmakerID string  `json:"bookmaker_id"`
-	LobbyID     string  `json:"lobby_id"`
-	FixtureID   string  `json:"fixture_id"`
-	MarketID    string  `json:"market_id"`
-	OutcomeID   string  `json:"outcome_id"`
-	OutcomeName string  `json:"outcome_name"`
-	Odds        float64 `json:"odds"`
-	Stake       float64 `json:"stake"`
+	BookmakerID string    `json:"bookmaker_id"`
+	LobbyID     string    `json:"lobby_id"`
+	FixtureID   string    `json:"fixture_id"`
+	MarketID    string    `json:"market_id"`
+	OutcomeID   string    `json:"outcome_id"`
+	OutcomeName string    `json:"outcome_name"`
+	Odds        float64   `json:"odds"`
+	Stake       float64   `json:"stake"`
+	ObservedAt  time.Time `json:"observed_at,omitempty"`
 }
 
 type SurebetOpportunity struct {
@@ -69,6 +70,8 @@ type SurebetOpportunity struct {
 	Currency         string       `json:"currency"`
 	DetectedAt       time.Time    `json:"detected_at"`
 	ExpiresAt        time.Time    `json:"expires_at"`
+	MatchConfidence  float64      `json:"match_confidence"`
+	MatchAmbiguous   bool         `json:"match_ambiguous"`
 	Legs             []SurebetLeg `json:"legs" gorm:"-"`
 }
 

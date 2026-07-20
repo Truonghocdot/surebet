@@ -34,17 +34,16 @@ export function filterOpportunitiesForRole(
   opportunities: BackendOpportunity[],
   role: string | null | undefined
 ) {
-  const allowsMixed = role === "super_admin";
+  return opportunities.filter((opportunity) =>
+    isOpportunityVisibleForRole(opportunity, role)
+  );
+}
 
-  return opportunities.filter((opportunity) => {
-    const profile = classifyOpportunityOddsProfile(opportunity);
-
-    if (profile === "two_negative") {
-      return true;
-    }
-    if (profile === "one_negative_one_positive") {
-      return allowsMixed;
-    }
-    return false;
-  });
+export function isOpportunityVisibleForRole(
+  opportunity: Pick<BackendOpportunity, "legs">,
+  role: string | null | undefined
+) {
+  const profile = classifyOpportunityOddsProfile(opportunity);
+  return profile === "two_negative" ||
+    (profile === "one_negative_one_positive" && role === "super_admin");
 }

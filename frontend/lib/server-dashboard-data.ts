@@ -9,6 +9,12 @@ export type BackendOpportunity = {
   expected_return: number;
   detected_at: string;
   expires_at: string;
+  verification_status: "candidate" | "confirmed";
+  confirmed_at?: string;
+  valid_until?: string;
+  confirmation_latency_ms?: number;
+  match_confidence?: number;
+  match_ambiguous?: boolean;
   legs: Array<{
     bookmaker_id: string;
     lobby_id: string;
@@ -18,6 +24,7 @@ export type BackendOpportunity = {
     outcome_name: string;
     odds: number;
     stake: number;
+    observed_at?: string;
   }>;
 };
 

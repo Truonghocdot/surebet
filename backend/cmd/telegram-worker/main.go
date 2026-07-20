@@ -29,7 +29,7 @@ func main() {
 
 	recipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	queueRepository := gormstore.NewTelegramNotificationLogRepository(db)
-	surebetReader := telegram.NewBackendSurebetConfirmer(
+	surebetReader := telegram.NewBackendVerifiedSurebetReader(
 		cfg.Telegram.BackendAPIURL,
 		cfg.Telegram.BotToken,
 		cfg.Telegram.RequestTimeout,

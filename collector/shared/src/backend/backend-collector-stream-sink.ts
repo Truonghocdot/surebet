@@ -458,7 +458,10 @@ function serializeConfirmedSelection(selection: OddsSelection) {
     outcome_name: selection.outcomeName,
     odds: selection.odds,
     available_stake: selection.availableStake,
-    suspended: selection.suspended
+    suspended: selection.suspended,
+    source_event_id: selection.sourceEventId ?? "",
+    raw_odds: selection.rawOdds ?? 0,
+    odds_format: selection.oddsFormat ?? ""
   };
 }
 

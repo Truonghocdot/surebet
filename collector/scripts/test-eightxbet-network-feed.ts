@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
+  normalizeIndonesianToMalayOdds,
   parseEightXBetOddsDiffFrame,
+  parseEightXBetFullMatchPayload,
   parseEightXBetStandardFixtures
 } from "@surebet/collector-shared";
 import type { OddsDelta } from "@surebet/collector-shared";
@@ -29,6 +31,10 @@ const snapshot = buildEightXBetNetworkFixtureSnapshot({
 });
 
 assert.equal(snapshot.selections.length, 8, "only complete two-sided lines should be emitted");
+assert.equal(normalizeIndonesianToMalayOdds(0.91), 0.91);
+assert.equal(normalizeIndonesianToMalayOdds(1.13), -0.88);
+assert.equal(snapshot.selections[1].rawOdds, 1.25);
+assert.equal(snapshot.selections[1].oddsFormat, "indonesian");
 assert.deepEqual(
   snapshot.selections.map((item) => [item.marketId, item.outcomeName, item.odds]),
   [
@@ -62,6 +68,27 @@ assert.equal(parsed.fixtureId, "4824992");
 assert.equal(parsed.full, false);
 assert.deepEqual(parsed.removedMarkets, ["ou"]);
 assert.ok("ah" in parsed.markets);
+assert.equal(parsed.priceDisplay, "pd1");
+assert.equal(parsed.destination, "/topic/odds-diff/match/4824992/pd1/MOBILE");
+
+const fullMatch = parseEightXBetFullMatchPayload({
+  code: 0,
+  time: 1784236835159,
+  nwTimestamp: 1784237949520,
+  data: {
+    data: {
+      iid: 4824992,
+      home: { name: "Home FC" },
+      away: { name: "Away FC" },
+      tnName: "League",
+      market: { ah: [{ k: "-0.5", h: "0.91", a: "1.13" }] }
+    }
+  }
+});
+assert(fullMatch);
+assert.equal(fullMatch.fixtureId, "4824992");
+assert.equal(fullMatch.sourceEventId, "1784237949520");
+assert.equal(fullMatch.occurredAt, "2026-07-16T21:39:09.520Z");
 
 const metadataPayload = {
   data: {
@@ -125,7 +152,9 @@ const metadataPayload = {
   }
 };
 assert.deepEqual(
-  parseEightXBetStandardFixtures(metadataPayload).map((item) => String(item.iid)),
+  parseEightXBetStandardFixtures(metadataPayload).map((item) =>
+    String((item as Record<string, unknown>).iid)
+  ),
   ["4824992"],
   "metadata must retain standard football and drop exotic fixtures"
 );
@@ -202,6 +231,14 @@ async function testMarketDeltaDelivery() {
   });
   await feed.flush();
   assert.equal(delivered.length, 0, "an unchanged INIT must not emit deltas");
+  assert.deepEqual(feed.oddsFormatDiagnostics(), {
+    destination: "/topic/odds-diff/match/4824992/pd1/MOBILE",
+    priceDisplay: "pd1",
+    rawOddsSamples: [0.9, 1.25, 1.14, 0.91, 1.2, 0.84, 0.95, 1.1],
+    observationCount: 1,
+    healthy: true,
+    unhealthyReason: ""
+  });
 
   socket.emit("framereceived", {
     payload: stompFrame("UPDATE", {
@@ -231,6 +268,10 @@ async function testMarketDeltaDelivery() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await feed.flush();
   assert.deepEqual(feed.activeFixtureIds(), ["4824992"]);
+  assert.match(
+    feed.hardConfirmationURL("4824992"),
+    /\/product\/business\/sport\/inplay\/match\?.*iid=4824992/
+  );
   assert.deepEqual(feed.coverageStats(), {
     metadataFixtures: 1,
     decodedFixtures: 1,
@@ -263,7 +304,44 @@ async function testMarketDeltaDelivery() {
   assert.ok(delivered[2].every((delta) => delta.op === "remove"));
 }
 
-testMarketDeltaDelivery()
+async function testOddsFormatGateRejectsUnexpectedFeed() {
+  const unsupportedFeed = new EightXBetNetworkFeed("8xbet");
+  const unsupportedPage = new FakeEmitter();
+  const unsupportedSocket = new FakeSocket();
+  unsupportedFeed.attach(unsupportedPage as any);
+  unsupportedPage.emit("websocket", unsupportedSocket);
+  unsupportedSocket.emit("framereceived", {
+    payload: stompFrame("UPDATE", {
+      market: { ah: [{ k: "-0.5", h: "0.91", a: "1.13" }] }
+    }).replace("/pd1/", "/pd2/")
+  });
+  assert.equal(unsupportedFeed.oddsFormatDiagnostics().healthy, false);
+  assert.match(
+    unsupportedFeed.oddsFormatDiagnostics().unhealthyReason,
+    /unexpected odds destination pd2/
+  );
+
+  const negativeFeed = new EightXBetNetworkFeed("8xbet");
+  const negativePage = new FakeEmitter();
+  const negativeSocket = new FakeSocket();
+  negativeFeed.attach(negativePage as any);
+  negativePage.emit("websocket", negativeSocket);
+  negativeSocket.emit("framereceived", {
+    payload: stompFrame("UPDATE", {
+      market: { ah: [{ k: "-0.5", h: "-0.88", a: "0.91" }] }
+    })
+  });
+  assert.equal(negativeFeed.oddsFormatDiagnostics().healthy, false);
+  assert.match(
+    negativeFeed.oddsFormatDiagnostics().unhealthyReason,
+    /non-positive raw odds/
+  );
+}
+
+Promise.all([
+  testMarketDeltaDelivery(),
+  testOddsFormatGateRejectsUnexpectedFeed()
+])
   .then(() => console.log("8xbet network feed parser tests passed"))
   .catch((error) => {
     console.error(error);

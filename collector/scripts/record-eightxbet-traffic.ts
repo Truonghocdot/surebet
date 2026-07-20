@@ -30,9 +30,13 @@ async function main() {
           `[8xbet-traffic] ${mode} fixtures=${new Set(snapshot.selections.map((item) => item.fixtureId)).size} outcomes=${snapshot.selections.length}`
         );
       },
-      async (snapshot, mode, fixtureId) => {
+      async (deltas, fixtureId) => {
+        const occurredAt = deltas.reduce(
+          (latest, delta) => delta.collectedAt > latest ? delta.collectedAt : latest,
+          ""
+        );
         console.log(
-          `[8xbet-traffic] ${mode} fixture=${fixtureId} outcomes=${snapshot.selections.length} occurred_at=${snapshot.collectedAt}`
+          `[8xbet-traffic] delta fixture=${fixtureId} outcomes=${deltas.length} occurred_at=${occurredAt}`
         );
       }
     );

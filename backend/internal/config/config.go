@@ -16,7 +16,6 @@ type Config struct {
 	Collector CollectorRuntimeConfig
 	HTTP      HTTPConfig
 	Telegram  TelegramConfig
-	RabbitMQ  RabbitMQConfig
 	Redis     RedisConfig
 	Postgres  PostgresConfig
 	Runtime   RuntimeConfig
@@ -33,7 +32,6 @@ type AuthConfig struct {
 }
 
 type CollectorRuntimeConfig struct {
-	EightXBetPageURL        string
 	EightXBetBaseURL        string
 	EightXBetInplayPageURL  string
 	Jun88BaseURL            string
@@ -52,23 +50,22 @@ type HTTPConfig struct {
 }
 
 type TelegramConfig struct {
-	BackendAPIURL     string
-	BotToken          string
-	WebhookSecret     string
-	APIBaseURL        string
-	RequestTimeout    time.Duration
-	DedupWindow       time.Duration
-	ScanCooldown      time.Duration
-	QueuePollInterval time.Duration
-	QueueBatchSize    int
-	QueueMaxAttempts  int
-	QueueRetryDelay   time.Duration
-}
-
-type RabbitMQConfig struct {
-	URL          string
-	Prefetch     int
-	ExchangeName string
+	BackendAPIURL        string
+	BotToken             string
+	WebhookSecret        string
+	APIBaseURL           string
+	RequestTimeout       time.Duration
+	DedupWindow          time.Duration
+	QueuePollInterval    time.Duration
+	QueueBatchSize       int
+	VerificationMode     string
+	ConfirmationTimeout  time.Duration
+	ConfirmationValidity time.Duration
+	ConfirmationMaxSkew  time.Duration
+	ShadowDuration       time.Duration
+	ShadowMinSamples     int
+	ShadowMinSuccessRate float64
+	ShadowMaxP95Latency  time.Duration
 }
 
 type RedisConfig struct {
@@ -101,7 +98,6 @@ func LoadFromEnv() Config {
 			TokenTTL:    envDuration("AUTH_TOKEN_TTL", 12*time.Hour),
 		},
 		Collector: CollectorRuntimeConfig{
-			EightXBetPageURL:        envString("EIGHTXBET_PAGE_URL", ""),
 			EightXBetBaseURL:        envString("EIGHTXBET_BASE_URL", ""),
 			EightXBetInplayPageURL:  envString("EIGHTXBET_INPLAY_PAGE_URL", ""),
 			Jun88BaseURL:            envString("JUN88_BASE_URL", ""),
@@ -118,22 +114,22 @@ func LoadFromEnv() Config {
 			WriteTimeout: envDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
 		},
 		Telegram: TelegramConfig{
-			BackendAPIURL:     envString("BACKEND_API_URL", "http://127.0.0.1:8080"),
-			BotToken:          envString("TELEGRAM_BOT_TOKEN", ""),
-			WebhookSecret:     envString("TELEGRAM_WEBHOOK_SECRET", ""),
-			APIBaseURL:        envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
-			RequestTimeout:    envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
-			DedupWindow:       envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),
-			ScanCooldown:      envDuration("TELEGRAM_SUREBET_SCAN_COOLDOWN", 5*time.Second),
-			QueuePollInterval: envDuration("TELEGRAM_QUEUE_POLL_INTERVAL", 250*time.Millisecond),
-			QueueBatchSize:    envInt("TELEGRAM_QUEUE_BATCH_SIZE", 25),
-			QueueMaxAttempts:  envInt("TELEGRAM_QUEUE_MAX_ATTEMPTS", 5),
-			QueueRetryDelay:   envDuration("TELEGRAM_QUEUE_RETRY_DELAY", 30*time.Second),
-		},
-		RabbitMQ: RabbitMQConfig{
-			URL:          envString("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-			Prefetch:     envInt("RABBITMQ_PREFETCH", 32),
-			ExchangeName: envString("RABBITMQ_EXCHANGE", "surebet.domain"),
+			BackendAPIURL:        envString("BACKEND_API_URL", "http://127.0.0.1:8080"),
+			BotToken:             envString("TELEGRAM_BOT_TOKEN", ""),
+			WebhookSecret:        envString("TELEGRAM_WEBHOOK_SECRET", ""),
+			APIBaseURL:           envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
+			RequestTimeout:       envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
+			DedupWindow:          envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),
+			QueuePollInterval:    envDuration("TELEGRAM_QUEUE_POLL_INTERVAL", 250*time.Millisecond),
+			QueueBatchSize:       envInt("TELEGRAM_QUEUE_BATCH_SIZE", 25),
+			VerificationMode:     envString("TELEGRAM_VERIFICATION_MODE", "shadow"),
+			ConfirmationTimeout:  envDuration("SUREBET_CONFIRM_TIMEOUT", 2*time.Second),
+			ConfirmationValidity: envDuration("SUREBET_CONFIRM_VALIDITY", 2*time.Second),
+			ConfirmationMaxSkew:  envDuration("SUREBET_CONFIRM_MAX_SKEW", time.Second),
+			ShadowDuration:       envDuration("SUREBET_SHADOW_DURATION", 30*time.Minute),
+			ShadowMinSamples:     envInt("SUREBET_SHADOW_MIN_SAMPLES", 20),
+			ShadowMinSuccessRate: envFloat("SUREBET_SHADOW_MIN_SUCCESS_RATE", 0.80),
+			ShadowMaxP95Latency:  envDuration("SUREBET_SHADOW_MAX_P95_LATENCY", 1500*time.Millisecond),
 		},
 		Redis: RedisConfig{
 			Address:  envString("REDIS_ADDRESS", "localhost:6379"),
@@ -165,6 +161,18 @@ func envString(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func envFloat(key string, fallback float64) float64 {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func loadDotEnv() {

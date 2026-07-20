@@ -400,18 +400,20 @@ func TestDetectSeparatesDifferentSports(t *testing.T) {
 	}
 }
 
-func TestDetectMatchesEventsRegardlessOfLeagueAndStartTime(t *testing.T) {
+func TestDetectMarksConflictingStartTimesAmbiguous(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name   string
-		mutate func(*models.OddsQuote)
+		name          string
+		mutate        func(*models.OddsQuote)
+		wantAmbiguous bool
 	}{
 		{
 			name: "different league",
 			mutate: func(quote *models.OddsQuote) {
 				quote.LeagueName = "La Liga"
 			},
+			wantAmbiguous: false,
 		},
 		{
 			name: "start time beyond tolerance",
@@ -419,6 +421,7 @@ func TestDetectMatchesEventsRegardlessOfLeagueAndStartTime(t *testing.T) {
 				start := now.Add(11 * time.Minute)
 				quote.EventStartAt = &start
 			},
+			wantAmbiguous: true,
 		},
 	}
 
@@ -432,8 +435,12 @@ func TestDetectMatchesEventsRegardlessOfLeagueAndStartTime(t *testing.T) {
 			under.EventStartAt = &start
 			test.mutate(&under)
 
-			if items := detect(t, detector, []models.OddsQuote{over, under}); len(items) != 1 {
+			items := detect(t, detector, []models.OddsQuote{over, under})
+			if len(items) != 1 {
 				t.Fatalf("expected matching teams to be paired despite metadata differences, got %+v", items)
+			}
+			if items[0].MatchAmbiguous != test.wantAmbiguous {
+				t.Fatalf("expected ambiguous=%t, got %+v", test.wantAmbiguous, items[0])
 			}
 		})
 	}

@@ -65,6 +65,11 @@ function RealtimeIndicator({ status }: { status: "connecting" | "live" | "reconn
 }
 
 function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, []);
   const fixtures = board.items.filter(isCurrentMatchedFixture);
 
   if (fixtures.length === 0) {
@@ -93,7 +98,7 @@ function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
           </tr>
         </thead>
         {fixtures.map((fixture) => (
-          <FixtureRows fixture={fixture} key={fixture.id} />
+          <FixtureRows fixture={fixture} key={fixture.id} now={now} />
         ))}
       </table>
     </div>
@@ -104,12 +109,15 @@ function isCurrentMatchedFixture(fixture: OpportunityBoardFixture) {
   return fixture.match_state !== "finished" && fixture.sources.length >= 2;
 }
 
-function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
+function FixtureRows({ fixture, now }: { fixture: OpportunityBoardFixture; now: number }) {
+  const confirmedActive = isConfirmedActive(fixture, now);
   return (
     <tbody className="align-top">
       {fixture.sources.map((source, index) => (
         <tr className="group" key={source.id}>
-          {index === 0 ? <FixtureCell fixture={fixture} rowSpan={fixture.sources.length} /> : null}
+          {index === 0 ? (
+            <FixtureCell fixture={fixture} rowSpan={fixture.sources.length} now={now} />
+          ) : null}
           <td className="sticky left-[300px] z-10 border-b border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4 group-hover:bg-white">
             <p className="break-words font-semibold text-[var(--ink)]">{source.bookmaker_id}</p>
             <p className="mt-1 text-xs text-[var(--muted)]">{source.lobby_id || "default"}</p>
@@ -118,10 +126,10 @@ function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
             </p>
           </td>
           <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
-            <MarketCell marketType="handicap" markets={source.handicap} />
+            <MarketCell confirmedActive={confirmedActive} marketType="handicap" markets={source.handicap} />
           </td>
           <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
-            <MarketCell marketType="over_under" markets={source.over_under} />
+            <MarketCell confirmedActive={confirmedActive} marketType="over_under" markets={source.over_under} />
           </td>
         </tr>
       ))}
@@ -129,7 +137,16 @@ function FixtureRows({ fixture }: { fixture: OpportunityBoardFixture }) {
   );
 }
 
-function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; rowSpan: number }) {
+function FixtureCell({
+  fixture,
+  rowSpan,
+  now
+}: {
+  fixture: OpportunityBoardFixture;
+  rowSpan: number;
+  now: number;
+}) {
+  const confirmedActive = isConfirmedActive(fixture, now);
   return (
     <td
       className="sticky left-0 z-10 border-b border-[color:var(--line)] bg-[var(--surface-soft)] px-4 py-4 group-hover:bg-white"
@@ -139,8 +156,16 @@ function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; r
         <div className="flex flex-wrap items-start gap-2">
           <p className="font-semibold leading-5 text-[var(--ink)]">{fixture.match_name}</p>
           {fixture.has_surebet ? (
-            <span className="rounded border border-emerald-600/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800">
-              +{fixture.profit_percentage.toFixed(2)}%
+            <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] ${
+              confirmedActive
+                ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-800"
+                : "border-amber-600/30 bg-amber-500/10 text-amber-800"
+            }`}>
+              {confirmedActive
+                ? `Đã xác nhận +${fixture.profit_percentage.toFixed(2)}%`
+                : fixture.match_ambiguous
+                  ? "Khớp mơ hồ"
+                  : "Đang xác nhận"}
             </span>
           ) : null}
         </div>
@@ -164,9 +189,11 @@ function FixtureCell({ fixture, rowSpan }: { fixture: OpportunityBoardFixture; r
 }
 
 function MarketCell({
+  confirmedActive,
   marketType,
   markets
 }: {
+  confirmedActive: boolean;
   marketType: "handicap" | "over_under";
   markets: OpportunityBoardMarket[];
 }) {
@@ -188,6 +215,7 @@ function MarketCell({
           <div className="grid gap-px bg-[color:var(--line)]">
             {market.outcomes.map((outcome) => (
               <OutcomeOdds
+                confirmedActive={confirmedActive}
                 displayOutcome={outcomeLabel(marketType, outcome)}
                 outcome={outcome}
                 key={outcome.outcome_id}
@@ -201,13 +229,16 @@ function MarketCell({
 }
 
 function OutcomeOdds({
+  confirmedActive,
   displayOutcome,
   outcome
 }: {
+  confirmedActive: boolean;
   displayOutcome: string;
   outcome: OpportunityBoardOutcome;
 }) {
-  const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${outcome.is_surebet_leg}`;
+  const isConfirmedLeg = confirmedActive && outcome.is_surebet_leg;
+  const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${isConfirmedLeg}`;
   const previousSignature = useRef<string | null>(null);
   const [isFlashing, setIsFlashing] = useState(false);
 
@@ -215,7 +246,7 @@ function OutcomeOdds({
     const changed = previousSignature.current !== null && previousSignature.current !== signature;
     previousSignature.current = signature;
 
-    if (!changed || !outcome.is_surebet_leg) {
+    if (!changed || !isConfirmedLeg) {
       setIsFlashing(false);
       return;
     }
@@ -223,13 +254,15 @@ function OutcomeOdds({
     setIsFlashing(true);
     const timeout = window.setTimeout(() => setIsFlashing(false), 900);
     return () => window.clearTimeout(timeout);
-  }, [outcome.is_surebet_leg, signature]);
+  }, [isConfirmedLeg, signature]);
 
   return (
     <div
       className={`flex min-h-9 items-center justify-between gap-3 px-2.5 py-1.5 transition-colors ${
-        outcome.is_surebet_leg
+        isConfirmedLeg
           ? "border-emerald-600/40 bg-emerald-500/15 text-emerald-950"
+          : outcome.is_candidate_leg
+            ? "border-amber-500/30 bg-amber-50 text-amber-950"
           : "bg-white/80 text-[var(--ink)]"
       } ${isFlashing ? "opportunity-odds-pulse" : ""}`}
     >
@@ -237,6 +270,12 @@ function OutcomeOdds({
       <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{outcome.odds}</span>
     </div>
   );
+}
+
+function isConfirmedActive(fixture: OpportunityBoardFixture, now: number) {
+  return fixture.verification_status === "confirmed" &&
+    Boolean(fixture.valid_until) &&
+    new Date(fixture.valid_until).getTime() > now;
 }
 
 function periodLabel(value: string) {

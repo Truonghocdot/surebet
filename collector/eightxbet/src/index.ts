@@ -3,23 +3,14 @@ import {
   heartbeatIntervalMs,
   heartbeatOf,
   resolveEightXBetInplayPageURL,
-  type Collector,
   type CollectorSink,
   type OddsDelta,
   type OddsSnapshot
 } from "@surebet/collector-shared";
 
-export class EightXBetCollector implements Collector {
+export class EightXBetCollector {
   private readonly inplayRuntime = new EightXBetRuntime("8xbet");
   private readonly inplayPageURL = resolveEightXBetInplayPageURL();
-
-  async collect() {
-    const inplay = await this.inplayRuntime.collect({
-      pageURL: this.inplayPageURL
-    });
-
-    return inplay;
-  }
 
   async stream(sink: CollectorSink) {
     let currentSnapshot: OddsSnapshot | null = null;

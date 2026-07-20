@@ -44,7 +44,7 @@ func NewQueryService(reader OddsReader, detector calculator.Detector) *QueryServ
 
 // Trigger invalidates the materialized detector result. Stream ingest calls it
 // before notifying clients, so concurrent API requests share one recalculation.
-func (s *QueryService) Trigger() {
+func (s *QueryService) Trigger(_ []models.OddsQuote) {
 	s.mu.Lock()
 	s.generation++
 	s.mu.Unlock()
@@ -148,6 +148,7 @@ func mapOpportunity(item models.SurebetOpportunity) dto.SurebetView {
 			OutcomeName: leg.OutcomeName,
 			Odds:        leg.Odds,
 			Stake:       leg.Stake,
+			ObservedAt:  leg.ObservedAt,
 		})
 	}
 
@@ -161,13 +162,16 @@ func mapOpportunity(item models.SurebetOpportunity) dto.SurebetView {
 	}
 
 	return dto.SurebetView{
-		ID:               item.ID,
-		FixtureID:        item.FixtureID,
-		MarketName:       item.MarketName,
-		ProfitPercentage: item.ProfitPercentage,
-		ExpectedReturn:   item.ExpectedReturn,
-		DetectedAt:       detectedAt,
-		ExpiresAt:        expiresAt,
-		Legs:             legs,
+		ID:                 item.ID,
+		FixtureID:          item.FixtureID,
+		MarketName:         item.MarketName,
+		ProfitPercentage:   item.ProfitPercentage,
+		ExpectedReturn:     item.ExpectedReturn,
+		DetectedAt:         detectedAt,
+		ExpiresAt:          expiresAt,
+		VerificationStatus: "candidate",
+		MatchConfidence:    item.MatchConfidence,
+		MatchAmbiguous:     item.MatchAmbiguous,
+		Legs:               legs,
 	}
 }

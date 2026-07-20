@@ -32,7 +32,7 @@ type StreamOddsStateStore interface {
 }
 
 type SurebetNotifier interface {
-	Trigger()
+	Trigger(quotes []models.OddsQuote)
 }
 
 type multiSurebetNotifier struct {
@@ -43,10 +43,10 @@ func NewMultiSurebetNotifier(notifiers ...SurebetNotifier) SurebetNotifier {
 	return multiSurebetNotifier{notifiers: notifiers}
 }
 
-func (n multiSurebetNotifier) Trigger() {
+func (n multiSurebetNotifier) Trigger(quotes []models.OddsQuote) {
 	for _, notifier := range n.notifiers {
 		if notifier != nil {
-			notifier.Trigger()
+			notifier.Trigger(quotes)
 		}
 	}
 }
@@ -93,6 +93,10 @@ func NewStreamService(
 		batches:       make(map[string]*pendingSourcePublish),
 		debounce:      250 * time.Millisecond,
 	}
+}
+
+func (s *StreamService) SetNotifier(notifier SurebetNotifier) {
+	s.notifier = notifier
 }
 
 func (s *StreamService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -377,6 +381,7 @@ func (s *StreamService) requireActiveSession(
 		})
 		return errors.New("stale collector stream session")
 	}
+	s.connections.Touch(state.hello.Source, sessionID)
 	return nil
 }
 
@@ -425,7 +430,7 @@ func (s *StreamService) publishQuotes(
 	}
 
 	if s.notifier != nil {
-		s.notifier.Trigger()
+		s.notifier.Trigger(quotes)
 	}
 	if s.publisher != nil {
 		if err := s.publisher.PublishOddsUpdated(
@@ -495,6 +500,22 @@ func (s *StreamService) ConfirmQuote(
 	}
 }
 
+func (s *StreamService) RequiredSourcesConnected() bool {
+	now := time.Now().UTC()
+	required := []dto.CollectorSource{
+		{CollectorID: "8xbet", BookmakerID: "8xbet", LobbyID: "default"},
+		{CollectorID: "jun88-cmd", BookmakerID: "jun88", LobbyID: "cmd"},
+	}
+	for _, source := range required {
+		connection, ok := s.connections.Get(source)
+		if !ok || !s.sessions.IsActive(source, connection.sessionID) ||
+			now.Sub(connection.lastSeenAt) > 15*time.Second {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *StreamService) deliverQuoteConfirmation(response dto.CollectorConfirmQuoteResponse) {
 	s.confirmMu.Lock()
 	responseChannel := s.confirmations[response.RequestID]
@@ -526,8 +547,9 @@ type collectorSessionRegistry struct {
 }
 
 type activeCollectorConnection struct {
-	sessionID string
-	conn      *websocket.Conn
+	sessionID  string
+	conn       *websocket.Conn
+	lastSeenAt time.Time
 }
 
 type collectorConnectionRegistry struct {
@@ -543,9 +565,22 @@ func (r *collectorConnectionRegistry) Register(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.active[repository.OddsSourceKey(source.BookmakerID, source.LobbyID)] = activeCollectorConnection{
-		sessionID: sessionID,
-		conn:      conn,
+		sessionID:  sessionID,
+		conn:       conn,
+		lastSeenAt: time.Now().UTC(),
 	}
+}
+
+func (r *collectorConnectionRegistry) Touch(source dto.CollectorSource, sessionID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := repository.OddsSourceKey(source.BookmakerID, source.LobbyID)
+	current, ok := r.active[key]
+	if !ok || current.sessionID != sessionID {
+		return
+	}
+	current.lastSeenAt = time.Now().UTC()
+	r.active[key] = current
 }
 
 func (r *collectorConnectionRegistry) Get(source dto.CollectorSource) (activeCollectorConnection, bool) {

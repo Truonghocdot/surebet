@@ -164,11 +164,9 @@ func (r *TelegramNotificationLogRepository) HasPendingOrRecentSent(
 		Where("recipient_id = ?", recipientID).
 		Where("opportunity_id = ?", opportunityID).
 		Where(
-			"(status IN ? OR (status = ? AND sent_at >= ?) OR (status = ? AND updated_at >= ?))",
+			"(status IN ? OR (status = ? AND sent_at >= ?))",
 			[]string{"pending", "processing"},
 			"sent",
-			since.UTC(),
-			"failed",
 			since.UTC(),
 		).
 		Count(&count).Error
@@ -239,35 +237,6 @@ func (r *TelegramNotificationLogRepository) MarkSent(ctx context.Context, id str
 			"error_message": "",
 			"updated_at":    sentAt.UTC(),
 		}).Error
-}
-
-func (r *TelegramNotificationLogRepository) RetryOrFail(
-	ctx context.Context,
-	job models.TelegramNotificationLog,
-	errorMessage string,
-	retryDelay time.Duration,
-	maxAttempts int,
-	attemptedAt time.Time,
-) error {
-	status := "pending"
-	availableAt := attemptedAt.UTC().Add(retryDelay)
-	values := map[string]any{
-		"status":        status,
-		"available_at":  availableAt,
-		"reserved_at":   nil,
-		"error_message": errorMessage,
-		"updated_at":    attemptedAt.UTC(),
-	}
-
-	if job.AttemptCount >= maxAttempts {
-		values["status"] = "failed"
-		values["available_at"] = nil
-	}
-
-	return r.db.WithContext(ctx).
-		Table("telegram_notification_logs").
-		Where("id = ?", job.ID).
-		Updates(values).Error
 }
 
 func (r *TelegramNotificationLogRepository) MarkFailed(

@@ -47,6 +47,7 @@ func main() {
 
 	userRepository := gormstore.NewUserRepository(db)
 	oddsStateRepository := redisstore.NewOddsStateRepository(redisClient)
+	verifiedSurebetRepository := redisstore.NewVerifiedSurebetRepository(redisClient)
 	warmCtx, warmCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	if err := oddsStateRepository.WarmCurrentCache(warmCtx); err != nil {
 		warmCancel()
@@ -72,7 +73,6 @@ func main() {
 	surebetQuery := surebet.NewQueryService(oddsStateRepository, detector)
 	telegramNotifier := telegram.NewNotifier(
 		cfg.Telegram,
-		surebetQuery,
 		telegramRecipientRepository,
 		telegramLogRepository,
 		log,
@@ -89,8 +89,32 @@ func main() {
 			collector.NewLoggingEventPublisher(log),
 			collector.NewRealtimeEventPublisher(realtimeHub),
 		),
-		collector.NewMultiSurebetNotifier(surebetQuery, telegramNotifier),
+		nil,
 		log,
+	)
+	confirmationService := surebet.NewConfirmationServiceWithConfig(
+		surebetQuery,
+		collectorStream,
+		detector,
+		cfg.Telegram,
+		verifiedSurebetRepository,
+	)
+	verificationService := surebet.NewVerificationService(
+		cfg.Telegram,
+		surebetQuery,
+		confirmationService,
+		verifiedSurebetRepository,
+		telegramNotifier,
+		realtimeHub,
+		collectorStream,
+		log,
+	)
+	collectorStream.SetNotifier(
+		collector.NewMultiSurebetNotifier(surebetQuery, verificationService),
+	)
+	verifiedSurebetQuery := surebet.NewVerifiedQueryService(
+		surebetQuery,
+		verifiedSurebetRepository,
 	)
 
 	server := api.NewServer(cfg.HTTP, api.Dependencies{
@@ -105,12 +129,12 @@ func main() {
 		CollectorConfig: collectorConfigService,
 		OddsQuery:       odds.NewQueryService(oddsStateRepository),
 		CollectorStream: collectorStream,
-		SurebetConfirm:  surebet.NewConfirmationService(surebetQuery, collectorStream, detector),
+		SurebetConfirm:  confirmationService,
 		InternalToken:   cfg.Telegram.BotToken,
 		TelegramAdmin:   telegramAdmin,
 		TelegramWebhook: telegramWebhook,
 		Realtime:        realtimeHub,
-		SurebetQuery:    surebetQuery,
+		SurebetQuery:    verifiedSurebetQuery,
 	})
 
 	log.Info("api service configured", "service", cfg.App.Name, "env", cfg.App.Env, "addr", server.Addr())

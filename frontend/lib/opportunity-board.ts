@@ -22,6 +22,7 @@ type BoardOutcome = {
   odds: number;
   collected_at: string;
   is_surebet_leg: boolean;
+  is_candidate_leg: boolean;
   quote_key?: string;
 };
 
@@ -58,6 +59,7 @@ const CURRENT_OPPORTUNITY_AGE_MS = 15_000;
 
 export type CurrentOpportunityBoardItem = {
   id: string;
+  opportunity_id: string;
   match_name: string;
   match_state: string;
   market_name: string;
@@ -69,6 +71,10 @@ export type CurrentOpportunityBoardItem = {
   expires_at: string;
   league_names: string[];
   has_surebet: boolean;
+  verification_status: "candidate" | "confirmed" | "none";
+  valid_until: string;
+  match_confidence: number;
+  match_ambiguous: boolean;
   sources: Array<{
     id: string;
     bookmaker_id: string;
@@ -254,6 +260,7 @@ function groupMatchedFixtures(
       odds: quote.odds,
       collected_at: quote.collected_at,
       is_surebet_leg: false,
+      is_candidate_leg: false,
       quote_key: currentQuoteKey(quote)
     };
     const outcomeIndex = market.outcomes.findIndex(
@@ -278,13 +285,27 @@ function serializeFixture(
 ): CurrentOpportunityBoardItem {
   const bestOpportunity = fixtureOpportunities
     .map((item) => item.opportunity)
-    .sort((left, right) => right.profit_percentage - left.profit_percentage)[0];
-  const surebetQuoteKeys = new Set(
+    .sort((left, right) => {
+      if (left.verification_status !== right.verification_status) {
+        return left.verification_status === "confirmed" ? -1 : 1;
+      }
+      return right.profit_percentage - left.profit_percentage;
+    })[0];
+  const candidateQuoteKeys = new Set(
     fixtureOpportunities.flatMap((item) => Array.from(item.quoteKeys))
   );
+  const confirmedQuoteKeys = new Set(
+    fixtureOpportunities
+      .filter((item) => isVerifiedOpportunity(item.opportunity))
+      .flatMap((item) => Array.from(item.quoteKeys))
+  );
+  const verificationStatus = bestOpportunity
+    ? isVerifiedOpportunity(bestOpportunity) ? "confirmed" : "candidate"
+    : "none";
 
   return {
     id: fixture.id,
+    opportunity_id: bestOpportunity?.id ?? "",
     match_name: fixture.match_name,
     match_state: fixture.match_state,
     market_name: bestOpportunity?.market_name ?? "",
@@ -294,8 +315,12 @@ function serializeFixture(
       ? classifyOpportunityOddsProfile(bestOpportunity)
       : "unknown",
     latest_collected_at: fixture.latest_collected_at,
-    confirmed_at: bestOpportunity?.detected_at ?? "",
+    confirmed_at: bestOpportunity?.confirmed_at ?? "",
     expires_at: bestOpportunity?.expires_at ?? "",
+    verification_status: verificationStatus,
+    valid_until: bestOpportunity?.valid_until ?? "",
+    match_confidence: bestOpportunity?.match_confidence ?? 0,
+    match_ambiguous: bestOpportunity?.match_ambiguous ?? false,
     league_names: Array.from(fixture.league_names).sort((left, right) =>
       left.localeCompare(right)
     ),
@@ -306,8 +331,8 @@ function serializeFixture(
         bookmaker_id: source.bookmaker_id,
         lobby_id: source.lobby_id,
         latest_collected_at: source.latest_collected_at,
-        handicap: serializeMarkets(source.markets.handicap, surebetQuoteKeys),
-        over_under: serializeMarkets(source.markets.over_under, surebetQuoteKeys)
+        handicap: serializeMarkets(source.markets.handicap, candidateQuoteKeys, confirmedQuoteKeys),
+        over_under: serializeMarkets(source.markets.over_under, candidateQuoteKeys, confirmedQuoteKeys)
       }))
       .sort((left, right) => left.id.localeCompare(right.id))
   };
@@ -315,17 +340,26 @@ function serializeFixture(
 
 function serializeMarkets(
   markets: Map<string, BoardMarket>,
-  surebetQuoteKeys: Set<string>
+  candidateQuoteKeys: Set<string>,
+  confirmedQuoteKeys: Set<string>
 ) {
   return Array.from(markets.values()).map((market) => ({
     ...market,
     outcomes: [...market.outcomes]
       .map(({ quote_key: quoteKeyValue, ...outcome }) => ({
         ...outcome,
-        is_surebet_leg: Boolean(quoteKeyValue && surebetQuoteKeys.has(quoteKeyValue))
+        is_surebet_leg: Boolean(quoteKeyValue && confirmedQuoteKeys.has(quoteKeyValue)),
+        is_candidate_leg: Boolean(quoteKeyValue && candidateQuoteKeys.has(quoteKeyValue))
       }))
       .sort((left, right) => left.outcome_name.localeCompare(right.outcome_name))
   }));
+}
+
+function isVerifiedOpportunity(opportunity: BackendOpportunity) {
+  if (opportunity.verification_status !== "confirmed" || !opportunity.valid_until) {
+    return false;
+  }
+  return new Date(opportunity.valid_until).getTime() > Date.now();
 }
 
 function inferMarketType(_value: string, marketID: string): MarketType | null {

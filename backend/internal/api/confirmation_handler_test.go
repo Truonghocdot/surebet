@@ -101,6 +101,13 @@ func (s confirmationServiceStub) ConfirmCurrentSurebet(
 	return s.item, s.confirmed, s.err
 }
 
+func (s confirmationServiceStub) GetVerifiedSurebet(
+	context.Context,
+	string,
+) (dto.SurebetView, bool, error) {
+	return s.item, s.confirmed, s.err
+}
+
 func (s confirmationServiceStub) ListConfirmedSurebets(context.Context) ([]dto.SurebetView, error) {
 	return append([]dto.SurebetView(nil), s.items...), s.err
 }

@@ -3,6 +3,7 @@ package surebet
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,16 +11,16 @@ import (
 	"time"
 
 	"surebet/backend/internal/calculator"
+	"surebet/backend/internal/config"
 	"surebet/backend/internal/dto"
 	"surebet/backend/internal/models"
 )
 
 const (
-	confirmationTimeout          = 2500 * time.Millisecond
-	confirmationMaxAge           = 3 * time.Second
-	confirmationCacheTTL         = 2 * time.Second
-	confirmationBatchTimeout     = 5 * time.Second
-	confirmationBatchConcurrency = 2
+	confirmationTimeout     = 2 * time.Second
+	confirmationMaxAge      = 2 * time.Second
+	confirmationMaxSkew     = time.Second
+	confirmationValidityTTL = 2 * time.Second
 )
 
 type CollectorQuoteConfirmer interface {
@@ -34,20 +35,24 @@ type CurrentSurebetReader interface {
 	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
 }
 
+type VerifiedOpportunityStore interface {
+	Put(ctx context.Context, item dto.SurebetView, ttl time.Duration) error
+	Get(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
+	List(ctx context.Context) ([]dto.SurebetView, error)
+}
+
 type ConfirmationService struct {
 	current   CurrentSurebetReader
 	confirmer CollectorQuoteConfirmer
 	detector  calculator.Detector
+	verified  VerifiedOpportunityStore
+	timeout   time.Duration
+	maxAge    time.Duration
+	maxSkew   time.Duration
+	validity  time.Duration
 
 	mu       sync.Mutex
-	cache    map[string]confirmationCacheEntry
 	inflight map[string]*confirmationCall
-}
-
-type confirmationCacheEntry struct {
-	item      dto.SurebetView
-	confirmed bool
-	expiresAt time.Time
 }
 
 type confirmationCall struct {
@@ -61,12 +66,49 @@ func NewConfirmationService(
 	current CurrentSurebetReader,
 	confirmer CollectorQuoteConfirmer,
 	detector calculator.Detector,
+	verified ...VerifiedOpportunityStore,
 ) *ConfirmationService {
+	return newConfirmationService(
+		current, confirmer, detector, confirmationTimeout, confirmationMaxAge,
+		confirmationMaxSkew, confirmationValidityTTL, verified...,
+	)
+}
+
+func NewConfirmationServiceWithConfig(
+	current CurrentSurebetReader,
+	confirmer CollectorQuoteConfirmer,
+	detector calculator.Detector,
+	cfg config.TelegramConfig,
+	verified ...VerifiedOpportunityStore,
+) *ConfirmationService {
+	timeout := positiveDuration(cfg.ConfirmationTimeout, confirmationTimeout)
+	validity := positiveDuration(cfg.ConfirmationValidity, confirmationValidityTTL)
+	return newConfirmationService(
+		current, confirmer, detector, timeout, timeout,
+		positiveDuration(cfg.ConfirmationMaxSkew, confirmationMaxSkew), validity, verified...,
+	)
+}
+
+func newConfirmationService(
+	current CurrentSurebetReader,
+	confirmer CollectorQuoteConfirmer,
+	detector calculator.Detector,
+	timeout, maxAge, maxSkew, validity time.Duration,
+	verified ...VerifiedOpportunityStore,
+) *ConfirmationService {
+	var verifiedStore VerifiedOpportunityStore
+	if len(verified) > 0 {
+		verifiedStore = verified[0]
+	}
 	return &ConfirmationService{
 		current:   current,
 		confirmer: confirmer,
 		detector:  detector,
-		cache:     make(map[string]confirmationCacheEntry),
+		verified:  verifiedStore,
+		timeout:   timeout,
+		maxAge:    maxAge,
+		maxSkew:   maxSkew,
+		validity:  validity,
 		inflight:  make(map[string]*confirmationCall),
 	}
 }
@@ -75,7 +117,7 @@ func (s *ConfirmationService) ConfirmCurrentSurebet(
 	ctx context.Context,
 	opportunityID string,
 ) (dto.SurebetView, bool, error) {
-	if s == nil || s.current == nil {
+	if s == nil || s.current == nil || s.confirmer == nil || s.detector == nil {
 		return dto.SurebetView{}, false, fmt.Errorf("surebet confirmation is not configured")
 	}
 
@@ -92,78 +134,38 @@ func (s *ConfirmationService) ConfirmCurrentSurebet(
 			break
 		}
 	}
-	if !found || len(current.Legs) != 2 ||
+	if !found || len(current.Legs) != 2 || current.MatchAmbiguous ||
 		(!current.ExpiresAt.IsZero() && !current.ExpiresAt.After(time.Now().UTC())) {
 		return dto.SurebetView{}, false, nil
 	}
 
-	// ListCurrentSurebets re-runs the detector against Redis current-state. Requiring
-	// the same opportunity ID here avoids making Telegram delivery depend on a
-	// bookmaker emitting another INIT frame inside a short RPC timeout.
-	return current, true, nil
+	confirmedItem, confirmed, err := s.confirmCandidate(ctx, current)
+	if err != nil || !confirmed {
+		return confirmedItem, confirmed, err
+	}
+	if s.verified != nil {
+		if err := s.verified.Put(ctx, confirmedItem, s.validity); err != nil {
+			return dto.SurebetView{}, false, err
+		}
+	}
+	return confirmedItem, true, nil
 }
 
 func (s *ConfirmationService) ListConfirmedSurebets(ctx context.Context) ([]dto.SurebetView, error) {
-	if s == nil || s.current == nil || s.confirmer == nil || s.detector == nil {
-		return nil, fmt.Errorf("surebet confirmation is not configured")
+	if s == nil || s.verified == nil {
+		return nil, fmt.Errorf("verified surebet store is not configured")
 	}
+	return s.verified.List(ctx)
+}
 
-	candidates, err := s.current.ListCurrentSurebets(ctx)
-	if err != nil {
-		return nil, err
+func (s *ConfirmationService) GetVerifiedSurebet(
+	ctx context.Context,
+	opportunityID string,
+) (dto.SurebetView, bool, error) {
+	if s == nil || s.verified == nil {
+		return dto.SurebetView{}, false, fmt.Errorf("verified surebet store is not configured")
 	}
-	if len(candidates) == 0 {
-		return []dto.SurebetView{}, nil
-	}
-
-	batchCtx, cancel := context.WithTimeout(ctx, confirmationBatchTimeout)
-	defer cancel()
-	type indexedResult struct {
-		index     int
-		item      dto.SurebetView
-		confirmed bool
-	}
-	results := make(chan indexedResult, len(candidates))
-	semaphore := make(chan struct{}, confirmationBatchConcurrency)
-
-	for index, candidate := range candidates {
-		go func(index int, candidate dto.SurebetView) {
-			select {
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-			case <-batchCtx.Done():
-				results <- indexedResult{index: index}
-				return
-			}
-
-			item, confirmed, confirmErr := s.confirmCandidate(batchCtx, candidate)
-			results <- indexedResult{
-				index:     index,
-				item:      item,
-				confirmed: confirmErr == nil && confirmed,
-			}
-		}(index, candidate)
-	}
-
-	confirmedByIndex := make(map[int]dto.SurebetView, len(candidates))
-	for range candidates {
-		select {
-		case result := <-results:
-			if result.confirmed {
-				confirmedByIndex[result.index] = result.item
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-
-	confirmed := make([]dto.SurebetView, 0, len(confirmedByIndex))
-	for index := range candidates {
-		if item, ok := confirmedByIndex[index]; ok {
-			confirmed = append(confirmed, item)
-		}
-	}
-	return confirmed, nil
+	return s.verified.Get(ctx, opportunityID)
 }
 
 func (s *ConfirmationService) confirmCandidate(
@@ -175,13 +177,7 @@ func (s *ConfirmationService) confirmCandidate(
 	}
 
 	cacheKey := confirmationCandidateKey(current)
-	now := time.Now().UTC()
 	s.mu.Lock()
-	if cached, ok := s.cache[cacheKey]; ok && now.Before(cached.expiresAt) {
-		item := cloneSurebetView(cached.item)
-		s.mu.Unlock()
-		return item, cached.confirmed, nil
-	}
 	if call := s.inflight[cacheKey]; call != nil {
 		s.mu.Unlock()
 		select {
@@ -202,16 +198,8 @@ func (s *ConfirmationService) confirmCandidate(
 	call.item = cloneSurebetView(item)
 	call.confirmed = confirmed
 	call.err = err
-	if err == nil {
-		s.cache[cacheKey] = confirmationCacheEntry{
-			item:      cloneSurebetView(item),
-			confirmed: confirmed,
-			expiresAt: time.Now().UTC().Add(confirmationCacheTTL),
-		}
-	}
 	delete(s.inflight, cacheKey)
 	close(call.done)
-	s.pruneConfirmationCacheLocked(now)
 	s.mu.Unlock()
 
 	return item, confirmed, err
@@ -221,7 +209,8 @@ func (s *ConfirmationService) confirmCandidateUncached(
 	ctx context.Context,
 	current dto.SurebetView,
 ) (dto.SurebetView, bool, error) {
-	confirmCtx, cancel := context.WithTimeout(ctx, confirmationTimeout)
+	startedAt := time.Now()
+	confirmCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
 	type confirmationResult struct {
@@ -255,11 +244,17 @@ func (s *ConfirmationService) confirmCandidateUncached(
 			confirmed[result.index] = result.response
 		}
 	}
+	if confirmationResponseSkew(confirmed) > s.maxSkew {
+		return dto.SurebetView{}, false, nil
+	}
 
 	now := time.Now().UTC()
 	quotes := make([]models.OddsQuote, 0, len(confirmed))
 	for index, response := range confirmed {
-		quote, ok := confirmedQuoteToModel(current.Legs[index], response, now)
+		quote, ok, convertErr := confirmedQuoteToModel(current.Legs[index], response, now, s.maxAge)
+		if convertErr != nil {
+			return dto.SurebetView{}, false, convertErr
+		}
 		if !ok {
 			return dto.SurebetView{}, false, nil
 		}
@@ -278,15 +273,47 @@ func (s *ConfirmationService) confirmCandidateUncached(
 	result.ID = current.ID
 	result.FixtureID = current.FixtureID
 	result.MarketName = current.MarketName
+	result.VerificationStatus = "confirmed"
+	result.ConfirmedAt = now
+	result.ValidUntil = now.Add(s.validity)
+	result.ExpiresAt = result.ValidUntil
+	result.ConfirmationLatencyMS = time.Since(startedAt).Milliseconds()
+	result.MatchConfidence = current.MatchConfidence
+	result.MatchAmbiguous = false
+	observedByLeg := make(map[string]time.Time, len(current.Legs))
+	for index, leg := range current.Legs {
+		observedByLeg[confirmationLegIdentity(leg)] = confirmed[index].ObservedAt.UTC()
+	}
+	for index := range result.Legs {
+		if observedAt, ok := observedByLeg[confirmationLegIdentity(result.Legs[index])]; ok {
+			result.Legs[index].ObservedAt = observedAt
+		}
+	}
 	return result, true, nil
 }
 
-func (s *ConfirmationService) pruneConfirmationCacheLocked(now time.Time) {
-	for key, cached := range s.cache {
-		if !now.Before(cached.expiresAt) {
-			delete(s.cache, key)
+func confirmationLegIdentity(leg dto.SurebetLegView) string {
+	return strings.Join([]string{
+		leg.BookmakerID, leg.LobbyID, leg.FixtureID, leg.MarketID, leg.OutcomeID,
+	}, "\x00")
+}
+
+func confirmationResponseSkew(items []dto.CollectorConfirmQuoteResponse) time.Duration {
+	if len(items) < 2 {
+		return 0
+	}
+	minObserved := items[0].ObservedAt.UTC()
+	maxObserved := minObserved
+	for _, item := range items[1:] {
+		observed := item.ObservedAt.UTC()
+		if observed.Before(minObserved) {
+			minObserved = observed
+		}
+		if observed.After(maxObserved) {
+			maxObserved = observed
 		}
 	}
+	return maxObserved.Sub(minObserved)
 }
 
 func confirmationCandidateKey(item dto.SurebetView) string {
@@ -326,22 +353,29 @@ func confirmedQuoteToModel(
 	leg dto.SurebetLegView,
 	response dto.CollectorConfirmQuoteResponse,
 	now time.Time,
-) (models.OddsQuote, bool) {
+	maxAge time.Duration,
+) (models.OddsQuote, bool, error) {
 	selection := response.Selection
 	if !response.Found || selection == nil || selection.Suspended {
-		return models.OddsQuote{}, false
+		return models.OddsQuote{}, false, nil
 	}
 	if selection.FixtureID != leg.FixtureID ||
 		selection.MarketID != leg.MarketID ||
 		selection.OutcomeID != leg.OutcomeID {
-		return models.OddsQuote{}, false
+		return models.OddsQuote{}, false, nil
 	}
 	if response.ObservedAt.IsZero() {
-		return models.OddsQuote{}, false
+		return models.OddsQuote{}, false, nil
+	}
+	if !confirmedSelectionOddsValid(leg.BookmakerID, *selection) {
+		return models.OddsQuote{}, false, fmt.Errorf(
+			"%s collector odds format or provenance is invalid",
+			leg.BookmakerID,
+		)
 	}
 	age := now.Sub(response.ObservedAt.UTC())
-	if age < -time.Second || age > confirmationMaxAge {
-		return models.OddsQuote{}, false
+	if age < -time.Second || age > maxAge {
+		return models.OddsQuote{}, false, nil
 	}
 
 	var eventStartAt *time.Time
@@ -371,5 +405,31 @@ func confirmedQuoteToModel(
 		CollectedAt:    response.ObservedAt.UTC(),
 		LastObservedAt: response.ObservedAt.UTC(),
 		ChangedAt:      response.ObservedAt.UTC(),
-	}, true
+	}, true, nil
+}
+
+func positiveDuration(value, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func confirmedSelectionOddsValid(bookmakerID string, selection dto.CollectorConfirmedSelection) bool {
+	switch bookmakerID {
+	case "8xbet":
+		if selection.OddsFormat != "indonesian" || selection.RawOdds <= 0 || selection.SourceEventID == "" {
+			return false
+		}
+		expected := selection.RawOdds
+		if expected > 1 {
+			expected = -1 / expected
+		}
+		expected = math.Round(expected*100) / 100
+		return math.Abs(expected-selection.Odds) <= 0.001
+	case "jun88":
+		return selection.OddsFormat == "malay" && selection.SourceEventID != ""
+	default:
+		return false
+	}
 }

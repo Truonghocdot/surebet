@@ -7,8 +7,7 @@ import type {
   OddsDelta,
   OddsSelection,
   OddsSnapshot,
-  QuoteConfirmationRequest,
-  StreamingCollectorRuntime
+  QuoteConfirmationRequest
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { envInt } from "../core/env.js";
@@ -26,18 +25,8 @@ import {
 const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header";
 const CMD_DELTA_BINDING = "__surebet_cmd_emit__";
 
-export class Jun88CmdRuntime implements StreamingCollectorRuntime {
+export class Jun88CmdRuntime {
   constructor(private readonly collectorId: string) {}
-
-  async collect(context: CollectContext): Promise<OddsSnapshot> {
-    const lobby = requireLobbyConfig("cmd");
-    return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
-      const target = await resolveCmdContentTarget(page);
-      const snapshot = parseJun88CmdSnapshot(await target.content(), target.url(), this.collectorId);
-      assertSnapshotHasSelections(snapshot, this.collectorId);
-      return snapshot;
-    });
-  }
 
   async stream(context: CollectContext, sink: CollectorSink): Promise<void> {
     const lobby = requireLobbyConfig("cmd");
@@ -64,9 +53,17 @@ export class Jun88CmdRuntime implements StreamingCollectorRuntime {
             target = await resolveCmdContentTarget(page);
             selection = await readCmdConfirmedSelection(target, request);
           }
+          const observedAt = new Date().toISOString();
           return {
-            observedAt: new Date().toISOString(),
-            selection
+            observedAt,
+            selection: selection
+              ? {
+                  ...selection,
+                  sourceEventId: `cmd:${observedAt}`,
+                  rawOdds: selection.odds,
+                  oddsFormat: "malay"
+                }
+              : null
           };
         });
         await installCmdDeltaBinding(page, async (deltas) => {
@@ -185,6 +182,13 @@ async function readCmdConfirmedSelection(
       return null;
     }
 
+    const rowStillExists = Array.from(
+      document.querySelectorAll(".match.default-match, .match.copy-match")
+    ).some((node) => (node.getAttribute("groupid") || node.id || "") === fixtureId);
+    if (!rowStillExists) {
+      return null;
+    }
+
     const selection = (rows[fixtureId] ?? []).find(
       (item) =>
         item.fixtureId === fixtureId &&
@@ -192,7 +196,7 @@ async function readCmdConfirmedSelection(
         item.outcomeId === outcomeId
     );
 
-    return selection ? { ...selection } : null;
+    return selection && !selection.suspended ? { ...selection } : null;
   }, request);
 }
 

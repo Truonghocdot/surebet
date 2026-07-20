@@ -40,8 +40,6 @@ func TestWorkerRevalidatesAndFormatsCurrentSurebetBeforeSend(t *testing.T) {
 			BotToken:          "token",
 			APIBaseURL:        telegramServer.URL,
 			RequestTimeout:    time.Second,
-			QueueRetryDelay:   time.Second,
-			QueueMaxAttempts:  3,
 			QueuePollInterval: time.Second,
 		},
 		workerRecipientStub{recipient: workerTestRecipient()},
@@ -61,35 +59,13 @@ func TestWorkerRevalidatesAndFormatsCurrentSurebetBeforeSend(t *testing.T) {
 	}
 }
 
-func TestBackendSurebetReaderLoadsCurrentBackendState(t *testing.T) {
-	expected := workerTestSurebet("opportunity-reader", -0.8, 0.9)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/v1/surebets" {
-			t.Fatalf("unexpected backend path: %s", request.URL.Path)
-		}
-		if err := json.NewEncoder(writer).Encode(map[string]any{"data": []dto.SurebetView{expected}}); err != nil {
-			t.Fatalf("write backend response: %v", err)
-		}
-	}))
-	defer server.Close()
-
-	reader := NewBackendSurebetReader(server.URL, time.Second)
-	items, err := reader.ListCurrentSurebets(context.Background())
-	if err != nil {
-		t.Fatalf("load backend surebets: %v", err)
-	}
-	if len(items) != 1 || items[0].ID != expected.ID || items[0].Legs[0].Odds != expected.Legs[0].Odds {
-		t.Fatalf("unexpected backend surebets: %+v", items)
-	}
-}
-
-func TestBackendSurebetReaderConfirmsThroughInternalEndpoint(t *testing.T) {
+func TestBackendSurebetReaderLoadsVerifiedRegistryEntry(t *testing.T) {
 	expected := workerTestSurebet("opportunity-confirmed", -0.8, 0.9)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost {
+		if request.Method != http.MethodGet {
 			t.Fatalf("unexpected backend method: %s", request.Method)
 		}
-		if request.URL.Path != "/v2/internal/surebets/opportunity-confirmed/confirm" {
+		if request.URL.Path != "/v2/internal/surebets/opportunity-confirmed/verified" {
 			t.Fatalf("unexpected backend path: %s", request.URL.Path)
 		}
 		if request.Header.Get("X-Surebet-Internal-Token") != "internal-token" {
@@ -101,8 +77,8 @@ func TestBackendSurebetReaderConfirmsThroughInternalEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	reader := NewBackendSurebetConfirmer(server.URL, "internal-token", time.Second)
-	item, confirmed, err := reader.ConfirmSurebet(context.Background(), expected.ID)
+	reader := NewBackendVerifiedSurebetReader(server.URL, "internal-token", time.Second)
+	item, confirmed, err := reader.GetVerifiedSurebet(context.Background(), expected.ID)
 	if err != nil {
 		t.Fatalf("confirm backend surebet: %v", err)
 	}
@@ -165,6 +141,7 @@ func TestWorkerExpiresInsteadOfRetryingWhenConfirmationFails(t *testing.T) {
 func TestWorkerExpiresSurebetPastItsExpiryBeforeSend(t *testing.T) {
 	current := workerTestSurebet("opportunity-expired", -0.92, 0.96)
 	current.ExpiresAt = time.Now().UTC().Add(-time.Second)
+	current.ValidUntil = current.ExpiresAt
 	queue := &workerQueueStub{jobs: []models.TelegramNotificationLog{{
 		ID:            "job-expired-by-time",
 		RecipientID:   7,
@@ -204,10 +181,6 @@ func (s *workerQueueStub) MarkSent(_ context.Context, id string, _ time.Time) er
 	return nil
 }
 
-func (s *workerQueueStub) RetryOrFail(context.Context, models.TelegramNotificationLog, string, time.Duration, int, time.Time) error {
-	return nil
-}
-
 func (s *workerQueueStub) MarkFailed(context.Context, string, string, time.Time) error {
 	return nil
 }
@@ -231,7 +204,7 @@ type workerSurebetReaderStub struct {
 	err       error
 }
 
-func (s workerSurebetReaderStub) ConfirmSurebet(context.Context, string) (dto.SurebetView, bool, error) {
+func (s workerSurebetReaderStub) GetVerifiedSurebet(context.Context, string) (dto.SurebetView, bool, error) {
 	return s.item, s.confirmed, s.err
 }
 
@@ -248,13 +221,16 @@ func workerTestRecipient() models.TelegramRecipient {
 func workerTestSurebet(id string, leftOdds, rightOdds float64) dto.SurebetView {
 	now := time.Now().UTC()
 	return dto.SurebetView{
-		ID:               id,
-		FixtureID:        "Team A vs Team B",
-		MarketName:       "Handicap",
-		ProfitPercentage: 2.3,
-		ExpectedReturn:   0.023,
-		DetectedAt:       now,
-		ExpiresAt:        now.Add(time.Minute),
+		ID:                 id,
+		FixtureID:          "Team A vs Team B",
+		MarketName:         "Handicap",
+		ProfitPercentage:   2.3,
+		ExpectedReturn:     0.023,
+		DetectedAt:         now,
+		ExpiresAt:          now.Add(time.Minute),
+		VerificationStatus: "confirmed",
+		ConfirmedAt:        now,
+		ValidUntil:         now.Add(time.Minute),
 		Legs: []dto.SurebetLegView{
 			{BookmakerID: "8xbet", LobbyID: "default", OutcomeName: "Team A +0.5", Odds: leftOdds, Stake: 0.5},
 			{BookmakerID: "jun88", LobbyID: "cmd", OutcomeName: "Team B -0.5", Odds: rightOdds, Stake: 0.5},

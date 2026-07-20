@@ -1,85 +1,23 @@
-# Sự kiện và Topology Hàng đợi
+# Collector Event Protocol
 
-## Sự kiện strongly typed
+Collector kết nối `GET /v2/collector/stream` bằng WebSocket JSON.
 
-Được định nghĩa trong `backend/internal/eventbus/events.go`.
+## Collector gửi
 
-Các sự kiện:
+- `hello`: khai báo protocol, session và source.
+- `snapshot_begin`, `quote_upsert`, `quote_remove`, `snapshot_commit`: đồng bộ current-state.
+- `heartbeat`: báo phiên collector còn sống.
+- `confirm_quote_response`: kết quả đọc lại odds trực tiếp theo yêu cầu backend.
 
-- `OddsUpdated`
-- `SurebetDetected`
-- `ValidationPassed`
-- `ValidationFailed`
-- `BetRequested`
-- `BetStarted`
-- `BetAccepted`
-- `BetRejected`
-- `BetSettled`
-- `AlertCreated`
+## Backend gửi
 
-Mỗi sự kiện đều có metadata:
+- `hello_ack`: chấp nhận session.
+- `resync_required`: yêu cầu snapshot đầy đủ.
+- `confirm_quote_request`: yêu cầu hard-confirm một leg.
+- `error`: frame không hợp lệ hoặc session stale.
 
-- `event_id`
-- `trace_id`
-- `correlation_id`
-- `producer`
-- `version`
-- `occurred_at`
+## Realtime frontend
 
-## Topology RabbitMQ
+`/v1/ws` phát `odds_updated` và `surebet_verification_updated`. Frontend áp dụng patch realtime, còn REST poll 15 giây chỉ là reconcile dự phòng.
 
-Exchange:
-
-- `surebet.domain`
-- `surebet.execution`
-- `surebet.alert`
-
-Queue:
-
-- `odds.normalizer`
-- `surebet.detector`
-- `validation.pipeline`
-- `execution.requests`
-- `execution.results`
-- `persistence.writer`
-- `websocket.broadcast`
-- `alert.dispatcher`
-
-## Routing key
-
-- `odds.updated`
-- `surebet.detected`
-- `validation.passed`
-- `validation.failed`
-- `bet.requested`
-- `bet.started`
-- `bet.accepted`
-- `bet.rejected`
-- `bet.settled`
-- `alert.created`
-
-## Mục đích của từng consumer
-
-- `odds.normalizer`
-  - Chuẩn hóa payload từ collector và cập nhật cache current odds trong Redis
-
-- `surebet.detector`
-  - Chạy phát hiện surebet trên tập current odds mới nhất
-
-- `validation.pipeline`
-  - Thực thi các bước kiểm định an toàn theo đúng thứ tự
-
-- `execution.requests`
-  - Chuyển yêu cầu đặt cược thành job an toàn cho worker
-
-- `execution.results`
-  - Xử lý kết quả từ provider và kích hoạt persistence cùng realtime fanout
-
-- `persistence.writer`
-  - Lưu dữ liệu giao dịch và lịch sử append-only
-
-- `websocket.broadcast`
-  - Đẩy cập nhật realtime tới các client dashboard
-
-- `alert.dispatcher`
-  - Gửi cảnh báo hệ thống cho operator
+Không có RabbitMQ trong runtime hiện tại. Ingest, confirm và realtime đều đi qua WebSocket; current-state và registry verified nằm trong Redis.

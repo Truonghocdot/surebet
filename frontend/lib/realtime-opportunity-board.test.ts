@@ -4,6 +4,7 @@ import type { OpportunityBoard } from "@/features/dashboard/schemas/crm-schemas"
 import {
   applyRealtimeMatchedFixtures,
   applyRealtimeOddsQuotes,
+  applyRealtimeVerification,
   type RealtimeOddsQuote
 } from "@/lib/realtime-opportunity-board";
 
@@ -41,6 +42,58 @@ test("requests reconciliation when a new standard outcome is not on the board", 
 
   assert.equal(result.changed, false);
   assert.equal(result.needsReconcile, true);
+});
+
+test("promotes only a confirmed verification event to actionable legs", () => {
+  const result = applyRealtimeVerification(createBoard(), {
+    opportunity_id: "opportunity-a",
+    status: "confirmed",
+    confirmed_at: "2026-07-18T08:00:01Z",
+    valid_until: "2099-07-18T08:00:03Z",
+    opportunity: {
+      id: "opportunity-a",
+      fixture_id: "fixture-match",
+      market_name: "hdp-ah",
+      profit_percentage: 2.4,
+      expected_return: 0.024,
+      detected_at: "2026-07-18T08:00:00Z",
+      expires_at: "2099-07-18T08:00:03Z",
+      verification_status: "confirmed",
+      confirmed_at: "2026-07-18T08:00:01Z",
+      valid_until: "2099-07-18T08:00:03Z",
+      legs: [
+        {
+          bookmaker_id: "8xbet",
+          lobby_id: "default",
+          fixture_id: "fixture-8x",
+          market_id: "hdp-ah",
+          outcome_id: "fixture-8x:hdp-ah:home-0-5",
+          outcome_name: "Home +0.5",
+          odds: -0.91,
+          stake: 0.5
+        }
+      ]
+    }
+  });
+
+  assert.equal(result.items[0].verification_status, "confirmed");
+  assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].odds, -0.91);
+  assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_surebet_leg, true);
+});
+
+test("downgrades an expired verification without waiting for REST", () => {
+  const board = createBoard();
+  board.items[0].verification_status = "confirmed";
+  board.items[0].valid_until = "2099-07-18T08:00:03Z";
+
+  const result = applyRealtimeVerification(board, {
+    opportunity_id: "opportunity-a",
+    status: "expired"
+  });
+
+  assert.equal(result.items[0].verification_status, "candidate");
+  assert.equal(result.items[0].valid_until, "");
+  assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_surebet_leg, false);
 });
 
 test("patches matched fixture source timestamps directly from websocket quotes", () => {
@@ -126,6 +179,7 @@ function createBoard(): OpportunityBoard {
     items: [
       {
         id: "fixture-match",
+        opportunity_id: "opportunity-a",
         match_name: "Home vs Away",
         match_state: "live",
         market_name: "hdp-ah",
@@ -137,6 +191,10 @@ function createBoard(): OpportunityBoard {
         expires_at: "2026-07-18T08:00:15Z",
         league_names: ["League"],
         has_surebet: true,
+        verification_status: "candidate",
+        valid_until: "",
+        match_confidence: 1,
+        match_ambiguous: false,
         sources: [
           {
             id: "8xbet/default",
@@ -156,7 +214,8 @@ function createBoard(): OpportunityBoard {
                     side: "home",
                     odds: -0.85,
                     collected_at: "2026-07-18T08:00:00Z",
-                    is_surebet_leg: true
+                    is_surebet_leg: true,
+                    is_candidate_leg: true
                   }
                 ]
               }

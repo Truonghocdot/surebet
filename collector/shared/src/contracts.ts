@@ -22,6 +22,9 @@ export type OddsSelection = {
   odds: number;
   availableStake: number;
   suspended: boolean;
+  sourceEventId?: string;
+  rawOdds?: number;
+  oddsFormat?: "indonesian" | "malay";
 };
 
 export type OddsSnapshot = {
@@ -83,25 +86,9 @@ export type QuoteConfirmationHandler = (
   request: QuoteConfirmationRequest
 ) => Promise<QuoteConfirmationResult>;
 
-export interface Collector {
-  collect(): Promise<OddsSnapshot>;
-}
-
-export interface CollectorRuntime {
-  collect(context: CollectContext): Promise<OddsSnapshot>;
-}
-
-export interface StreamingCollectorRuntime extends CollectorRuntime {
-  stream(context: CollectContext, sink: CollectorSink): Promise<void>;
-}
-
 export interface CollectorSink {
   pushBootstrap(snapshot: OddsSnapshot): Promise<void>;
   pushDelta(deltas: OddsDelta[]): Promise<void>;
   heartbeat(payload: CollectorHeartbeat): Promise<void>;
   setQuoteConfirmationHandler?(handler: QuoteConfirmationHandler | null): void;
-}
-
-export interface StreamableCollector extends Collector {
-  stream(sink: CollectorSink): Promise<void>;
 }

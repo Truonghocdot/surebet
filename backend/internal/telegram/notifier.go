@@ -3,7 +3,6 @@ package telegram
 import (
 	"context"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,10 +21,6 @@ const (
 	opportunityOddsProfileTwoNegative            opportunityOddsProfile = "two_negative"
 )
 
-type SurebetReader interface {
-	ListCurrentSurebets(ctx context.Context) ([]dto.SurebetView, error)
-}
-
 type RecipientReader interface {
 	ListActive(ctx context.Context) ([]models.TelegramRecipient, error)
 }
@@ -37,17 +32,13 @@ type NotificationLogWriter interface {
 
 type Notifier struct {
 	cfg        config.TelegramConfig
-	reader     SurebetReader
 	recipients RecipientReader
 	logs       NotificationLogWriter
 	log        logger.Logger
-	running    atomic.Bool
-	lastRunAt  atomic.Int64
 }
 
 func NewNotifier(
 	cfg config.TelegramConfig,
-	reader SurebetReader,
 	recipients RecipientReader,
 	logs NotificationLogWriter,
 	log logger.Logger,
@@ -58,52 +49,17 @@ func NewNotifier(
 
 	return &Notifier{
 		cfg:        cfg,
-		reader:     reader,
 		recipients: recipients,
 		logs:       logs,
 		log:        log,
 	}
 }
 
-func (n *Notifier) Trigger() {
-	if n == nil {
-		return
-	}
-
-	now := time.Now().UTC()
-	if cooldown := n.cfg.ScanCooldown; cooldown > 0 {
-		lastRunAt := time.Unix(0, n.lastRunAt.Load())
-		if !lastRunAt.IsZero() && now.Sub(lastRunAt) < cooldown {
-			return
-		}
-	}
-
-	if !n.running.CompareAndSwap(false, true) {
-		return
-	}
-	n.lastRunAt.Store(now.UnixNano())
-
-	go func() {
-		defer n.running.Store(false)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := n.enqueueCurrentSurebets(ctx); err != nil {
-			n.log.Warn("telegram surebet enqueue failed", "error", err.Error())
-		}
-	}()
-}
-
-func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
-	opportunities, err := n.reader.ListCurrentSurebets(ctx)
-	if err != nil {
-		return err
-	}
-	if len(opportunities) == 0 {
+func (n *Notifier) NotifyConfirmed(ctx context.Context, item dto.SurebetView) error {
+	if n == nil || item.VerificationStatus != "confirmed" ||
+		(!item.ValidUntil.IsZero() && !item.ValidUntil.After(time.Now().UTC())) {
 		return nil
 	}
-
 	recipients, err := n.recipients.ListActive(ctx)
 	if err != nil {
 		return err
@@ -115,45 +71,42 @@ func (n *Notifier) enqueueCurrentSurebets(ctx context.Context) error {
 	since := time.Now().UTC().Add(-n.cfg.DedupWindow)
 	queuedCount := 0
 
-	for _, item := range opportunities {
-		message := formatSurebetMessage(item)
-
-		for _, recipient := range recipients {
-			if !recipientAcceptsOpportunity(recipient, item) {
-				continue
-			}
-
-			queuedOrSent, err := n.logs.HasPendingOrRecentSent(ctx, recipient.ID, item.ID, since)
-			if err != nil {
-				return err
-			}
-			if queuedOrSent {
-				continue
-			}
-
-			now := time.Now().UTC()
-			if err := n.logs.Create(ctx, models.TelegramNotificationLog{
-				ID:               uuid.NewString(),
-				RecipientID:      recipient.ID,
-				OpportunityID:    item.ID,
-				FixtureID:        item.FixtureID,
-				MarketName:       item.MarketName,
-				ProfitPercentage: item.ProfitPercentage,
-				Status:           "pending",
-				AttemptCount:     0,
-				ErrorMessage:     "",
-				Message:          message,
-				AvailableAt:      &now,
-				ReservedAt:       nil,
-				SentAt:           now,
-				CreatedAt:        now,
-				UpdatedAt:        now,
-			}); err != nil {
-				return err
-			}
-
-			queuedCount += 1
+	message := formatSurebetMessage(item)
+	for _, recipient := range recipients {
+		if !recipientAcceptsOpportunity(recipient, item) {
+			continue
 		}
+
+		queuedOrSent, err := n.logs.HasPendingOrRecentSent(ctx, recipient.ID, item.ID, since)
+		if err != nil {
+			return err
+		}
+		if queuedOrSent {
+			continue
+		}
+
+		now := time.Now().UTC()
+		if err := n.logs.Create(ctx, models.TelegramNotificationLog{
+			ID:               uuid.NewString(),
+			RecipientID:      recipient.ID,
+			OpportunityID:    item.ID,
+			FixtureID:        item.FixtureID,
+			MarketName:       item.MarketName,
+			ProfitPercentage: item.ProfitPercentage,
+			Status:           "pending",
+			AttemptCount:     0,
+			ErrorMessage:     "",
+			Message:          message,
+			AvailableAt:      &now,
+			ReservedAt:       nil,
+			SentAt:           now,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}); err != nil {
+			return err
+		}
+
+		queuedCount += 1
 	}
 
 	if queuedCount > 0 {

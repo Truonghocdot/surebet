@@ -9,6 +9,7 @@ dist/
 build/
 .next/
 coverage/
+*.tsbuildinfo
 tmp/
 bin/
 collector/.env

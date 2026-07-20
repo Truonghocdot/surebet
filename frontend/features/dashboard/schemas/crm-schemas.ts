@@ -15,6 +15,12 @@ export const opportunitySchema = z.object({
   expected_return: z.number(),
   detected_at: z.string(),
   expires_at: z.string(),
+  verification_status: z.enum(["candidate", "confirmed"]),
+  confirmed_at: z.string().optional(),
+  valid_until: z.string().optional(),
+  confirmation_latency_ms: z.number().optional(),
+  match_confidence: z.number().optional(),
+  match_ambiguous: z.boolean().optional(),
   legs: z.array(
     z.object({
       bookmaker_id: z.string(),
@@ -24,7 +30,8 @@ export const opportunitySchema = z.object({
       outcome_id: z.string(),
       outcome_name: z.string(),
       odds: z.number(),
-      stake: z.number()
+      stake: z.number(),
+      observed_at: z.string().optional()
     })
   )
 });
@@ -77,7 +84,8 @@ export const opportunityBoardOutcomeSchema = z.object({
   side: z.string(),
   odds: z.number(),
   collected_at: z.string(),
-  is_surebet_leg: z.boolean()
+  is_surebet_leg: z.boolean(),
+  is_candidate_leg: z.boolean()
 });
 
 export const opportunityBoardMarketSchema = z.object({
@@ -98,6 +106,7 @@ export const opportunityBoardSourceSchema = z.object({
 
 export const opportunityBoardFixtureSchema = z.object({
   id: z.string(),
+  opportunity_id: z.string(),
   match_name: z.string(),
   match_state: z.string(),
   market_name: z.string(),
@@ -113,6 +122,10 @@ export const opportunityBoardFixtureSchema = z.object({
   expires_at: z.string(),
   league_names: z.array(z.string()),
   has_surebet: z.boolean(),
+  verification_status: z.enum(["candidate", "confirmed", "none"]),
+  valid_until: z.string(),
+  match_confidence: z.number(),
+  match_ambiguous: z.boolean(),
   sources: z.array(opportunityBoardSourceSchema)
 });
 

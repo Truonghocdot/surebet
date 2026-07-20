@@ -1,5 +1,6 @@
 import type {
   MatchedFixturesSnapshot,
+  Opportunity,
   OpportunityBoard
 } from "@/features/dashboard/schemas/crm-schemas";
 
@@ -18,6 +19,15 @@ type PatchResult = {
   board: OpportunityBoard;
   changed: boolean;
   needsReconcile: boolean;
+};
+
+export type RealtimeVerificationEvent = {
+  opportunity_id: string;
+  status: "confirmed" | "rejected" | "expired";
+  reason?: string;
+  confirmed_at?: string;
+  valid_until?: string;
+  opportunity?: Opportunity;
 };
 
 const boardMarketIDs = new Set([
@@ -106,6 +116,7 @@ export function applyRealtimeOddsQuotes(
 
     return {
       ...fixture,
+      opportunity_id: "",
       has_surebet: false,
       market_name: "",
       profit_percentage: 0,
@@ -113,6 +124,10 @@ export function applyRealtimeOddsQuotes(
       odds_profile: "unknown" as const,
       confirmed_at: "",
       expires_at: "",
+      verification_status: "none" as const,
+      valid_until: "",
+      match_confidence: 0,
+      match_ambiguous: false,
       latest_collected_at: fixtureLatest,
       sources: clearSurebetLegs(sources)
     };
@@ -123,6 +138,106 @@ export function applyRealtimeOddsQuotes(
     changed,
     needsReconcile: consumed.size < updates.size || changed
   };
+}
+
+export function applyRealtimeVerification(
+  board: OpportunityBoard,
+  event: RealtimeVerificationEvent
+) {
+  let changed = false;
+  const items = board.items.map((fixture) => {
+    const opportunity = event.opportunity;
+    const matches = fixture.opportunity_id === event.opportunity_id ||
+      Boolean(opportunity && fixtureContainsOpportunity(fixture, opportunity));
+    if (!matches) {
+      return fixture;
+    }
+    changed = true;
+    if (event.status !== "confirmed" || !opportunity) {
+      return {
+        ...fixture,
+        verification_status: fixture.has_surebet ? "candidate" as const : "none" as const,
+        confirmed_at: "",
+        valid_until: "",
+        sources: clearSurebetLegs(fixture.sources)
+      };
+    }
+
+    const confirmedKeys = new Map(
+      opportunity.legs.map((leg) => [
+        quoteKey({
+          bookmaker_id: leg.bookmaker_id,
+          lobby_id: leg.lobby_id,
+          fixture_id: leg.fixture_id,
+          outcome_id: leg.outcome_id
+        }),
+        leg
+      ])
+    );
+    const sources = fixture.sources.map((source) => ({
+      ...source,
+      handicap: markConfirmedMarkets(source, source.handicap, confirmedKeys),
+      over_under: markConfirmedMarkets(source, source.over_under, confirmedKeys)
+    }));
+    return {
+      ...fixture,
+      opportunity_id: opportunity.id,
+      market_name: opportunity.market_name,
+      profit_percentage: opportunity.profit_percentage,
+      expected_return: opportunity.expected_return,
+      confirmed_at: opportunity.confirmed_at ?? event.confirmed_at ?? "",
+      expires_at: opportunity.expires_at,
+      verification_status: "confirmed" as const,
+      valid_until: opportunity.valid_until ?? event.valid_until ?? "",
+      match_confidence: opportunity.match_confidence ?? fixture.match_confidence,
+      match_ambiguous: false,
+      has_surebet: true,
+      sources
+    };
+  });
+  return changed ? { ...board, items } : board;
+}
+
+function fixtureContainsOpportunity(
+  fixture: OpportunityBoard["items"][number],
+  opportunity: Opportunity
+) {
+  const sourceFixtures = new Set(
+    fixture.sources.flatMap((source) =>
+      [...source.handicap, ...source.over_under].flatMap((market) =>
+        market.outcomes.map((outcome) =>
+          [source.bookmaker_id, source.lobby_id, outcome.fixture_id].join("\u0000")
+        )
+      )
+    )
+  );
+  return opportunity.legs.every((leg) =>
+    sourceFixtures.has([leg.bookmaker_id, leg.lobby_id, leg.fixture_id].join("\u0000"))
+  );
+}
+
+function markConfirmedMarkets(
+  source: OpportunityBoard["items"][number]["sources"][number],
+  markets: OpportunityBoard["items"][number]["sources"][number]["handicap"],
+  confirmed: Map<string, Opportunity["legs"][number]>
+) {
+  return markets.map((market) => ({
+    ...market,
+    outcomes: market.outcomes.map((outcome) => {
+      const leg = confirmed.get(quoteKey({
+        bookmaker_id: source.bookmaker_id,
+        lobby_id: source.lobby_id,
+        fixture_id: outcome.fixture_id,
+        outcome_id: outcome.outcome_id
+      }));
+      return {
+        ...outcome,
+        odds: leg?.odds ?? outcome.odds,
+        is_surebet_leg: Boolean(leg),
+        is_candidate_leg: outcome.is_candidate_leg || Boolean(leg)
+      };
+    })
+  }));
 }
 
 export function applyRealtimeMatchedFixtures(

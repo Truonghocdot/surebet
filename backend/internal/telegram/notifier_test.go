@@ -12,14 +12,6 @@ import (
 	"surebet/backend/internal/models"
 )
 
-type notifierSurebetReaderStub struct {
-	items []dto.SurebetView
-}
-
-func (s notifierSurebetReaderStub) ListCurrentSurebets(context.Context) ([]dto.SurebetView, error) {
-	return append([]dto.SurebetView(nil), s.items...), nil
-}
-
 type notifierRecipientReaderStub struct {
 	items []models.TelegramRecipient
 }
@@ -43,18 +35,22 @@ func (s *notifierLogWriterStub) Create(_ context.Context, log models.TelegramNot
 
 func TestNotifierFiltersRecipientsByOddsProfile(t *testing.T) {
 	mixedOpportunity := dto.SurebetView{
-		ID:         "mixed-1",
-		FixtureID:  "fixture-1",
-		MarketName: "Handicap",
+		ID:                 "mixed-1",
+		FixtureID:          "fixture-1",
+		MarketName:         "Handicap",
+		VerificationStatus: "confirmed",
+		ValidUntil:         time.Now().UTC().Add(time.Second),
 		Legs: []dto.SurebetLegView{
 			{BookmakerID: "8xbet", LobbyID: "default", OutcomeID: "a", OutcomeName: "Home -0.5", Odds: -0.85},
 			{BookmakerID: "jun88", LobbyID: "cmd", OutcomeID: "b", OutcomeName: "Away +0.5", Odds: 0.94},
 		},
 	}
 	twoNegativeOpportunity := dto.SurebetView{
-		ID:         "double-neg-1",
-		FixtureID:  "fixture-2",
-		MarketName: "Over/Under",
+		ID:                 "double-neg-1",
+		FixtureID:          "fixture-2",
+		MarketName:         "Over/Under",
+		VerificationStatus: "confirmed",
+		ValidUntil:         time.Now().UTC().Add(time.Second),
 		Legs: []dto.SurebetLegView{
 			{BookmakerID: "8xbet", LobbyID: "default", OutcomeID: "c", OutcomeName: "Over 2.5", Odds: -0.91},
 			{BookmakerID: "jun88", LobbyID: "cmd", OutcomeID: "d", OutcomeName: "Under 2.5", Odds: -0.83},
@@ -66,9 +62,6 @@ func TestNotifierFiltersRecipientsByOddsProfile(t *testing.T) {
 		config.TelegramConfig{
 			BotToken:    "token",
 			DedupWindow: 5 * time.Minute,
-		},
-		notifierSurebetReaderStub{
-			items: []dto.SurebetView{mixedOpportunity, twoNegativeOpportunity},
 		},
 		notifierRecipientReaderStub{
 			items: []models.TelegramRecipient{
@@ -106,8 +99,11 @@ func TestNotifierFiltersRecipientsByOddsProfile(t *testing.T) {
 		t.Fatal("expected notifier to be created")
 	}
 
-	if err := notifier.enqueueCurrentSurebets(context.Background()); err != nil {
-		t.Fatalf("enqueue surebets: %v", err)
+	if err := notifier.NotifyConfirmed(context.Background(), mixedOpportunity); err != nil {
+		t.Fatalf("enqueue mixed surebet: %v", err)
+	}
+	if err := notifier.NotifyConfirmed(context.Background(), twoNegativeOpportunity); err != nil {
+		t.Fatalf("enqueue two-negative surebet: %v", err)
 	}
 
 	if len(logs.created) != 4 {

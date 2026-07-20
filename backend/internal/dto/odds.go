@@ -37,23 +37,30 @@ type OddsView struct {
 }
 
 type SurebetLegView struct {
-	BookmakerID string  `json:"bookmaker_id"`
-	LobbyID     string  `json:"lobby_id"`
-	FixtureID   string  `json:"fixture_id"`
-	MarketID    string  `json:"market_id"`
-	OutcomeID   string  `json:"outcome_id"`
-	OutcomeName string  `json:"outcome_name"`
-	Odds        float64 `json:"odds"`
-	Stake       float64 `json:"stake"`
+	BookmakerID string    `json:"bookmaker_id"`
+	LobbyID     string    `json:"lobby_id"`
+	FixtureID   string    `json:"fixture_id"`
+	MarketID    string    `json:"market_id"`
+	OutcomeID   string    `json:"outcome_id"`
+	OutcomeName string    `json:"outcome_name"`
+	Odds        float64   `json:"odds"`
+	Stake       float64   `json:"stake"`
+	ObservedAt  time.Time `json:"observed_at,omitempty"`
 }
 
 type SurebetView struct {
-	ID               string           `json:"id"`
-	FixtureID        string           `json:"fixture_id"`
-	MarketName       string           `json:"market_name"`
-	ProfitPercentage float64          `json:"profit_percentage"`
-	ExpectedReturn   float64          `json:"expected_return"`
-	DetectedAt       time.Time        `json:"detected_at"`
-	ExpiresAt        time.Time        `json:"expires_at"`
-	Legs             []SurebetLegView `json:"legs"`
+	ID                    string           `json:"id"`
+	FixtureID             string           `json:"fixture_id"`
+	MarketName            string           `json:"market_name"`
+	ProfitPercentage      float64          `json:"profit_percentage"`
+	ExpectedReturn        float64          `json:"expected_return"`
+	DetectedAt            time.Time        `json:"detected_at"`
+	ExpiresAt             time.Time        `json:"expires_at"`
+	VerificationStatus    string           `json:"verification_status"`
+	ConfirmedAt           time.Time        `json:"confirmed_at,omitempty"`
+	ValidUntil            time.Time        `json:"valid_until,omitempty"`
+	ConfirmationLatencyMS int64            `json:"confirmation_latency_ms"`
+	MatchConfidence       float64          `json:"match_confidence"`
+	MatchAmbiguous        bool             `json:"match_ambiguous"`
+	Legs                  []SurebetLegView `json:"legs"`
 }

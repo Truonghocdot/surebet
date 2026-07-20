@@ -12,7 +12,6 @@ import { useCollectorConfigQuery, useUpdateCollectorConfigMutation } from "@/fea
 import type { CollectorConfig } from "@/features/admin/schemas/collector-config-schemas";
 
 const emptyConfig: CollectorConfig = {
-  eightxbet_page_url: "",
   eightxbet_base_url: "",
   eightxbet_inplay_page_url: "",
   jun88_base_url: "",
@@ -103,13 +102,6 @@ export function CollectorConfigScreen() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <ConfigField
-                    label="EIGHTXBET_PAGE_URL"
-                    value={form.eightxbet_page_url}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, eightxbet_page_url: value }))
-                    }
-                  />
                   <ConfigField
                     label="EIGHTXBET_BASE_URL"
                     value={form.eightxbet_base_url}

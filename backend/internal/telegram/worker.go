@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"surebet/backend/internal/config"
@@ -23,20 +24,19 @@ type RecipientLookup interface {
 type NotificationQueue interface {
 	ClaimPending(ctx context.Context, limit int) ([]models.TelegramNotificationLog, error)
 	MarkSent(ctx context.Context, id string, sentAt time.Time) error
-	RetryOrFail(ctx context.Context, job models.TelegramNotificationLog, errorMessage string, retryDelay time.Duration, maxAttempts int, attemptedAt time.Time) error
 	MarkFailed(ctx context.Context, id string, errorMessage string, attemptedAt time.Time) error
 	MarkExpired(ctx context.Context, id string, reason string, expiredAt time.Time) error
 }
 
-type SurebetConfirmer interface {
-	ConfirmSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
+type VerifiedSurebetReader interface {
+	GetVerifiedSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
 }
 
 type Worker struct {
 	cfg        config.TelegramConfig
 	recipients RecipientLookup
 	queue      NotificationQueue
-	surebets   SurebetConfirmer
+	surebets   VerifiedSurebetReader
 	log        logger.Logger
 	client     *http.Client
 }
@@ -45,7 +45,7 @@ func NewWorker(
 	cfg config.TelegramConfig,
 	recipients RecipientLookup,
 	queue NotificationQueue,
-	surebets SurebetConfirmer,
+	surebets VerifiedSurebetReader,
 	log logger.Logger,
 ) *Worker {
 	if strings.TrimSpace(cfg.BotToken) == "" {
@@ -108,67 +108,97 @@ func (w *Worker) processBatch(ctx context.Context, batchSize int) error {
 		return nil
 	}
 
+	semaphore := make(chan struct{}, 4)
+	errors := make(chan error, len(jobs))
+	var wait sync.WaitGroup
 	for _, job := range jobs {
-		attemptedAt := time.Now().UTC()
-		if w.surebets == nil {
-			_ = w.queue.MarkExpired(ctx, job.ID, "surebet confirmation is not configured", attemptedAt)
-			continue
-		}
-
-		current, confirmed, err := w.surebets.ConfirmSurebet(ctx, job.OpportunityID)
-		if err != nil {
-			_ = w.queue.MarkExpired(ctx, job.ID, "surebet confirmation failed: "+err.Error(), attemptedAt)
-			w.log.Warn("telegram notification confirmation failed", "opportunity_id", job.OpportunityID, "error", err.Error())
-			continue
-		}
-
-		if !confirmed || (!current.ExpiresAt.IsZero() && !current.ExpiresAt.After(attemptedAt)) {
-			_ = w.queue.MarkExpired(ctx, job.ID, "surebet is no longer confirmed", attemptedAt)
-			w.log.Info("telegram notification expired before send", "opportunity_id", job.OpportunityID)
-			continue
-		}
-		recipient, err := w.recipients.GetByID(ctx, job.RecipientID)
-		if err != nil {
-			if err == repository.ErrNotFound {
-				_ = w.queue.MarkFailed(ctx, job.ID, "recipient not found", attemptedAt)
-				continue
+		job := job
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			select {
+			case semaphore <- struct{}{}:
+				defer func() { <-semaphore }()
+			case <-ctx.Done():
+				errors <- ctx.Err()
+				return
 			}
-			_ = w.queue.RetryOrFail(ctx, job, "recipient lookup failed: "+err.Error(), w.cfg.QueueRetryDelay, w.cfg.QueueMaxAttempts, attemptedAt)
-			continue
-		}
-
-		if !recipient.IsActive {
-			_ = w.queue.MarkFailed(ctx, job.ID, "recipient is inactive", attemptedAt)
-			continue
-		}
-		if strings.TrimSpace(recipient.ChatID) == "" {
-			_ = w.queue.MarkFailed(ctx, job.ID, "recipient chat_id is empty", attemptedAt)
-			continue
-		}
-		if !recipientAcceptsOpportunity(recipient, current) {
-			_ = w.queue.MarkExpired(ctx, job.ID, "recipient no longer accepts this odds profile", attemptedAt)
-			continue
-		}
-
-		if err := w.sendMessage(ctx, recipient.ChatID, formatSurebetMessage(current)); err != nil {
-			_ = w.queue.RetryOrFail(ctx, job, err.Error(), w.cfg.QueueRetryDelay, w.cfg.QueueMaxAttempts, attemptedAt)
-			w.log.Warn(
-				"telegram send failed",
-				"recipient_id", recipient.ID,
-				"chat_id", recipient.ChatID,
-				"opportunity_id", job.OpportunityID,
-				"attempt_count", job.AttemptCount,
-				"error", err.Error(),
-			)
-			continue
-		}
-
-		if err := w.queue.MarkSent(ctx, job.ID, attemptedAt); err != nil {
+			if err := w.processJob(ctx, job); err != nil {
+				errors <- err
+			}
+		}()
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
 			return err
 		}
 	}
-
 	return nil
+}
+
+func (w *Worker) processJob(ctx context.Context, job models.TelegramNotificationLog) error {
+	attemptedAt := time.Now().UTC()
+	if w.surebets == nil {
+		return w.queue.MarkExpired(ctx, job.ID, "verified surebet reader is not configured", attemptedAt)
+	}
+
+	current, confirmed, err := w.surebets.GetVerifiedSurebet(ctx, job.OpportunityID)
+	if err != nil {
+		_ = w.queue.MarkExpired(ctx, job.ID, "verified surebet lookup failed: "+err.Error(), attemptedAt)
+		w.log.Warn("telegram verified surebet lookup failed", "opportunity_id", job.OpportunityID, "error", err.Error())
+		return nil
+	}
+	if !confirmed || current.VerificationStatus != "confirmed" ||
+		(!current.ValidUntil.IsZero() && !current.ValidUntil.After(attemptedAt)) {
+		_ = w.queue.MarkExpired(ctx, job.ID, "verified surebet expired before send", attemptedAt)
+		return nil
+	}
+
+	recipient, err := w.recipients.GetByID(ctx, job.RecipientID)
+	if err != nil {
+		if err == repository.ErrNotFound {
+			return w.queue.MarkFailed(ctx, job.ID, "recipient not found", attemptedAt)
+		}
+		return w.queue.MarkFailed(ctx, job.ID, "recipient lookup failed: "+err.Error(), attemptedAt)
+	}
+	if !recipient.IsActive {
+		return w.queue.MarkFailed(ctx, job.ID, "recipient is inactive", attemptedAt)
+	}
+	if strings.TrimSpace(recipient.ChatID) == "" {
+		return w.queue.MarkFailed(ctx, job.ID, "recipient chat_id is empty", attemptedAt)
+	}
+	if !recipientAcceptsOpportunity(recipient, current) {
+		return w.queue.MarkExpired(ctx, job.ID, "recipient no longer accepts this odds profile", attemptedAt)
+	}
+	if !current.ValidUntil.IsZero() && !current.ValidUntil.After(time.Now().UTC()) {
+		return w.queue.MarkExpired(ctx, job.ID, "verified surebet expired before send", time.Now().UTC())
+	}
+
+	sendCtx := ctx
+	cancel := func() {}
+	if !current.ValidUntil.IsZero() {
+		sendCtx, cancel = context.WithDeadline(ctx, current.ValidUntil)
+	}
+	err = w.sendMessage(sendCtx, recipient.ChatID, formatSurebetMessage(current))
+	cancel()
+	if err != nil {
+		if !current.ValidUntil.IsZero() && !current.ValidUntil.After(time.Now().UTC()) {
+			_ = w.queue.MarkExpired(ctx, job.ID, "verified surebet expired during send", time.Now().UTC())
+			return nil
+		}
+		_ = w.queue.MarkFailed(ctx, job.ID, err.Error(), attemptedAt)
+		w.log.Warn(
+			"telegram send failed",
+			"recipient_id", recipient.ID,
+			"chat_id", recipient.ChatID,
+			"opportunity_id", job.OpportunityID,
+			"error", err.Error(),
+		)
+		return nil
+	}
+	return w.queue.MarkSent(ctx, job.ID, time.Now().UTC())
 }
 
 func (w *Worker) sendMessage(ctx context.Context, chatID, message string) error {

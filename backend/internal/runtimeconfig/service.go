@@ -13,7 +13,6 @@ import (
 const collectorSettingPrefix = "collector."
 
 const (
-	keyEightXBetPageURL        = collectorSettingPrefix + "eightxbet_page_url"
 	keyEightXBetBaseURL        = collectorSettingPrefix + "eightxbet_base_url"
 	keyEightXBetInplayPageURL  = collectorSettingPrefix + "eightxbet_inplay_page_url"
 	keyJun88BaseURL            = collectorSettingPrefix + "jun88_base_url"
@@ -77,7 +76,6 @@ func (s *Service) UpdateCollectorConfig(
 	request dto.UpdateCollectorRuntimeConfigRequest,
 ) (dto.CollectorRuntimeConfigView, error) {
 	configValue := dto.CollectorRuntimeConfigView{
-		EightXBetPageURL:        strings.TrimSpace(request.EightXBetPageURL),
 		EightXBetBaseURL:        strings.TrimSpace(request.EightXBetBaseURL),
 		EightXBetInplayPageURL:  strings.TrimSpace(request.EightXBetInplayPageURL),
 		Jun88BaseURL:            strings.TrimSpace(request.Jun88BaseURL),
@@ -106,7 +104,6 @@ func (s *Service) loadCollectorConfig(
 	}
 
 	result := dto.CollectorRuntimeConfigView{
-		EightXBetPageURL:        strings.TrimSpace(s.defaults.EightXBetPageURL),
 		EightXBetBaseURL:        strings.TrimSpace(s.defaults.EightXBetBaseURL),
 		EightXBetInplayPageURL:  strings.TrimSpace(s.defaults.EightXBetInplayPageURL),
 		Jun88BaseURL:            strings.TrimSpace(s.defaults.Jun88BaseURL),
@@ -116,8 +113,6 @@ func (s *Service) loadCollectorConfig(
 
 	for _, item := range items {
 		switch item.Key {
-		case keyEightXBetPageURL:
-			result.EightXBetPageURL = strings.TrimSpace(item.Value)
 		case keyEightXBetBaseURL:
 			result.EightXBetBaseURL = strings.TrimSpace(item.Value)
 		case keyEightXBetInplayPageURL:
@@ -136,7 +131,6 @@ func (s *Service) loadCollectorConfig(
 
 func toSettings(configValue dto.CollectorRuntimeConfigView) []models.RuntimeSetting {
 	return []models.RuntimeSetting{
-		{Key: keyEightXBetPageURL, Value: configValue.EightXBetPageURL},
 		{Key: keyEightXBetBaseURL, Value: configValue.EightXBetBaseURL},
 		{Key: keyEightXBetInplayPageURL, Value: configValue.EightXBetInplayPageURL},
 		{Key: keyJun88BaseURL, Value: configValue.Jun88BaseURL},
