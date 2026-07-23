@@ -405,6 +405,7 @@ const eightXBetOddsFormatLabels = [
   "Kèo Hồng Kông",
   "Kèo Malay",
   "Kèo Indo",
+  "Euro Odds",
   "European Odds",
   "Hong Kong Odds",
   "Malay Odds",
@@ -437,26 +438,19 @@ async function waitForEightXBetMalayOddsFormatLabel(page: Page, timeoutMs: numbe
   return "";
 }
 
-async function readEightXBetOddsFormatLabel(page: Page) {
-  return page.evaluate((knownLabels) => {
-    const canonical = (value: string) => value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
-    const known = new Set(knownLabels.map(canonical));
-    for (const element of Array.from(document.querySelectorAll("div.cursor-pointer"))) {
-      const node = element as HTMLElement;
-      const style = window.getComputedStyle(node);
-      const box = node.getBoundingClientRect();
-      if (style.display === "none" || style.visibility === "hidden" || box.width === 0 || box.height === 0) {
-        continue;
-      }
-      for (const span of Array.from(node.querySelectorAll("span"))) {
-        const label = (span.textContent ?? "").replace(/\s+/g, " ").trim();
-        if (known.has(canonical(label))) {
-          return label;
-        }
-      }
+export async function readEightXBetOddsFormatLabel(page: Page) {
+  const known = new Set(eightXBetOddsFormatLabels.map(normalizeEightXBetOddsFormatLabel));
+  const labels = await page
+    .locator("div.cursor-pointer:visible span:visible")
+    .allTextContents()
+    .catch(() => []);
+  for (const value of labels) {
+    const label = value.replace(/\s+/g, " ").trim();
+    if (known.has(normalizeEightXBetOddsFormatLabel(label))) {
+      return label;
     }
-    return "";
-  }, eightXBetOddsFormatLabels);
+  }
+  return "";
 }
 
 async function selectEightXBetMalayOdds(page: Page, currentLabel: string) {
@@ -542,6 +536,10 @@ function formatRawOddsSamples(diagnostics: EightXBetOddsFormatDiagnostics) {
 
 function isMalayOddsFormatLabel(value: string) {
   return /(?:^|\s)malay(?:\s|$)/i.test(value.trim());
+}
+
+function normalizeEightXBetOddsFormatLabel(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
 }
 
 function escapeRegularExpression(value: string) {

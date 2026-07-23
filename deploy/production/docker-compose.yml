@@ -277,9 +277,8 @@ services:
     dns: *public-dns
     environment:
       <<: *collector-environment
-      CMD_RECONCILE_MS: ${CMD_RECONCILE_MS:-300000}
+      CMD_RECONCILE_MS: ${CMD_RECONCILE_MS:-30000}
       CMD_DOM_SCAN_MS: ${CMD_DOM_SCAN_MS:-500}
-      CMD_STALE_RELOAD_MS: ${CMD_STALE_RELOAD_MS:-30000}
     volumes:
       - collector-tmp:/app/collector/tmp
     depends_on:

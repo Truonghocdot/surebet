@@ -44,7 +44,6 @@ export class Jun88CmdRuntime {
         };
         let activeSnapshotMap = selectionMap(initialSnapshot);
         let streamFailure: Error | null = null;
-        let lastDeltaAt = Date.now();
         sink.setQuoteConfirmationHandler?.(async (request) => {
           let selection: OddsSelection | null;
           try {
@@ -67,7 +66,6 @@ export class Jun88CmdRuntime {
           };
         });
         await installCmdDeltaBinding(page, async (deltas) => {
-          lastDeltaAt = Date.now();
           applyDeltasToSelectionMap(activeSnapshotMap, deltas);
           activeSnapshot = {
             ...activeSnapshot,
@@ -90,34 +88,6 @@ export class Jun88CmdRuntime {
         while (!page.isClosed()) {
           if (streamFailure) {
             throw streamFailure;
-          }
-
-          if (Date.now() - lastDeltaAt >= cmdStaleReloadIntervalMs()) {
-            console.warn(
-              `[${this.collectorId}] no quote delta for ${Date.now() - lastDeltaAt}ms; reloading CMD page`
-            );
-            await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 });
-            await page.waitForTimeout(Math.max(envInt("COLLECT_PAGE_SETTLE_MS", 1_000), 0));
-            target = await resolveCmdContentTarget(page);
-            const refreshedHtml = await extractCmdMatchHtml(target);
-            const refreshedSnapshot = parseJun88CmdSnapshot(
-              refreshedHtml,
-              target.url(),
-              this.collectorId
-            );
-            assertSnapshotHasSelections(refreshedSnapshot, this.collectorId);
-            activeSnapshot = {
-              ...refreshedSnapshot,
-              selections: []
-            };
-            activeSnapshotMap = selectionMap(refreshedSnapshot);
-            await installCmdObserver(target, refreshedSnapshot);
-            await sink.pushBootstrap(refreshedSnapshot);
-            await sink.heartbeat(heartbeatOf(refreshedSnapshot.source));
-            lastDeltaAt = Date.now();
-            lastHeartbeatAt = lastDeltaAt;
-            lastReconcileAt = lastDeltaAt;
-            continue;
           }
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
@@ -153,7 +123,7 @@ export class Jun88CmdRuntime {
             lastHeartbeatAt = Date.now();
           }
 
-			await page.waitForTimeout(Math.max(Math.floor(heartbeatMs / 2), 250));
+          await page.waitForTimeout(Math.max(Math.floor(heartbeatMs / 2), 250));
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
@@ -685,13 +655,9 @@ function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
 }
 
 function cmdReconcileIntervalMs() {
-  return Math.max(envInt("CMD_RECONCILE_MS", 5 * 60_000), 60_000);
+  return Math.min(Math.max(envInt("CMD_RECONCILE_MS", 30_000), 15_000), 45_000);
 }
 
 function cmdDomScanIntervalMs() {
   return Math.max(envInt("CMD_DOM_SCAN_MS", 500), 100);
-}
-
-function cmdStaleReloadIntervalMs() {
-  return Math.max(envInt("CMD_STALE_RELOAD_MS", 30_000), 10_000);
 }

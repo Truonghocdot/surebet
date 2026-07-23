@@ -5,7 +5,8 @@ import {
   normalizeIndonesianToMalayOdds,
   parseEightXBetOddsDiffFrame,
   parseEightXBetFullMatchPayload,
-  parseEightXBetStandardFixtures
+  parseEightXBetStandardFixtures,
+  readEightXBetOddsFormatLabel
 } from "@surebet/collector-shared";
 import type { OddsDelta } from "@surebet/collector-shared";
 
@@ -338,9 +339,25 @@ async function testOddsFormatGateRejectsUnexpectedFeed() {
   );
 }
 
+async function testOddsFormatLabelUsesLocatorAPI() {
+  let selector = "";
+  const page = {
+    locator(value: string) {
+      selector = value;
+      return {
+        allTextContents: async () => ["Odds Settings", " Euro Odds "]
+      };
+    }
+  };
+
+  assert.equal(await readEightXBetOddsFormatLabel(page as any), "Euro Odds");
+  assert.equal(selector, "div.cursor-pointer:visible span:visible");
+}
+
 Promise.all([
   testMarketDeltaDelivery(),
-  testOddsFormatGateRejectsUnexpectedFeed()
+  testOddsFormatGateRejectsUnexpectedFeed(),
+  testOddsFormatLabelUsesLocatorAPI()
 ])
   .then(() => console.log("8xbet network feed parser tests passed"))
   .catch((error) => {
