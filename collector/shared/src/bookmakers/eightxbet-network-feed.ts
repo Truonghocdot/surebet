@@ -325,12 +325,13 @@ export class EightXBetNetworkFeed {
     }
 
     const rawSamples = rawOddsSamplesFromMarkets(parsed.markets);
-    if (rawSamples.some((value) => value <= 0)) {
-      this.formatUnhealthyReason = "pd1 contained non-positive raw odds; refusing to guess the odds format";
+    if (rawSamples.some((value) => value < 0)) {
+      this.formatUnhealthyReason = "pd1 contained negative raw odds; refusing to guess the odds format";
       return;
     }
-    if (rawSamples.length > 0) {
-      this.rawOddsSamples = [...this.rawOddsSamples, ...rawSamples].slice(-8);
+    const availableSamples = rawSamples.filter((value) => value > 0);
+    if (availableSamples.length > 0) {
+      this.rawOddsSamples = [...this.rawOddsSamples, ...availableSamples].slice(-8);
     }
     if (this.formatUnhealthyReason) {
       return;

@@ -22,6 +22,8 @@ import stealth from "puppeteer-extra-plugin-stealth";
 const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 const EIGHTXBET_MINE_PATH = "/mine";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
+const EIGHTXBET_GAME_SETTINGS_SELECTOR =
+  '[data-testid="component-card-mine-gameSetting"]';
 
 chromium.use(stealth());
 
@@ -208,7 +210,7 @@ export class EightXBetRuntime {
 
     try {
       await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-      await waitForEightXBetReady(page, targetURL);
+      await waitForEightXBetReady(page, targetURL, this.networkFeed);
       await this.ensureMalayOddsUI(page, targetURL);
       return page;
     } catch (error) {
@@ -236,7 +238,7 @@ export class EightXBetRuntime {
   }
 
   private async refreshNetworkSubscriptions(page: Page, targetURL: string) {
-    await waitForEightXBetReady(page, targetURL);
+    await waitForEightXBetReady(page, targetURL, this.networkFeed);
 
     const fixtureIds = await this.waitForMetadataFixtureIds(page);
     await setEightXBetFixtureSubscriptions(page, fixtureIds);
@@ -258,13 +260,25 @@ export class EightXBetRuntime {
         waitUntil: "domcontentloaded"
       });
       await waitForPageSettle(page);
-      label = await waitForEightXBetOddsFormatLabel(page, 5_000);
+      await expandEightXBetGameSettings(page);
+      label = await waitForEightXBetOddsFormatLabel(page, 10_000);
     }
 
     const before = this.networkFeed.oddsFormatDiagnostics();
     logEightXBetOddsFormat("before", label || "unknown", before, "inspect");
     if (!label) {
-      throw new Error("8xbet source unhealthy: odds format dropdown was not found");
+      assertEightXBetOddsFormatHealthy(before);
+      if (!before.healthy) {
+        throw new Error(
+          "8xbet source unhealthy: odds format dropdown was not found and pd1 was not confirmed"
+        );
+      }
+      this.oddsFormatLabel = "network:pd1";
+      this.oddsFormatAction = "feed-verified";
+      this.networkFeed.resetOddsFormatObservation(true);
+      await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+      await waitForEightXBetReady(page, targetURL, this.networkFeed);
+      return;
     }
 
     let changed = false;
@@ -283,7 +297,7 @@ export class EightXBetRuntime {
       this.oddsFormatAction = changed ? "changed" : "mine-verified";
       this.networkFeed.resetOddsFormatObservation(true);
       await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-      await waitForEightXBetReady(page, targetURL);
+      await waitForEightXBetReady(page, targetURL, this.networkFeed);
     } else {
       this.oddsFormatAction = "unchanged";
     }
@@ -374,26 +388,43 @@ async function installEightXBetLocale(context: BrowserContext) {
   });
 }
 
-async function waitForEightXBetReady(page: Page, targetURL: string) {
+async function waitForEightXBetReady(
+  page: Page,
+  targetURL: string,
+  feed: EightXBetNetworkFeed
+) {
   await waitForPageSettle(page);
-  let ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
-    () => true,
-    () => false
-  );
+  let ready = await waitForEightXBetPageSignal(page, feed, 20_000);
 
   if (!ready) {
     await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
     await page.goto(targetURL, { waitUntil: "domcontentloaded" });
     await waitForPageSettle(page);
-    ready = await page.waitForSelector(EIGHTXBET_READY_SELECTOR, { timeout: 20_000 }).then(
-      () => true,
-      () => false
-    );
+    ready = await waitForEightXBetPageSignal(page, feed, 20_000);
   }
 
   if (!ready) {
-    throw new Error("8xbet in-play list did not render in time.");
+    throw new Error("8xbet in-play metadata and list did not arrive in time.");
   }
+}
+
+async function waitForEightXBetPageSignal(
+  page: Page,
+  feed: EightXBetNetworkFeed,
+  timeoutMs: number
+) {
+  const deadline = Date.now() + timeoutMs;
+  const fixture = page.locator(EIGHTXBET_READY_SELECTOR).first();
+  while (!page.isClosed() && Date.now() < deadline) {
+    if (feed.activeFixtureIds() !== null) {
+      return true;
+    }
+    if (await fixture.isVisible().catch(() => false)) {
+      return true;
+    }
+    await page.waitForTimeout(100);
+  }
+  return false;
 }
 
 async function waitForPageSettle(page: Page) {
@@ -440,17 +471,37 @@ async function waitForEightXBetMalayOddsFormatLabel(page: Page, timeoutMs: numbe
 
 export async function readEightXBetOddsFormatLabel(page: Page) {
   const known = new Set(eightXBetOddsFormatLabels.map(normalizeEightXBetOddsFormatLabel));
-  const labels = await page
-    .locator("div.cursor-pointer:visible span:visible")
-    .allTextContents()
-    .catch(() => []);
-  for (const value of labels) {
-    const label = value.replace(/\s+/g, " ").trim();
-    if (known.has(normalizeEightXBetOddsFormatLabel(label))) {
-      return label;
+  const selectors = [
+    `${EIGHTXBET_GAME_SETTINGS_SELECTOR} span:visible`,
+    "div.cursor-pointer:visible span:visible"
+  ];
+  for (const selector of selectors) {
+    const labels = await page.locator(selector).allTextContents().catch(() => []);
+    for (const value of labels) {
+      const label = value.replace(/\s+/g, " ").trim();
+      if (known.has(normalizeEightXBetOddsFormatLabel(label))) {
+        return label;
+      }
     }
   }
   return "";
+}
+
+async function expandEightXBetGameSettings(page: Page) {
+  const card = page.locator(EIGHTXBET_GAME_SETTINGS_SELECTOR).first();
+  const visible = await card.waitFor({ state: "visible", timeout: 10_000 }).then(
+    () => true,
+    () => false
+  );
+  if (!visible || await readEightXBetOddsFormatLabel(page)) {
+    return;
+  }
+
+  const trigger = card.locator("div.cursor-pointer").first();
+  if (await trigger.isVisible().catch(() => false)) {
+    await trigger.click({ timeout: 5_000 });
+    await page.waitForTimeout(250);
+  }
 }
 
 async function selectEightXBetMalayOdds(page: Page, currentLabel: string) {

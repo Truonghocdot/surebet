@@ -335,15 +335,28 @@ async function testOddsFormatGateRejectsUnexpectedFeed() {
   assert.equal(negativeFeed.oddsFormatDiagnostics().healthy, false);
   assert.match(
     negativeFeed.oddsFormatDiagnostics().unhealthyReason,
-    /non-positive raw odds/
+    /negative raw odds/
   );
+
+  const unavailableFeed = new EightXBetNetworkFeed("8xbet");
+  const unavailablePage = new FakeEmitter();
+  const unavailableSocket = new FakeSocket();
+  unavailableFeed.attach(unavailablePage as any);
+  unavailablePage.emit("websocket", unavailableSocket);
+  unavailableSocket.emit("framereceived", {
+    payload: stompFrame("UPDATE", {
+      market: { ah: [{ k: "-0.5", h: "0", a: "0.91" }] }
+    })
+  });
+  assert.equal(unavailableFeed.oddsFormatDiagnostics().unhealthyReason, "");
+  assert.deepEqual(unavailableFeed.oddsFormatDiagnostics().rawOddsSamples, [0.91]);
 }
 
 async function testOddsFormatLabelUsesLocatorAPI() {
-  let selector = "";
+  const selectors: string[] = [];
   const page = {
     locator(value: string) {
-      selector = value;
+      selectors.push(value);
       return {
         allTextContents: async () => ["Odds Settings", " Euro Odds "]
       };
@@ -351,7 +364,10 @@ async function testOddsFormatLabelUsesLocatorAPI() {
   };
 
   assert.equal(await readEightXBetOddsFormatLabel(page as any), "Euro Odds");
-  assert.equal(selector, "div.cursor-pointer:visible span:visible");
+  assert.equal(
+    selectors[0],
+    '[data-testid="component-card-mine-gameSetting"] span:visible'
+  );
 }
 
 Promise.all([
