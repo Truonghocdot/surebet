@@ -8,6 +8,8 @@ import {
 import { usePathname } from "next/navigation";
 import { Bolt, LogOut, Menu, X } from "lucide-react";
 import { DashboardSpaRouter } from "@/features/dashboard/components/dashboard-spa-router";
+import { RealtimeNotificationCenter } from "@/features/dashboard/components/realtime-notification-center";
+import { useRealtimeWebSocket } from "@/features/dashboard/queries/use-crm-queries";
 import { SessionHydrator } from "@/features/auth/components/session-hydrator";
 import { useSessionStore } from "@/features/auth/store/session-store";
 import {
@@ -32,6 +34,7 @@ type DashboardShellProps = {
 };
 
 export function DashboardShell({ user, logout }: DashboardShellProps) {
+  useRealtimeWebSocket();
   const pathname = usePathname();
   const sessionUser = useSessionStore((state) => state.user);
   const mobileOpened = useAppShellStore((state) => state.mobileOpened);
@@ -101,6 +104,7 @@ export function DashboardShell({ user, logout }: DashboardShellProps) {
   return (
     <div className="min-h-screen bg-[var(--app-bg)] text-[var(--ink)]">
       <SessionHydrator user={user} />
+      <RealtimeNotificationCenter />
 
       <header className="sticky top-0 z-40 border-b border-[color:var(--line)] bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex min-h-16 w-full items-center justify-between gap-3 px-3 py-2 sm:px-4 md:h-20 md:px-6 md:py-0">

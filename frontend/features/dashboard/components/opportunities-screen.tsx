@@ -4,20 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { DataPanel } from "@/components/dashboard/data-panel";
 import { SectionHeader } from "@/components/dashboard/section-header";
 import { QueryShell } from "@/features/dashboard/components/query-shell";
-import {
-  useOpportunityBoardQuery,
-  useRealtimeWebSocket
-} from "@/features/dashboard/queries/use-crm-queries";
+import { useOpportunityBoardQuery } from "@/features/dashboard/queries/use-crm-queries";
 import type {
   OpportunityBoard,
   OpportunityBoardFixture,
   OpportunityBoardMarket,
   OpportunityBoardOutcome
 } from "@/features/dashboard/schemas/crm-schemas";
+import { useRealtimeNotificationStore } from "@/store/realtime-notification-store";
 
 export function OpportunitiesScreen() {
   const query = useOpportunityBoardQuery();
-  const realtimeStatus = useRealtimeWebSocket();
+  const realtimeStatus = useRealtimeNotificationStore((state) => state.status);
 
   return (
     <div className="dashboard-page min-w-0 [&>*]:min-w-0">

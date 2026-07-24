@@ -50,13 +50,14 @@ type VerificationService struct {
 	health      CollectorConnectionHealth
 	log         logger.Logger
 
-	mu             sync.Mutex
-	invalidationMu sync.Mutex
-	pending        map[string]dto.VerifiedFixtureRef
-	generations    map[string]uint64
-	running        bool
-	timer          *time.Timer
-	lastSummaryAt  time.Time
+	mu                  sync.Mutex
+	invalidationMu      sync.Mutex
+	pending             map[string]dto.VerifiedFixtureRef
+	generations         map[string]uint64
+	announcedCandidates map[string]struct{}
+	running             bool
+	timer               *time.Timer
+	lastSummaryAt       time.Time
 }
 
 func NewVerificationService(
@@ -72,8 +73,9 @@ func NewVerificationService(
 	return &VerificationService{
 		cfg: cfg, candidates: candidates, confirmer: confirmer, store: store,
 		notifier: notifier, broadcaster: broadcaster, health: health, log: log,
-		pending:     make(map[string]dto.VerifiedFixtureRef),
-		generations: make(map[string]uint64),
+		pending:             make(map[string]dto.VerifiedFixtureRef),
+		generations:         make(map[string]uint64),
+		announcedCandidates: make(map[string]struct{}),
 	}
 }
 
@@ -167,6 +169,9 @@ func (s *VerificationService) process(
 		return err
 	}
 	affected := affectedCandidates(candidates, refs)
+	for _, candidate := range affected {
+		s.publishCandidate(candidate)
+	}
 	semaphore := make(chan struct{}, 2)
 	var wait sync.WaitGroup
 	for _, candidate := range affected {
@@ -417,6 +422,27 @@ func (s *VerificationService) publish(event dto.SurebetVerificationEvent) {
 		Type:    "surebet_verification_updated",
 		SentAt:  time.Now().UTC(),
 		Payload: event,
+	})
+}
+
+func (s *VerificationService) publishCandidate(candidate dto.SurebetView) {
+	if s.broadcaster == nil || candidate.ID == "" || candidate.MatchAmbiguous ||
+		!candidate.ExpiresAt.After(time.Now().UTC()) {
+		return
+	}
+
+	s.mu.Lock()
+	if _, announced := s.announcedCandidates[candidate.ID]; announced {
+		s.mu.Unlock()
+		return
+	}
+	s.announcedCandidates[candidate.ID] = struct{}{}
+	s.mu.Unlock()
+
+	s.broadcaster.Broadcast(realtime.Event{
+		Type:    "surebet_candidate_detected",
+		SentAt:  time.Now().UTC(),
+		Payload: candidate,
 	})
 }
 

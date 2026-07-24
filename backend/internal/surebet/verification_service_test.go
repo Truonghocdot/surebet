@@ -8,7 +8,64 @@ import (
 
 	"surebet/backend/internal/config"
 	"surebet/backend/internal/dto"
+	"surebet/backend/internal/realtime"
 )
+
+func TestVerificationServicePublishesCandidateOnce(t *testing.T) {
+	candidate := confirmationCandidate()
+	candidate.ExpiresAt = time.Now().UTC().Add(time.Minute)
+	broadcaster := &verificationBroadcasterStub{}
+	service := NewVerificationService(
+		config.TelegramConfig{},
+		nil,
+		nil,
+		&verificationStoreStub{},
+		nil,
+		broadcaster,
+		nil,
+		nil,
+	)
+
+	service.publishCandidate(candidate)
+	service.publishCandidate(candidate)
+
+	events := broadcaster.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected one candidate event, got %d", len(events))
+	}
+	if events[0].Type != "surebet_candidate_detected" {
+		t.Fatalf("expected candidate event type, got %q", events[0].Type)
+	}
+	item, ok := events[0].Payload.(dto.SurebetView)
+	if !ok || item.ID != candidate.ID {
+		t.Fatalf("expected candidate payload for %q, got %#v", candidate.ID, events[0].Payload)
+	}
+}
+
+func TestVerificationServiceDoesNotPublishExpiredOrAmbiguousCandidate(t *testing.T) {
+	candidate := confirmationCandidate()
+	broadcaster := &verificationBroadcasterStub{}
+	service := NewVerificationService(
+		config.TelegramConfig{},
+		nil,
+		nil,
+		&verificationStoreStub{},
+		nil,
+		broadcaster,
+		nil,
+		nil,
+	)
+
+	candidate.ExpiresAt = time.Now().UTC().Add(-time.Second)
+	service.publishCandidate(candidate)
+	candidate.ExpiresAt = time.Now().UTC().Add(time.Minute)
+	candidate.MatchAmbiguous = true
+	service.publishCandidate(candidate)
+
+	if events := broadcaster.Events(); len(events) != 0 {
+		t.Fatalf("expected no candidate events, got %d", len(events))
+	}
+}
 
 func TestVerificationServiceRejectsQuoteChangedDuringConfirmation(t *testing.T) {
 	candidate := confirmationCandidate()
@@ -180,6 +237,23 @@ func (s *verificationStoreStub) Deleted() string {
 type verificationNotifierStub struct {
 	mu    sync.Mutex
 	count int
+}
+
+type verificationBroadcasterStub struct {
+	mu     sync.Mutex
+	events []realtime.Event
+}
+
+func (s *verificationBroadcasterStub) Broadcast(event realtime.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, event)
+}
+
+func (s *verificationBroadcasterStub) Events() []realtime.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]realtime.Event(nil), s.events...)
 }
 
 func (s *verificationNotifierStub) NotifyConfirmed(context.Context, dto.SurebetView) error {

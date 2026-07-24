@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchDashboardSnapshot,
@@ -15,6 +15,7 @@ import {
 import { backendWebSocketURL } from "@/lib/realtime-url";
 import { useSessionStore } from "@/features/auth/store/session-store";
 import { isOpportunityVisibleForRole } from "@/lib/opportunity-visibility";
+import { useRealtimeNotificationStore } from "@/store/realtime-notification-store";
 import {
   applyRealtimeMatchedFixtures,
   applyRealtimeOddsQuotes,
@@ -52,12 +53,16 @@ export function useMatchedFixturesQuery() {
   });
 }
 
-type RealtimeStatus = "connecting" | "live" | "reconnecting";
-
 export function useRealtimeWebSocket() {
   const queryClient = useQueryClient();
   const role = useSessionStore((state) => state.user?.role);
-  const [status, setStatus] = useState<RealtimeStatus>("connecting");
+  const roleRef = useRef(role);
+  const setStatus = useRealtimeNotificationStore((state) => state.setStatus);
+  const pushNotification = useRealtimeNotificationStore((state) => state.pushNotification);
+
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -154,7 +159,7 @@ export function useRealtimeWebSocket() {
             const verification = extractRealtimeVerification(message);
             if (verification && (
               !verification.opportunity ||
-              isOpportunityVisibleForRole(verification.opportunity, role)
+              isOpportunityVisibleForRole(verification.opportunity, roleRef.current)
             )) {
               queryClient.setQueryData<OpportunityBoard>(
                 crmQueryKeys.opportunityBoard,
@@ -162,6 +167,20 @@ export function useRealtimeWebSocket() {
                   ? applyRealtimeVerification(current, verification)
                   : current
               );
+              if (verification.status === "confirmed" && verification.opportunity) {
+                pushNotification(opportunityNotification("confirmed", verification.opportunity));
+              }
+            }
+            scheduleBoardRefresh();
+            scheduleSecondaryRefresh();
+            setStatus("live");
+          }
+          if (message.type === "surebet_candidate_detected") {
+            const candidate = extractRealtimeCandidate(message);
+            if (candidate && isOpportunityVisibleForRole(candidate, roleRef.current)) {
+              pushNotification(opportunityNotification("candidate", candidate));
+              scheduleBoardRefresh();
+              scheduleSecondaryRefresh();
             }
             setStatus("live");
           }
@@ -198,14 +217,15 @@ export function useRealtimeWebSocket() {
       }
       socket?.close();
     };
-  }, [queryClient, role]);
-
-  return status;
+  }, [pushNotification, queryClient, setStatus]);
 }
 
 type RealtimeMessage = {
   type?: string;
-  payload?: {
+  payload?: unknown;
+};
+
+type RealtimeVerificationPayload = {
     opportunity_id?: unknown;
     status?: unknown;
     reason?: unknown;
@@ -215,13 +235,12 @@ type RealtimeMessage = {
     payload?: {
       quotes?: unknown[];
     };
-  };
 };
 
 function extractRealtimeVerification(
   message: RealtimeMessage
 ): RealtimeVerificationEvent | null {
-  const payload = message.payload;
+  const payload = message.payload as RealtimeVerificationPayload | undefined;
   if (!payload || typeof payload.opportunity_id !== "string" ||
     (payload.status !== "confirmed" && payload.status !== "rejected" && payload.status !== "expired")) {
     return null;
@@ -237,8 +256,29 @@ function extractRealtimeVerification(
   };
 }
 
+function extractRealtimeCandidate(message: RealtimeMessage) {
+  const candidate = opportunitySchema.safeParse(message.payload);
+  if (!candidate.success || candidate.data.verification_status !== "candidate") {
+    return null;
+  }
+  return candidate.data;
+}
+
+function opportunityNotification(
+  kind: "candidate" | "confirmed",
+  opportunity: ReturnType<typeof opportunitySchema.parse>
+) {
+  return {
+    kind,
+    opportunityID: opportunity.id,
+    fixtureID: opportunity.fixture_id,
+    marketName: opportunity.market_name,
+    profitPercentage: opportunity.profit_percentage
+  };
+}
+
 function extractRealtimeOddsQuotes(message: RealtimeMessage): RealtimeOddsQuote[] {
-  const quotes = message.payload?.payload?.quotes;
+  const quotes = (message.payload as RealtimeVerificationPayload | undefined)?.payload?.quotes;
   if (!Array.isArray(quotes)) {
     return [];
   }

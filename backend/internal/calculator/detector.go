@@ -772,9 +772,11 @@ func detectHandicapSurebets(
 	for i := 0; i < len(quotes); i++ {
 		for j := i + 1; j < len(quotes); j++ {
 			left, right := quotes[i], quotes[j]
-			if sameSource(left, right) ||
-				participantsMatch(left.participant, right.participant) ||
-				!sameEvent(left.event, right.event) {
+			if sameSource(left, right) || !sameEvent(left.event, right.event) {
+				continue
+			}
+			sameParticipant, participantMappingResolved := matchedParticipantRelationship(left, right)
+			if !participantMappingResolved || sameParticipant {
 				continue
 			}
 			if !areOppositeHandicapLines(left.line, right.line) {
@@ -854,13 +856,43 @@ func fixtureOrientationMatches(leftHome, leftAway, rightHome, rightAway string) 
 	return homeMatches + awayMatches, true
 }
 
-func participantsMatch(left, right string) bool {
-	denominator := maxInt(participantTokenCount(left), participantTokenCount(right))
-	if denominator == 0 {
-		return false
+func matchedParticipantRelationship(left, right normalizedQuote) (same, resolved bool) {
+	leftIndex := eventParticipantIndex(left.event, left.participant)
+	rightIndex := eventParticipantIndex(right.event, right.participant)
+	if leftIndex < 0 || rightIndex < 0 {
+		return false, false
 	}
-	return float64(participantTokenMatches(left, right))/float64(denominator) >
-		fixtureSimilarityThreshold
+
+	directMatches, directValid := fixtureOrientationMatches(
+		left.event.participants[0],
+		left.event.participants[1],
+		right.event.participants[0],
+		right.event.participants[1],
+	)
+	reversedMatches, reversedValid := fixtureOrientationMatches(
+		left.event.participants[0],
+		left.event.participants[1],
+		right.event.participants[1],
+		right.event.participants[0],
+	)
+
+	switch {
+	case directValid && (!reversedValid || directMatches > reversedMatches):
+		return leftIndex == rightIndex, true
+	case reversedValid && (!directValid || reversedMatches > directMatches):
+		return leftIndex != rightIndex, true
+	default:
+		return false, false
+	}
+}
+
+func eventParticipantIndex(event eventIdentity, participant string) int {
+	for index, current := range event.participants {
+		if current == participant {
+			return index
+		}
+	}
+	return -1
 }
 
 func participantTokenCount(value string) int {

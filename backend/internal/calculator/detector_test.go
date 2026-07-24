@@ -488,6 +488,68 @@ func TestDetectHandicapRejectsSameParticipantAndNonOppositeLines(t *testing.T) {
 	}
 }
 
+func TestDetectHandicapRejectsSameAliasedParticipantAtZeroLine(t *testing.T) {
+	now := time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+
+	tests := []struct {
+		name  string
+		left  models.OddsQuote
+		right models.OddsQuote
+	}{
+		{
+			name: "gremio aliases",
+			left: testHandicapQuote(
+				now, "gremio-8xbet", "8xbet", "default",
+				"Club Bolivar", "Gremio FBPA RS", "Gremio FBPA RS -0", -0.55,
+			),
+			right: testHandicapQuote(
+				now, "gremio-cmd", "jun88", "cmd",
+				"Bolivar", "Gremio Porto Alegrense", "Gremio Porto Alegrense -0", -0.58,
+			),
+		},
+		{
+			name: "belgrano aliases",
+			left: testHandicapQuote(
+				now, "belgrano-8xbet", "8xbet", "default",
+				"CA Belgrano de Cordoba", "CA Rosario Central",
+				"CA Belgrano de Cordoba +0", -0.97,
+			),
+			right: testHandicapQuote(
+				now, "belgrano-cmd", "jun88", "cmd",
+				"Belgrano", "Rosario Central", "Belgrano +0", -0.95,
+			),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if items := detect(t, detector, []models.OddsQuote{test.left, test.right}); len(items) != 0 {
+				t.Fatalf("same team at zero handicap must not create a surebet: %+v", items)
+			}
+		})
+	}
+}
+
+func TestDetectHandicapAllowsOpposingAliasedParticipantsAtZeroLine(t *testing.T) {
+	now := time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testHandicapQuote(
+			now, "gremio", "8xbet", "default",
+			"Club Bolivar", "Gremio FBPA RS", "Gremio FBPA RS -0", -0.55,
+		),
+		testHandicapQuote(
+			now, "bolivar", "jun88", "cmd",
+			"Bolivar", "Gremio Porto Alegrense", "Bolivar +0", -0.58,
+		),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 1 {
+		t.Fatalf("opposing teams at zero handicap should remain eligible, got %+v", items)
+	}
+}
+
 func TestDetectHandicapMatchesSplitAsianLines(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })
