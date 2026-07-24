@@ -294,11 +294,24 @@ export async function installCmdObserver(
         return false;
       };
       const quoteId = (fixtureId, marketId, outcomeName) => fixtureId + ":" + marketId + ":" + normalizeToken(outcomeName);
-      const normalizeHandicapLine = (line, side) => {
+      const normalizeHandicapLine = (line, side, givingSide) => {
         if (!line) return "";
-        if (side === "home") return line.startsWith("-") ? line : "+" + line;
-        return line.startsWith("-") ? line.slice(1) : "-" + line;
+        const absoluteLine = line.replace(/^[+-]/, "");
+        return side === givingSide ? "-" + absoluteLine : "+" + absoluteLine;
       };
+      const handicapGivingSide = (lineNode) => {
+        const breakNode = lineNode && lineNode.querySelector("br");
+        if (!breakNode) return "home";
+        let sibling = breakNode.nextSibling;
+        while (sibling) {
+          if (text(sibling)) return "away";
+          sibling = sibling.nextSibling;
+        }
+        return "home";
+      };
+      const selectionButton = (buttons, marker, fallbackIndex) =>
+        buttons.find((button) => String(button.getAttribute("href") || "").includes(marker)) ||
+        buttons[fallbackIndex];
       const formatOutcome = (name, line) => [name, line].filter(Boolean).join(" ").trim();
       const marketIdOf = (prefix, kind) => {
         const isFirstHalf = String(prefix || "").trim().toUpperCase() === "1H";
@@ -379,11 +392,15 @@ export async function installCmdObserver(
           const selections = [];
 
           for (const hdpNode of Array.from(rowNode.querySelectorAll(".w-hdp .tableDiv-match-odds"))) {
-            const line = text(hdpNode.querySelector("b"));
+            const lineNode = hdpNode.querySelector("b");
+            const line = text(lineNode);
+            const givingSide = handicapGivingSide(lineNode);
             const buttons = Array.from(hdpNode.querySelectorAll(".tableDiv-match-odds__detail > a"));
             const marketId = marketIdOf(prefix, "handicap");
-            const home = selection(buttons[0], fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome(homeTeam, normalizeHandicapLine(line, "home")));
-            const away = selection(buttons[1], fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome(awayTeam, normalizeHandicapLine(line, "away")));
+            const homeLine = normalizeHandicapLine(line, "home", givingSide);
+            const awayLine = normalizeHandicapLine(line, "away", givingSide);
+            const home = selection(selectionButton(buttons, "Hdp_Home", 0), fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome(homeTeam, homeLine));
+            const away = selection(selectionButton(buttons, "Hdp_Away", 1), fixtureId, homeTeam, awayTeam, leagueName, marketId, formatOutcome(awayTeam, awayLine));
             if (home) selections.push(home);
             if (away) selections.push(away);
           }

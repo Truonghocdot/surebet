@@ -26,6 +26,23 @@ async function main() {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     await installCmdObserver(page, snapshot);
 
+    const observerOutcomeIDs = new Set(await page.evaluate(() => {
+      const state = (
+        window as typeof window & {
+          __surebet_cmd_stream__?: { byRow?: Record<string, Array<{ outcomeId: string }>> };
+        }
+      ).__surebet_cmd_stream__;
+      return Object.values(state?.byRow ?? {}).flat().map((selection) => selection.outcomeId);
+    }));
+    const missingObserverOutcomes = snapshot.selections.filter(
+      (selection) => !observerOutcomeIDs.has(selection.outcomeId)
+    );
+    assert.deepEqual(
+      missingObserverOutcomes,
+      [],
+      "CMD observer must preserve the snapshot handicap side and line identities"
+    );
+
     const changedOdds = await page.evaluate(() => {
       const state = (
         window as typeof window & {

@@ -196,20 +196,25 @@ function parseHdpMarket(node: HTMLElement | null, base: MarketContext) {
     return [];
   }
 
-  const line = textContent(node.querySelector("b")) || base.line;
+  const lineNode = node.querySelector("b");
+  const line = textContent(lineNode) || base.line;
+  const givingSide = cmdHandicapGivingSide(lineNode);
   const buttons = Array.from(node.querySelectorAll(".tableDiv-match-odds__detail > a")) as HTMLElement[];
-  const [homeButton, awayButton] = buttons;
+  const homeButton = cmdSelectionButton(buttons, "Hdp_Home", 0);
+  const awayButton = cmdSelectionButton(buttons, "Hdp_Away", 1);
+  const homeLine = normalizeHandicapLine(line, "home", givingSide);
+  const awayLine = normalizeHandicapLine(line, "away", givingSide);
 
   return [
     createSelection(homeButton, {
       ...base,
-      line: normalizeHandicapLine(line, "home"),
-      outcomeName: formatOutcome(base.homeTeam, normalizeHandicapLine(line, "home"))
+      line: homeLine,
+      outcomeName: formatOutcome(base.homeTeam, homeLine)
     }),
     createSelection(awayButton, {
       ...base,
-      line: normalizeHandicapLine(line, "away"),
-      outcomeName: formatOutcome(base.awayTeam, normalizeHandicapLine(line, "away"))
+      line: awayLine,
+      outcomeName: formatOutcome(base.awayTeam, awayLine)
     })
   ].filter((item): item is OddsSelection => item !== null);
 }
@@ -323,16 +328,41 @@ function parseFallbackMatches(document: Document, pageUrl: string) {
   });
 }
 
-function normalizeHandicapLine(line: string, side: "home" | "away") {
+function normalizeHandicapLine(
+  line: string,
+  side: "home" | "away",
+  givingSide: "home" | "away"
+) {
   if (!line) {
     return "";
   }
 
-  if (side === "home") {
-    return line.startsWith("-") ? line : `+${line}`;
+  const absoluteLine = line.replace(/^[+-]/, "");
+  return side === givingSide ? `-${absoluteLine}` : `+${absoluteLine}`;
+}
+
+function cmdHandicapGivingSide(lineNode: Element | null): "home" | "away" {
+  const breakNode = lineNode?.querySelector("br");
+  if (!breakNode) {
+    return "home";
   }
 
-  return line.startsWith("-") ? line.slice(1) : `-${line}`;
+  for (let sibling = breakNode.nextSibling; sibling; sibling = sibling.nextSibling) {
+    if (sibling.textContent?.trim()) {
+      return "away";
+    }
+  }
+
+  return "home";
+}
+
+function cmdSelectionButton(
+  buttons: HTMLElement[],
+  marker: string,
+  fallbackIndex: number
+) {
+  return buttons.find((button) => button.getAttribute("href")?.includes(marker)) ??
+    buttons[fallbackIndex];
 }
 
 function cmdMarketID(prefix: string, kind: "handicap" | "over_under" | "one_x_two") {

@@ -133,6 +133,7 @@ function isGenericClubToken(value: string | undefined) {
     value === "if" ||
     value === "sc" ||
     value === "sk" ||
+    value === "umf" ||
     value === "team"
   );
 }

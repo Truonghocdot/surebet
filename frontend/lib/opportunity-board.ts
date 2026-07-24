@@ -145,7 +145,11 @@ function indexCurrentOpportunities(
   const now = Date.now();
 
   for (const opportunity of opportunities) {
-    if (!isCurrentOpportunity(opportunity, now) || opportunity.legs.length !== 2) {
+    if (
+      opportunity.match_ambiguous ||
+      !isCurrentOpportunity(opportunity, now) ||
+      opportunity.legs.length !== 2
+    ) {
       continue;
     }
 
@@ -345,8 +349,28 @@ function serializeMarkets(
         is_surebet_leg: Boolean(quoteKeyValue && confirmedQuoteKeys.has(quoteKeyValue)),
         is_candidate_leg: Boolean(quoteKeyValue && candidateQuoteKeys.has(quoteKeyValue))
       }))
-      .sort((left, right) => left.outcome_name.localeCompare(right.outcome_name))
+      .sort((left, right) => {
+        const sideOrder = outcomeSideOrder(left.side) - outcomeSideOrder(right.side);
+        return sideOrder !== 0
+          ? sideOrder
+          : left.outcome_name.localeCompare(right.outcome_name);
+      })
   }));
+}
+
+function outcomeSideOrder(side: string) {
+  switch (side.trim().toLowerCase()) {
+    case "home":
+    case "over":
+      return 0;
+    case "away":
+    case "under":
+      return 1;
+    case "draw":
+      return 2;
+    default:
+      return 3;
+  }
 }
 
 function isVerifiedOpportunity(opportunity: BackendOpportunity) {

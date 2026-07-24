@@ -33,6 +33,61 @@ async function main() {
   assertLeagueScopes(html, snapshot);
   assertStandardFixtureFilter(snapshot);
   assertUnavailableMarketsAreSuspended(html);
+  assertHandicapLinePlacementAndButtonIdentity();
+}
+
+function assertHandicapLinePlacementAndButtonIdentity() {
+  const html = `
+    <div class="tableDiv">
+      <div class="league"><label>TEST LEAGUE</label></div>
+      ${cmdHandicapFixture("home-gives", "Home Gives", "Away Receives", "0.5<br>", [
+        ["Hdp_Home", "0.75"],
+        ["Hdp_Away", "-0.87"]
+      ])}
+      ${cmdHandicapFixture("away-gives", "Home Receives", "Away Gives", "<br>0.5", [
+        ["Hdp_Away", "0.72"],
+        ["Hdp_Home", "-0.84"]
+      ])}
+    </div>
+  `;
+  const snapshot = parseJun88CmdSnapshot(html, "https://cmd.test", "jun88-cmd");
+  const byOutcome = new Map(
+    snapshot.selections.map((selection) => [selection.outcomeName, selection])
+  );
+
+  assert.equal(byOutcome.get("Home Gives -0.5")?.odds, 0.75);
+  assert.equal(byOutcome.get("Away Receives +0.5")?.odds, -0.87);
+  assert.equal(byOutcome.get("Home Receives +0.5")?.odds, -0.84);
+  assert.equal(byOutcome.get("Away Gives -0.5")?.odds, 0.72);
+}
+
+function cmdHandicapFixture(
+  fixtureID: string,
+  homeTeam: string,
+  awayTeam: string,
+  lineHTML: string,
+  buttons: Array<[string, string]>
+) {
+  return `
+    <div class="match default-match" id="R_${fixtureID}" groupid="${fixtureID}">
+      <div class="tableDiv-match-info__event">
+        <div><span id="ht_${fixtureID}">${homeTeam}</span></div>
+        <div><span id="at_${fixtureID}">${awayTeam}</span></div>
+      </div>
+      <div class="col row">
+        <div class="w-hdp">
+          <div class="tableDiv-match-odds">
+            <b>${lineHTML}</b>
+            <span class="tableDiv-match-odds__detail">
+              ${buttons.map(([marker, odds]) =>
+                `<a href="javascript: OddsClick(this, '${fixtureID}_${marker}');">${odds}</a>`
+              ).join("")}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function assertUnavailableMarketsAreSuspended(html: string) {

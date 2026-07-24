@@ -559,6 +559,56 @@ func TestDetectHandicapRejectsSameAliasedParticipantAtZeroLine(t *testing.T) {
 	}
 }
 
+func TestDetectHandicapRejectsMatchingVolsungurZeroLineSnapshot(t *testing.T) {
+	now := time.Date(2026, 7, 24, 19, 20, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testHandicapQuote(
+			now, "8xbet-volsungur", "8xbet", "default",
+			"IF Volsungur", "UMF Grindavik", "IF Volsungur +0", 0.75,
+		),
+		testHandicapQuote(
+			now, "8xbet-grindavik", "8xbet", "default",
+			"IF Volsungur", "UMF Grindavik", "UMF Grindavik -0", -0.89,
+		),
+		testHandicapQuote(
+			now, "cmd-volsungur", "jun88", "cmd",
+			"Volsungur", "Grindavik", "Volsungur +0", 0.75,
+		),
+		testHandicapQuote(
+			now, "cmd-grindavik", "jun88", "cmd",
+			"Volsungur", "Grindavik", "Grindavik -0", -0.87,
+		),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("matching zero-line prices for the same teams must not create a surebet: %+v", items)
+	}
+}
+
+func TestDetectMatchesUMFPrefixWithoutAmbiguity(t *testing.T) {
+	now := time.Date(2026, 7, 24, 19, 20, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuote(
+			now, "8xbet-over", "8xbet", "default",
+			"IF Volsungur", "UMF Grindavik", "", "Over 2.5", -0.5,
+		),
+		testQuote(
+			now, "cmd-under", "jun88", "cmd",
+			"Volsungur", "Grindavik", "", "Under 2.5", -0.5,
+		),
+	}
+
+	items := detect(t, detector, quotes)
+	if len(items) != 1 {
+		t.Fatalf("UMF/IF club prefixes should resolve to the same fixture, got %+v", items)
+	}
+	if items[0].MatchAmbiguous || items[0].MatchConfidence != 1 {
+		t.Fatalf("UMF/IF club prefixes should produce an exact match, got %+v", items[0])
+	}
+}
+
 func TestDetectHandicapAllowsOpposingAliasedParticipantsAtZeroLine(t *testing.T) {
 	now := time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })

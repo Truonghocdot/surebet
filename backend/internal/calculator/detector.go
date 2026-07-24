@@ -1329,7 +1329,7 @@ func isGenericClubToken(value string) bool {
 		"rc", "rfc",
 		"sc", "sd", "sf", "sk", "sp", "ss",
 		"team",
-		"ud", "utd", "us",
+		"ud", "umf", "utd", "us",
 		"vfc":
 		return true
 	default:
