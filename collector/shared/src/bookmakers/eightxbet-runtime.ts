@@ -253,9 +253,6 @@ export class EightXBetRuntime {
     await waitForEightXBetOddsObservation(page, this.networkFeed, 1_500);
     const diagnostics = this.networkFeed.oddsFormatDiagnostics();
     assertEightXBetOddsFormatHealthy(diagnostics);
-    if (!diagnostics.healthy) {
-      throw new Error("8xbet source unhealthy: pd1 odds feed was not confirmed");
-    }
 
     // The WebSocket destination carries the authoritative price display.
     // Changing the page setting reloads the stream and discards bootstrap data.
@@ -433,7 +430,10 @@ async function waitForEightXBetExpectedOddsFormat(
   while (!page.isClosed() && Date.now() < deadline) {
     const diagnostics = feed.oddsFormatDiagnostics();
     assertEightXBetOddsFormatHealthy(diagnostics);
-    if (diagnostics.healthy) {
+    // A pd1 stream can legitimately begin with only suspended 0.00 prices.
+    // Its destination still proves the odds convention; valid prices arrive
+    // later as normal market updates.
+    if (diagnostics.priceDisplay === "pd1") {
       return diagnostics;
     }
     await page.waitForTimeout(50);
