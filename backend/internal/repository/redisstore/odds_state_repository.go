@@ -20,7 +20,9 @@ import (
 )
 
 const (
-	defaultCurrentOddsWindow = 12 * time.Hour
+	// An in-play quote becomes unsafe within seconds once its stream stops.
+	// Keep the board on the same freshness limit as surebet detection.
+	defaultCurrentOddsWindow = 25 * time.Second
 	defaultFinishedRetention = 30 * time.Minute
 	defaultOverallRetention  = 24 * time.Hour
 	defaultHistoryTTL        = 30 * time.Minute

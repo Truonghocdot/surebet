@@ -20,7 +20,6 @@ import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 
 const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
-const EIGHTXBET_MINE_PATH = "/mine";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_GAME_SETTINGS_SELECTOR =
   '[data-testid="component-card-mine-gameSetting"]';
@@ -211,7 +210,7 @@ export class EightXBetRuntime {
     try {
       await page.goto(targetURL, { waitUntil: "domcontentloaded" });
       await waitForEightXBetReady(page, targetURL, this.networkFeed);
-      await this.ensureMalayOddsUI(page, targetURL);
+      await this.inspectNetworkOddsFormat(page);
       return page;
     } catch (error) {
       await writeDebugArtifacts(page, `${this.collectorId}-odds-format-gate-failed`);
@@ -250,57 +249,19 @@ export class EightXBetRuntime {
     logEightXBetOddsFormat("after", this.oddsFormatLabel, diagnostics, this.oddsFormatAction);
   }
 
-  private async ensureMalayOddsUI(page: Page, targetURL: string) {
+  private async inspectNetworkOddsFormat(page: Page) {
     await waitForEightXBetOddsObservation(page, this.networkFeed, 1_500);
-    let location: "inplay" | "mine" = "inplay";
-    let label = await waitForEightXBetOddsFormatLabel(page, 2_000);
-    if (!label) {
-      location = "mine";
-      await page.goto(new URL(EIGHTXBET_MINE_PATH, targetURL).toString(), {
-        waitUntil: "domcontentloaded"
-      });
-      await waitForPageSettle(page);
-      await expandEightXBetGameSettings(page);
-      label = await waitForEightXBetOddsFormatLabel(page, 10_000);
+    const diagnostics = this.networkFeed.oddsFormatDiagnostics();
+    assertEightXBetOddsFormatHealthy(diagnostics);
+    if (!diagnostics.healthy) {
+      throw new Error("8xbet source unhealthy: pd1 odds feed was not confirmed");
     }
 
-    const before = this.networkFeed.oddsFormatDiagnostics();
-    logEightXBetOddsFormat("before", label || "unknown", before, "inspect");
-    if (!label) {
-      assertEightXBetOddsFormatHealthy(before);
-      if (!before.healthy) {
-        throw new Error(
-          "8xbet source unhealthy: odds format dropdown was not found and pd1 was not confirmed"
-        );
-      }
-      this.oddsFormatLabel = "network:pd1";
-      this.oddsFormatAction = "feed-verified";
-      this.networkFeed.resetOddsFormatObservation(true);
-      await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-      await waitForEightXBetReady(page, targetURL, this.networkFeed);
-      return;
-    }
-
-    let changed = false;
-    if (!isMalayOddsFormatLabel(label)) {
-      await selectEightXBetMalayOdds(page, label);
-      const selectedLabel = await waitForEightXBetMalayOddsFormatLabel(page, 5_000);
-      if (!selectedLabel) {
-        throw new Error(`8xbet source unhealthy: Malay odds selection did not persist (was ${label})`);
-      }
-      label = selectedLabel;
-      changed = true;
-    }
-    this.oddsFormatLabel = label;
-
-    if (changed || location === "mine") {
-      this.oddsFormatAction = changed ? "changed" : "mine-verified";
-      this.networkFeed.resetOddsFormatObservation(true);
-      await page.goto(targetURL, { waitUntil: "domcontentloaded" });
-      await waitForEightXBetReady(page, targetURL, this.networkFeed);
-    } else {
-      this.oddsFormatAction = "unchanged";
-    }
+    // The WebSocket destination carries the authoritative price display.
+    // Changing the page setting reloads the stream and discards bootstrap data.
+    this.oddsFormatLabel = (await readEightXBetOddsFormatLabel(page)) || "network:pd1";
+    this.oddsFormatAction = "feed-verified";
+    logEightXBetOddsFormat("before", this.oddsFormatLabel, diagnostics, this.oddsFormatAction);
   }
 
   private async waitForMetadataFixtureIds(page: Page) {
@@ -445,30 +406,6 @@ const eightXBetOddsFormatLabels = [
   "Indo"
 ];
 
-async function waitForEightXBetOddsFormatLabel(page: Page, timeoutMs: number) {
-  const deadline = Date.now() + timeoutMs;
-  while (!page.isClosed() && Date.now() < deadline) {
-    const label = await readEightXBetOddsFormatLabel(page);
-    if (label) {
-      return label;
-    }
-    await page.waitForTimeout(100);
-  }
-  return "";
-}
-
-async function waitForEightXBetMalayOddsFormatLabel(page: Page, timeoutMs: number) {
-  const deadline = Date.now() + timeoutMs;
-  while (!page.isClosed() && Date.now() < deadline) {
-    const label = await readEightXBetOddsFormatLabel(page);
-    if (isMalayOddsFormatLabel(label)) {
-      return label;
-    }
-    await page.waitForTimeout(100);
-  }
-  return "";
-}
-
 export async function readEightXBetOddsFormatLabel(page: Page) {
   const known = new Set(eightXBetOddsFormatLabels.map(normalizeEightXBetOddsFormatLabel));
   const selectors = [
@@ -485,41 +422,6 @@ export async function readEightXBetOddsFormatLabel(page: Page) {
     }
   }
   return "";
-}
-
-async function expandEightXBetGameSettings(page: Page) {
-  const card = page.locator(EIGHTXBET_GAME_SETTINGS_SELECTOR).first();
-  const visible = await card.waitFor({ state: "visible", timeout: 10_000 }).then(
-    () => true,
-    () => false
-  );
-  if (!visible || await readEightXBetOddsFormatLabel(page)) {
-    return;
-  }
-
-  const trigger = card.locator("div.cursor-pointer").first();
-  if (await trigger.isVisible().catch(() => false)) {
-    await trigger.click({ timeout: 5_000 });
-    await page.waitForTimeout(250);
-  }
-}
-
-async function selectEightXBetMalayOdds(page: Page, currentLabel: string) {
-  const currentPattern = new RegExp(`^\\s*${escapeRegularExpression(currentLabel)}\\s*$`, "i");
-  const toggle = page.locator("div.cursor-pointer").filter({ hasText: currentPattern }).first();
-  if ((await toggle.count()) === 0 || !(await toggle.isVisible())) {
-    throw new Error(`8xbet source unhealthy: odds format toggle ${currentLabel} is not clickable`);
-  }
-  await toggle.click({ timeout: 5_000 });
-
-  for (const label of ["Kèo Malay", "Malay Odds", "Malay"]) {
-    const option = page.getByRole("button", { name: label, exact: true }).first();
-    if ((await option.count()) > 0 && (await option.isVisible())) {
-      await option.click({ timeout: 5_000 });
-      return;
-    }
-  }
-  throw new Error("8xbet source unhealthy: Malay odds option was not found after opening the dropdown");
 }
 
 async function waitForEightXBetExpectedOddsFormat(
@@ -585,16 +487,8 @@ function formatRawOddsSamples(diagnostics: EightXBetOddsFormatDiagnostics) {
     : "none";
 }
 
-function isMalayOddsFormatLabel(value: string) {
-  return /(?:^|\s)malay(?:\s|$)/i.test(value.trim());
-}
-
 function normalizeEightXBetOddsFormatLabel(value: string) {
   return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
-}
-
-function escapeRegularExpression(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function resolveEightXBetTargetURL(value: string) {

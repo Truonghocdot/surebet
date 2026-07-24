@@ -238,6 +238,29 @@ func TestOddsStateRepositoryQuoteRemoveSuspendsCurrentQuote(t *testing.T) {
 	}
 }
 
+func TestOddsStateRepositoryExcludesStaleLiveQuotes(t *testing.T) {
+	repo, cleanup := newTestOddsStateRepository(t)
+	defer cleanup()
+
+	stale := testQuoteUpsertEvent(
+		"fixture-stale",
+		"market-a",
+		"outcome-a",
+		time.Now().UTC().Add(-defaultCurrentOddsWindow-time.Second),
+	)
+	if changed, _, err := repo.ApplyQuoteUpsert(context.Background(), stale); err != nil || !changed {
+		t.Fatalf("seed stale quote: changed=%v err=%v", changed, err)
+	}
+
+	live, err := repo.ListCurrentLive(context.Background(), "jun88", "cmd", "")
+	if err != nil {
+		t.Fatalf("list stale current live quotes: %v", err)
+	}
+	if len(live) != 0 {
+		t.Fatalf("expected stale quote to be excluded from the live view, got %+v", live)
+	}
+}
+
 func TestOddsStateRepositorySnapshotCommitSuspendsMissingQuotes(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
