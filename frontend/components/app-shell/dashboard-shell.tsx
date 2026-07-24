@@ -8,6 +8,7 @@ import {
 import { usePathname } from "next/navigation";
 import { Bolt, LogOut, Menu, X } from "lucide-react";
 import { DashboardSpaRouter } from "@/features/dashboard/components/dashboard-spa-router";
+import { BrowserNotificationButton } from "@/features/dashboard/components/browser-notification-button";
 import { RealtimeNotificationCenter } from "@/features/dashboard/components/realtime-notification-center";
 import { useRealtimeWebSocket } from "@/features/dashboard/queries/use-crm-queries";
 import { SessionHydrator } from "@/features/auth/components/session-hydrator";
@@ -134,6 +135,7 @@ export function DashboardShell({ user, logout }: DashboardShellProps) {
           </div>
 
           <div className="flex items-center gap-2 md:gap-3">
+            <BrowserNotificationButton />
             <div className="rounded-full border border-[color:var(--line)] bg-[var(--surface-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)] md:hidden">
               {displayUser.role === "super_admin" ? "Super admin" : "Vận hành"}
             </div>

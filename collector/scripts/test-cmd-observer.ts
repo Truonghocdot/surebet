@@ -51,6 +51,41 @@ async function main() {
       return delta.op === "upsert" && delta.odds === changedOdds;
     }));
     console.log(`CMD observer fallback emitted odds ${changedOdds}`);
+
+    batches.length = 0;
+    await page.evaluate(() => {
+      const market = document.querySelector(
+        ".match.default-match .w-ou .tableDiv-match-odds"
+      );
+      if (!market) {
+        throw new Error("CMD fixture has no O/U market");
+      }
+      market.classList.add("hide");
+    });
+    await assertEventually(() => batches.flat().some((item) => {
+      const delta = item as { marketId?: string; op?: string; suspended?: boolean };
+      return delta.op === "upsert" &&
+        (delta.marketId === "o-u-ou" || delta.marketId === "o-u-ou-1st") &&
+        delta.suspended === true;
+    }));
+    console.log("CMD observer suspended a hidden O/U market");
+
+    batches.length = 0;
+    await page.evaluate(() => {
+      const market = document.querySelector(
+        ".match.default-match .w-ou .tableDiv-match-odds.hide"
+      );
+      if (!market) {
+        throw new Error("CMD fixture has no hidden O/U market");
+      }
+      market.remove();
+    });
+    await assertEventually(() => batches.flat().some((item) => {
+      const delta = item as { marketId?: string; op?: string };
+      return delta.op === "remove" &&
+        (delta.marketId === "o-u-ou" || delta.marketId === "o-u-ou-1st");
+    }));
+    console.log("CMD observer removed an O/U market missing from the DOM");
   } finally {
     await browser.close();
   }

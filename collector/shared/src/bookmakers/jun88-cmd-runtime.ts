@@ -13,6 +13,7 @@ import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { envInt } from "../core/env.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
+import { CMD_AVAILABILITY_CONFIG } from "./cmd-availability.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
 import {
   assertSnapshotHasSelections,
@@ -267,11 +268,31 @@ export async function installCmdObserver(
       const normalizeToken = (value) =>
         value.normalize("NFKD").replace(/[^\\p{L}\\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase();
       const parseOdds = (value) => Number.parseFloat((value || "").replace(/[^\\d./-]+/g, ""));
-      const isSuspended = (node) =>
-        !node ||
-        node.hasAttribute("disabled") ||
-        node.getAttribute("aria-disabled") === "true" ||
-        /disabled|locked|suspend|cursor-default/i.test(node.className || "");
+      const availability = ${JSON.stringify(CMD_AVAILABILITY_CONFIG)};
+      const unavailableClassPattern = new RegExp(availability.unavailableClassPatternSource, "i");
+      const unavailableStylePattern = new RegExp(availability.unavailableStylePatternSource, "i");
+      const unavailableStatePattern = new RegExp(availability.unavailableStatePatternSource, "i");
+      const isUnavailable = (node) => {
+        if (!node) return true;
+        let current = node;
+        while (current) {
+          if (
+            current.hasAttribute("disabled") ||
+            current.hasAttribute("hidden") ||
+            current.getAttribute("aria-disabled") === "true" ||
+            current.getAttribute("aria-hidden") === "true" ||
+            current.getAttribute("data-active") === "false" ||
+            current.getAttribute("data-enabled") === "false" ||
+            unavailableClassPattern.test(String(current.className || "")) ||
+            unavailableStylePattern.test(current.getAttribute("style") || "") ||
+            unavailableStatePattern.test(current.getAttribute("data-status") || "") ||
+            unavailableStatePattern.test(current.getAttribute("data-state") || "")
+          ) return true;
+          if (current.matches(availability.boundarySelector)) break;
+          current = current.parentElement;
+        }
+        return false;
+      };
       const quoteId = (fixtureId, marketId, outcomeName) => fixtureId + ":" + marketId + ":" + normalizeToken(outcomeName);
       const normalizeHandicapLine = (line, side) => {
         if (!line) return "";
@@ -311,7 +332,7 @@ export async function installCmdObserver(
       const selection = (node, fixtureId, homeTeam, awayTeam, leagueName, marketId, outcomeName) => {
         if (!node) return null;
         const odds = parseOdds(text(node));
-        if (!Number.isFinite(odds)) return null;
+        const hasOdds = Number.isFinite(odds);
         return {
           fixtureId,
           sport: "football",
@@ -322,9 +343,9 @@ export async function installCmdObserver(
           marketId,
           outcomeId: quoteId(fixtureId, marketId, outcomeName),
           outcomeName,
-          odds,
+          odds: hasOdds ? odds : 0,
           availableStake: 0,
-          suspended: isSuspended(node)
+          suspended: !hasOdds || isUnavailable(node)
         };
       };
 
@@ -474,10 +495,23 @@ export async function installCmdObserver(
       };
 
       const fingerprintRows = (rows) => rows.map((row) => {
-        const attributes = Array.from(row.querySelectorAll("a, button, input")).map((node) => [
+        const trackedNodes = [
+          row,
+          ...Array.from(row.querySelectorAll(
+            ".w-hdp, .w-ou, .tableDiv-match-odds, .tableDiv-match-odds__detail, a, button, input"
+          ))
+        ];
+        const attributes = trackedNodes.map((node) => [
           node.className || "",
           node.getAttribute("aria-disabled") || "",
+          node.getAttribute("aria-hidden") || "",
           node.getAttribute("disabled") || "",
+          node.getAttribute("hidden") || "",
+          node.getAttribute("style") || "",
+          node.getAttribute("data-status") || "",
+          node.getAttribute("data-state") || "",
+          node.getAttribute("data-active") || "",
+          node.getAttribute("data-enabled") || "",
           node.getAttribute("data-odds") || "",
           node.getAttribute("data-value") || "",
           node.getAttribute("value") || ""
@@ -556,7 +590,11 @@ export async function installCmdObserver(
         childList: true,
         characterData: true,
         attributes: true,
-        attributeFilter: ["class", "disabled", "aria-disabled", "value", "data-odds", "data-value"]
+        attributeFilter: [
+          "class", "disabled", "hidden", "aria-disabled", "aria-hidden", "style",
+          "data-status", "data-state", "data-active", "data-enabled",
+          "value", "data-odds", "data-value"
+        ]
       });
       state.observer = observer;
 

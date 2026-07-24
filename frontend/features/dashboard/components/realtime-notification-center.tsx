@@ -1,12 +1,13 @@
 "use client";
 
-import { startTransition, useEffect } from "react";
+import { startTransition, useCallback, useEffect, useRef } from "react";
 import { BadgeCheck, Radar, X } from "lucide-react";
 import {
   useRealtimeNotificationStore,
   type OpportunityNotification
 } from "@/store/realtime-notification-store";
 import { useDashboardSpaStore } from "@/store/dashboard-spa-store";
+import { useBrowserNotificationStore } from "@/store/browser-notification-store";
 
 const notificationLifetimeMS = 10_000;
 
@@ -14,6 +15,60 @@ export function RealtimeNotificationCenter() {
   const notifications = useRealtimeNotificationStore((state) => state.notifications);
   const dismissNotification = useRealtimeNotificationStore((state) => state.dismissNotification);
   const setActiveHref = useDashboardSpaStore((state) => state.setActiveHref);
+  const browserNotificationsEnabled = useBrowserNotificationStore((state) => state.enabled);
+  const browserNotificationsInitialized = useBrowserNotificationStore(
+    (state) => state.initialized
+  );
+  const browserNotificationPermission = useBrowserNotificationStore(
+    (state) => state.permission
+  );
+  const initializeBrowserNotifications = useBrowserNotificationStore(
+    (state) => state.initialize
+  );
+  const dispatchedBrowserNotificationIDs = useRef(new Set<string>());
+
+  const openOpportunities = useCallback((notificationID: string) => {
+    window.focus();
+    if (window.location.pathname !== "/opportunities") {
+      window.history.pushState(null, "", "/opportunities");
+    }
+    startTransition(() => setActiveHref("/opportunities"));
+    dismissNotification(notificationID);
+  }, [dismissNotification, setActiveHref]);
+
+  useEffect(() => {
+    initializeBrowserNotifications();
+  }, [initializeBrowserNotifications]);
+
+  useEffect(() => {
+    if (!browserNotificationsInitialized) {
+      return;
+    }
+
+    const freshNotifications = notifications.filter(
+      (notification) => !dispatchedBrowserNotificationIDs.current.has(notification.id)
+    );
+    for (const notification of freshNotifications) {
+      dispatchedBrowserNotificationIDs.current.add(notification.id);
+    }
+
+    if (
+      !browserNotificationsEnabled ||
+      browserNotificationPermission !== "granted"
+    ) {
+      return;
+    }
+
+    for (const notification of freshNotifications) {
+      showBrowserNotification(notification, () => openOpportunities(notification.id));
+    }
+  }, [
+    browserNotificationPermission,
+    browserNotificationsEnabled,
+    browserNotificationsInitialized,
+    notifications,
+    openOpportunities
+  ]);
 
   useEffect(() => {
     const timers = notifications.map((notification) => window.setTimeout(
@@ -22,14 +77,6 @@ export function RealtimeNotificationCenter() {
     ));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [dismissNotification, notifications]);
-
-  function openOpportunities(notificationID: string) {
-    if (window.location.pathname !== "/opportunities") {
-      window.history.pushState(null, "", "/opportunities");
-    }
-    startTransition(() => setActiveHref("/opportunities"));
-    dismissNotification(notificationID);
-  }
 
   return (
     <div
@@ -47,6 +94,28 @@ export function RealtimeNotificationCenter() {
       ))}
     </div>
   );
+}
+
+function showBrowserNotification(
+  notification: OpportunityNotification,
+  onOpen: () => void
+) {
+  try {
+    const confirmed = notification.kind === "confirmed";
+    const browserNotification = new Notification(
+      confirmed ? "Kèo đã xác nhận" : "Phát hiện kèo mới",
+      {
+        body: `${notification.fixtureID} - ${notification.marketName} - +${notification.profitPercentage.toFixed(2)}%`,
+        tag: notification.id
+      }
+    );
+    browserNotification.onclick = () => {
+      onOpen();
+      browserNotification.close();
+    };
+  } catch {
+    // The in-app notification remains available when native delivery fails.
+  }
 }
 
 function OpportunityNotificationToast({

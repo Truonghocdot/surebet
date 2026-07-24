@@ -14,7 +14,10 @@ import {
 } from "@/features/dashboard/schemas/crm-schemas";
 import { backendWebSocketURL } from "@/lib/realtime-url";
 import { useSessionStore } from "@/features/auth/store/session-store";
-import { isOpportunityVisibleForRole } from "@/lib/opportunity-visibility";
+import {
+  filterOpportunityBoardForRole,
+  isOpportunityVisibleForRole
+} from "@/lib/opportunity-visibility";
 import { useRealtimeNotificationStore } from "@/store/realtime-notification-store";
 import {
   applyRealtimeMatchedFixtures,
@@ -27,7 +30,8 @@ import {
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
   matchedFixtures: ["crm", "matched-fixtures"] as const,
-  opportunityBoard: ["crm", "opportunity-board"] as const
+  opportunityBoard: (role: string | null | undefined) =>
+    ["crm", "opportunity-board", role ?? "anonymous"] as const
 };
 
 export function useDashboardSnapshotQuery() {
@@ -38,9 +42,11 @@ export function useDashboardSnapshotQuery() {
 }
 
 export function useOpportunityBoardQuery() {
+  const role = useSessionStore((state) => state.user?.role);
   return useQuery({
-    queryKey: crmQueryKeys.opportunityBoard,
+    queryKey: crmQueryKeys.opportunityBoard(role),
     queryFn: fetchOpportunityBoard,
+    select: (board) => filterOpportunityBoardForRole(board, role),
     refetchInterval: 15_000,
     refetchIntervalInBackground: false
   });
@@ -80,7 +86,9 @@ export function useRealtimeWebSocket() {
     const flushBoardQuery = () => {
       boardRefreshTimer = null;
       lastBoardRefreshAt = Date.now();
-      void queryClient.invalidateQueries({ queryKey: crmQueryKeys.opportunityBoard });
+      void queryClient.invalidateQueries({
+        queryKey: crmQueryKeys.opportunityBoard(roleRef.current)
+      });
     };
 
     const flushSecondaryQueries = () => {
@@ -135,7 +143,7 @@ export function useRealtimeWebSocket() {
             const hasBoardQuote = quotes.some(isRealtimeBoardQuote);
             if (hasBoardQuote) {
               queryClient.setQueryData<OpportunityBoard>(
-                crmQueryKeys.opportunityBoard,
+                crmQueryKeys.opportunityBoard(roleRef.current),
                 (current) => current
                   ? applyRealtimeOddsQuotes(current, quotes).board
                   : current
@@ -162,7 +170,7 @@ export function useRealtimeWebSocket() {
               isOpportunityVisibleForRole(verification.opportunity, roleRef.current)
             )) {
               queryClient.setQueryData<OpportunityBoard>(
-                crmQueryKeys.opportunityBoard,
+                crmQueryKeys.opportunityBoard(roleRef.current),
                 (current) => current
                   ? applyRealtimeVerification(current, verification)
                   : current

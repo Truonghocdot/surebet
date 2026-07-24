@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { JSDOM } from "jsdom";
@@ -31,6 +32,69 @@ async function main() {
 
   assertLeagueScopes(html, snapshot);
   assertStandardFixtureFilter(snapshot);
+  assertUnavailableMarketsAreSuspended(html);
+}
+
+function assertUnavailableMarketsAreSuspended(html: string) {
+  const document = new JSDOM(html).window.document;
+  const matchRows = Array.from(
+    document.querySelectorAll(".match.default-match, .match.copy-match")
+  );
+  const baseRow = matchRows.find((row) =>
+    row.querySelector(".w-ou .tableDiv-match-odds, .w-hdp .tableDiv-match-odds")
+  );
+  assert.ok(baseRow, "CMD fixture must contain a standard odds row");
+
+  const fixtureID = baseRow.getAttribute("groupid") || baseRow.id;
+  assert.ok(fixtureID, "CMD fixture row must expose an identity");
+  const groupRows = matchRows.filter(
+    (row) => (row.getAttribute("groupid") || row.id) === fixtureID
+  );
+
+  const handicapButtons = groupRows.flatMap((row) =>
+    Array.from(row.querySelectorAll(".w-hdp .tableDiv-match-odds__detail > a"))
+  );
+  assert.ok(handicapButtons.length > 0, "CMD fixture must contain handicap outcomes");
+  for (const button of handicapButtons) {
+    button.setAttribute("disabled", "");
+  }
+
+  const hiddenOuMarket = groupRows
+    .flatMap((row) => Array.from(row.querySelectorAll(".w-ou .tableDiv-match-odds")))[0];
+  assert.ok(hiddenOuMarket, "CMD fixture must contain an O/U market");
+  hiddenOuMarket.classList.add("hide");
+  const hiddenLine = textContent(hiddenOuMarket.querySelector("b"));
+  const hiddenPeriod = hiddenOuMarket.closest(".halfmatchStats") ? "1st" : "ft";
+
+  const parsed = parseJun88CmdSnapshot(
+    document.documentElement.outerHTML,
+    "https://cmd.test",
+    "jun88-cmd"
+  );
+  const fixtureSelections = parsed.selections.filter(
+    (selection) => selection.fixtureId === fixtureID
+  );
+  const handicapSelections = fixtureSelections.filter((selection) =>
+    selection.marketId === "hdp-ah" || selection.marketId === "hdp-ah-1st"
+  );
+  assert.ok(handicapSelections.length > 0, "modified CMD fixture must retain handicap outcomes");
+  assert.ok(
+    handicapSelections.every((selection) => selection.suspended),
+    "disabled CMD handicap outcomes must be suspended in a full snapshot"
+  );
+
+  const hiddenMarketID = hiddenPeriod === "1st" ? "o-u-ou-1st" : "o-u-ou";
+  const hiddenSelections = fixtureSelections.filter(
+    (selection) =>
+      selection.marketId === hiddenMarketID &&
+      (selection.outcomeName === `Over ${hiddenLine}` ||
+        selection.outcomeName === `Under ${hiddenLine}`)
+  );
+  assert.equal(hiddenSelections.length, 2, "hidden CMD O/U market must retain both outcomes");
+  assert.ok(
+    hiddenSelections.every((selection) => selection.suspended),
+    "hidden CMD O/U outcomes must be suspended in a full snapshot"
+  );
 }
 
 function assertStandardFixtureFilter(

@@ -71,12 +71,23 @@ test("promotes only a confirmed verification event to actionable legs", () => {
           outcome_name: "Home +0.5",
           odds: -0.91,
           stake: 0.5
+        },
+        {
+          bookmaker_id: "jun88",
+          lobby_id: "cmd",
+          fixture_id: "fixture-cmd",
+          market_id: "hdp-ah",
+          outcome_id: "fixture-cmd:hdp-ah:away-0-5",
+          outcome_name: "Away -0.5",
+          odds: 0.82,
+          stake: 0.5
         }
       ]
     }
   });
 
   assert.equal(result.items[0].verification_status, "confirmed");
+  assert.equal(result.items[0].odds_profile, "one_negative_one_positive");
   assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].odds, -0.91);
   assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_surebet_leg, true);
 });
@@ -97,6 +108,56 @@ test("clears an expired opportunity without waiting for REST", () => {
   assert.equal(result.items[0].valid_until, "");
   assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_surebet_leg, false);
   assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_candidate_leg, false);
+});
+
+test("does not confirm when a CMD leg is no longer active on the board", () => {
+  const board = createBoard();
+  board.items[0].opportunity_id = "";
+  board.items[0].has_surebet = false;
+  board.items[0].verification_status = "none";
+
+  const result = applyRealtimeVerification(board, {
+    opportunity_id: "opportunity-missing-line",
+    status: "confirmed",
+    opportunity: {
+      id: "opportunity-missing-line",
+      fixture_id: "fixture-match",
+      market_name: "hdp-ah",
+      profit_percentage: 2.4,
+      expected_return: 0.024,
+      detected_at: "2026-07-18T08:00:00Z",
+      expires_at: "2099-07-18T08:00:03Z",
+      verification_status: "confirmed",
+      confirmed_at: "2026-07-18T08:00:01Z",
+      valid_until: "2099-07-18T08:00:03Z",
+      legs: [
+        {
+          bookmaker_id: "8xbet",
+          lobby_id: "default",
+          fixture_id: "fixture-8x",
+          market_id: "hdp-ah",
+          outcome_id: "fixture-8x:hdp-ah:home-0-5",
+          outcome_name: "Home +0.5",
+          odds: -0.91,
+          stake: 0.5
+        },
+        {
+          bookmaker_id: "jun88",
+          lobby_id: "cmd",
+          fixture_id: "fixture-cmd",
+          market_id: "hdp-ah",
+          outcome_id: "fixture-cmd:hdp-ah:away-1-5",
+          outcome_name: "Away -1.5",
+          odds: -0.88,
+          stake: 0.5
+        }
+      ]
+    }
+  });
+
+  assert.equal(result.items[0].has_surebet, false);
+  assert.equal(result.items[0].verification_status, "none");
+  assert.equal(result.items[0].opportunity_id, "");
 });
 
 test("patches matched fixture source timestamps directly from websocket quotes", () => {
@@ -230,7 +291,25 @@ function createBoard(): OpportunityBoard {
             bookmaker_id: "jun88",
             lobby_id: "cmd",
             latest_collected_at: "2026-07-18T08:00:00Z",
-            handicap: [],
+            handicap: [
+              {
+                id: "market-cmd",
+                period: "FT",
+                line: "0.5",
+                outcomes: [
+                  {
+                    fixture_id: "fixture-cmd",
+                    outcome_id: "fixture-cmd:hdp-ah:away-0-5",
+                    outcome_name: "Away -0.5",
+                    side: "away",
+                    odds: 0.82,
+                    collected_at: "2026-07-18T08:00:00Z",
+                    is_surebet_leg: true,
+                    is_candidate_leg: true
+                  }
+                ]
+              }
+            ],
             over_under: []
           }
         ]

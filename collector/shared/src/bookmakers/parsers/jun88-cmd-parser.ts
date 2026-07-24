@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { JSDOM } from "jsdom";
 import type { OddsSelection, OddsSnapshot } from "../../contracts.js";
+import { isCmdOutcomeUnavailable } from "../cmd-availability.js";
 
 type MarketContext = {
   fixtureId: string;
@@ -269,6 +270,7 @@ function createSelection(
   }
 
   const oddsValue = parseOddsValue(textContent(node));
+  const hasOdds = Number.isFinite(oddsValue);
 
   return {
     fixtureId: context.fixtureId,
@@ -281,9 +283,9 @@ function createSelection(
       context.outcomeName
     )}`,
     outcomeName: context.outcomeName,
-    odds: Number.isFinite(oddsValue) ? oddsValue : 0,
+    odds: hasOdds ? oddsValue : 0,
     availableStake: 0,
-    suspended: !Number.isFinite(oddsValue),
+    suspended: !hasOdds || isCmdOutcomeUnavailable(node),
   };
 }
 

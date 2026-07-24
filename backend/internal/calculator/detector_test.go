@@ -76,6 +76,34 @@ func TestDetectRejectsNonArbitrageDecimalOdds(t *testing.T) {
 	}
 }
 
+func TestDetectRejectsDifferentOverUnderLines(t *testing.T) {
+	now := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuote(now, "over-35", "8xbet", "default", "Arsenal", "Milan", "", "Over 3.5", -0.5),
+		testQuote(now, "under-25", "jun88", "cmd", "Arsenal", "Milan", "", "Under 2.5", -0.5),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected different O/U lines to stay in separate buckets, got %+v", items)
+	}
+}
+
+func TestDetectRejectsSuspendedOverUnderLeg(t *testing.T) {
+	now := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	cmd := testQuote(now, "under-35", "jun88", "cmd", "Arsenal", "Milan", "", "Under 3.5", -0.5)
+	cmd.Suspended = true
+	quotes := []models.OddsQuote{
+		testQuote(now, "over-35", "8xbet", "default", "Arsenal", "Milan", "", "Over 3.5", -0.5),
+		cmd,
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected suspended CMD leg to be excluded, got %+v", items)
+	}
+}
+
 func TestDetectAllowsDifferentLobbiesOfTheSameBookmaker(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })

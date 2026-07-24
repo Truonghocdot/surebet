@@ -3,6 +3,7 @@ import type {
   Opportunity,
   OpportunityBoard
 } from "@/features/dashboard/schemas/crm-schemas";
+import { classifyOpportunityOddsProfile } from "@/lib/opportunity-visibility";
 
 export type RealtimeOddsQuote = {
   bookmaker_id: string;
@@ -152,26 +153,19 @@ export function applyRealtimeVerification(
     if (!matches) {
       return fixture;
     }
-    changed = true;
     if (event.status !== "confirmed" || !opportunity) {
-      return {
-        ...fixture,
-        opportunity_id: "",
-        market_name: "",
-        profit_percentage: 0,
-        expected_return: 0,
-        odds_profile: "unknown" as const,
-        confirmed_at: "",
-        expires_at: "",
-        verification_status: "none" as const,
-        valid_until: "",
-        has_surebet: false,
-        match_confidence: 0,
-        match_ambiguous: false,
-        sources: clearOpportunityLegs(fixture.sources)
-      };
+      changed = true;
+      return clearFixtureOpportunity(fixture);
+    }
+    if (!fixtureContainsActiveOpportunityLegs(fixture, opportunity)) {
+      if (fixture.opportunity_id !== event.opportunity_id) {
+        return fixture;
+      }
+      changed = true;
+      return clearFixtureOpportunity(fixture);
     }
 
+    changed = true;
     const confirmedKeys = new Map(
       opportunity.legs.map((leg) => [
         quoteKey({
@@ -194,6 +188,7 @@ export function applyRealtimeVerification(
       market_name: opportunity.market_name,
       profit_percentage: opportunity.profit_percentage,
       expected_return: opportunity.expected_return,
+      odds_profile: classifyOpportunityOddsProfile(opportunity),
       confirmed_at: opportunity.confirmed_at ?? event.confirmed_at ?? "",
       expires_at: opportunity.expires_at,
       verification_status: "confirmed" as const,
@@ -205,6 +200,60 @@ export function applyRealtimeVerification(
     };
   });
   return changed ? { ...board, items } : board;
+}
+
+function fixtureContainsActiveOpportunityLegs(
+  fixture: OpportunityBoard["items"][number],
+  opportunity: Opportunity
+) {
+  if (opportunity.legs.length !== 2) {
+    return false;
+  }
+
+  const activeQuoteKeys = new Set(
+    fixture.sources.flatMap((source) =>
+      [...source.handicap, ...source.over_under].flatMap((market) =>
+        market.outcomes.map((outcome) =>
+          quoteKey({
+            bookmaker_id: source.bookmaker_id,
+            lobby_id: source.lobby_id,
+            fixture_id: outcome.fixture_id,
+            outcome_id: outcome.outcome_id
+          })
+        )
+      )
+    )
+  );
+  const legKeys = opportunity.legs.map((leg) => quoteKey({
+    bookmaker_id: leg.bookmaker_id,
+    lobby_id: leg.lobby_id,
+    fixture_id: leg.fixture_id,
+    outcome_id: leg.outcome_id
+  }));
+
+  return new Set(legKeys).size === 2 &&
+    legKeys.every((key) => activeQuoteKeys.has(key));
+}
+
+function clearFixtureOpportunity(
+  fixture: OpportunityBoard["items"][number]
+): OpportunityBoard["items"][number] {
+  return {
+    ...fixture,
+    opportunity_id: "",
+    market_name: "",
+    profit_percentage: 0,
+    expected_return: 0,
+    odds_profile: "unknown",
+    confirmed_at: "",
+    expires_at: "",
+    verification_status: "none",
+    valid_until: "",
+    has_surebet: false,
+    match_confidence: 0,
+    match_ambiguous: false,
+    sources: clearOpportunityLegs(fixture.sources)
+  };
 }
 
 function fixtureContainsOpportunity(
