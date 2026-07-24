@@ -61,6 +61,7 @@ export class EightXBetNetworkFeed {
   private rawOddsSamples: number[] = [];
   private formatObservationCount = 0;
   private formatUnhealthyReason = "";
+  private lastOddsMessageAtMs = 0;
   private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly collectorId: string) {}
@@ -73,6 +74,7 @@ export class EightXBetNetworkFeed {
     this.lastCoverageAt = 0;
     this.lastCoverageSignature = "";
     this.metadataFixtureTotal = 0;
+    this.lastOddsMessageAtMs = 0;
     const onResponse = (response: Response) => {
       void this.ingestResponse(response, metadataGeneration);
     };
@@ -169,6 +171,16 @@ export class EightXBetNetworkFeed {
     return (this.fixtures.get(fixtureId)?.seenMarkets.size ?? 0) > 0;
   }
 
+  pendingActiveFixtureIds() {
+    return (this.activeFixtureIds() ?? []).filter(
+      (fixtureId) => !this.hasDecodedFixture(fixtureId)
+    );
+  }
+
+  lastOddsMessageAt() {
+    return this.lastOddsMessageAtMs;
+  }
+
   activeFixtureIds() {
     return this.activeMetadataFixtureIds
       ? Array.from(this.activeMetadataFixtureIds).sort()
@@ -195,6 +207,7 @@ export class EightXBetNetworkFeed {
     this.rawOddsSamples = [];
     this.formatObservationCount = 0;
     this.formatUnhealthyReason = "";
+    this.lastOddsMessageAtMs = 0;
     if (!clearQuotes) {
       return;
     }
@@ -316,6 +329,7 @@ export class EightXBetNetworkFeed {
     if (!parsed) {
       return;
     }
+    this.lastOddsMessageAtMs = Date.now();
     this.formatObservationCount += 1;
     this.latestOddsDestination = parsed.destination;
     this.priceDisplay = parsed.priceDisplay;

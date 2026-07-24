@@ -231,6 +231,7 @@ async function testMarketDeltaDelivery() {
     })
   });
   await feed.flush();
+  assert.ok(feed.lastOddsMessageAt() > 0, "valid odds frames must update stream liveness");
   assert.equal(delivered.length, 0, "an unchanged INIT must not emit deltas");
   assert.deepEqual(feed.oddsFormatDiagnostics(), {
     destination: "/topic/odds-diff/match/4824992/pd1/MOBILE",
@@ -269,6 +270,7 @@ async function testMarketDeltaDelivery() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await feed.flush();
   assert.deepEqual(feed.activeFixtureIds(), ["4824992"]);
+  assert.deepEqual(feed.pendingActiveFixtureIds(), []);
   assert.match(
     feed.hardConfirmationURL("4824992"),
     /\/product\/business\/sport\/inplay\/match\?.*iid=4824992/

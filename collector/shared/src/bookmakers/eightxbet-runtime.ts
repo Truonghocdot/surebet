@@ -74,12 +74,33 @@ export class EightXBetRuntime {
         }
       );
       let lastReconcileAt = Date.now();
+      let incompleteCoverageSince = coverageIsIncomplete(this.networkFeed.coverageStats())
+        ? Date.now()
+        : 0;
 
       while (!page.isClosed()) {
         assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
+        assertEightXBetStreamLive(this.networkFeed);
         if (Date.now() - lastReconcileAt >= eightXBetReconcileIntervalMs()) {
+          const pendingFixtureIds = this.networkFeed.pendingActiveFixtureIds();
+          if (pendingFixtureIds.length > 0) {
+            await retryEightXBetFixtureSubscriptions(page, pendingFixtureIds);
+          }
           await this.networkFeed.flush();
           assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
+          const coverage = this.networkFeed.coverageStats();
+          if (coverageIsIncomplete(coverage)) {
+            incompleteCoverageSince ||= Date.now();
+            if (Date.now() - incompleteCoverageSince >= eightXBetCoverageGraceMs()) {
+              throw new Error(
+                `8xbet source unhealthy: incomplete fixture coverage ` +
+                `(metadata=${coverage.metadataFixtures} decoded=${coverage.decodedFixtures} ` +
+                `pending=${coverage.pendingFixtures})`
+              );
+            }
+          } else {
+            incompleteCoverageSince = 0;
+          }
           snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
           await onSnapshot(snapshot, "bootstrap");
           lastReconcileAt = Date.now();
@@ -113,7 +134,11 @@ export class EightXBetRuntime {
       throw new Error("8xbet in-play page is not available for confirmation");
     }
 
-    const snapshot = await this.confirmFixtureSnapshot(context, request.fixtureId, request.timeoutMs);
+    const snapshot = await this.confirmFixtureSnapshot(
+      context,
+      request.fixtureId,
+      request.timeoutMs
+    );
     const selection = snapshot.selections.find(
       (item) =>
         item.fixtureId === request.fixtureId &&
@@ -208,7 +233,6 @@ export class EightXBetRuntime {
     this.targetURL = targetURL;
 
     try {
-      await page.goto(targetURL, { waitUntil: "domcontentloaded" });
       await waitForEightXBetReady(page, targetURL, this.networkFeed);
       await this.inspectNetworkOddsFormat(page);
       return page;
@@ -285,10 +309,15 @@ export class EightXBetRuntime {
   }
 
   private async waitForNetworkBootstrap(page: Page) {
-    const deadline = Date.now() + Math.max(envInt("EIGHTXBET_NETWORK_BOOTSTRAP_MS", 5_000), 0);
+    const deadline = Date.now() + Math.max(envInt("EIGHTXBET_NETWORK_BOOTSTRAP_MS", 10_000), 0);
     let snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
 
-    while (!page.isClosed() && snapshot.selections.length === 0 && Date.now() < deadline) {
+    while (
+      !page.isClosed() &&
+      Date.now() < deadline &&
+      (snapshot.selections.length === 0 ||
+        coverageIsIncomplete(this.networkFeed.coverageStats()))
+    ) {
       await page.waitForTimeout(Math.min(streamPollIntervalMs(), 250));
       await this.networkFeed.flush();
       snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
@@ -361,19 +390,56 @@ async function waitForEightXBetReady(
   targetURL: string,
   feed: EightXBetNetworkFeed
 ) {
-  await waitForPageSettle(page);
-  let ready = await waitForEightXBetPageSignal(page, feed, 20_000);
-
-  if (!ready) {
-    await page.reload({ waitUntil: "domcontentloaded" }).catch(() => undefined);
-    await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+  if (isEightXBetInplayURL(page.url())) {
     await waitForPageSettle(page);
-    ready = await waitForEightXBetPageSignal(page, feed, 20_000);
+    if (await waitForEightXBetPageSignal(page, feed, 3_000)) {
+      return;
+    }
   }
 
-  if (!ready) {
-    throw new Error("8xbet in-play metadata and list did not arrive in time.");
+  let lastNavigationError = "";
+  const attempts = Math.max(envInt("EIGHTXBET_NAVIGATION_ATTEMPTS", 3), 1);
+  for (let attempt = 1; attempt <= attempts && !page.isClosed(); attempt += 1) {
+    try {
+      await page.goto(targetURL, { waitUntil: "domcontentloaded" });
+      lastNavigationError = "";
+    } catch (error) {
+      lastNavigationError = asError(error).message;
+      console.warn(
+        `[8xbet-network] inplay navigation interrupted attempt=${attempt}/${attempts}` +
+          ` current=${JSON.stringify(page.url())} error=${JSON.stringify(lastNavigationError)}`
+      );
+    }
+
+    await waitForPageSettle(page);
+    if (!isEightXBetInplayURL(page.url())) {
+      console.warn(
+        `[8xbet-network] inplay navigation redirected attempt=${attempt}/${attempts}` +
+          ` current=${JSON.stringify(page.url())}`
+      );
+      continue;
+    }
+    if (
+      await waitForEightXBetPageSignal(
+        page,
+        feed,
+        Math.max(envInt("EIGHTXBET_NAVIGATION_READY_MS", 15_000), 1_000)
+      )
+    ) {
+      return;
+    }
+    console.warn(
+      `[8xbet-network] inplay route has no metadata attempt=${attempt}/${attempts}` +
+        ` current=${JSON.stringify(page.url())}`
+    );
   }
+
+  throw new Error(
+    `8xbet in-play navigation did not become ready ` +
+      `(target=${targetURL} current=${page.url()}` +
+      (lastNavigationError ? ` error=${lastNavigationError}` : "") +
+      `)`
+  );
 }
 
 async function waitForEightXBetPageSignal(
@@ -390,13 +456,29 @@ async function waitForEightXBetPageSignal(
     if (await fixture.isVisible().catch(() => false)) {
       return true;
     }
-    await page.waitForTimeout(100);
+    const pageStillOpen = await page
+      .waitForTimeout(100)
+      .then(() => true)
+      .catch(() => false);
+    if (!pageStillOpen) {
+      return false;
+    }
   }
   return false;
 }
 
 async function waitForPageSettle(page: Page) {
   await page.waitForTimeout(Math.max(envInt("COLLECT_PAGE_SETTLE_MS", 1_000), 0));
+}
+
+function isEightXBetInplayURL(value: string) {
+  try {
+    return new URL(value)
+      .pathname.toLowerCase()
+      .includes(EIGHTXBET_INPLAY_PATH.toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 const eightXBetOddsFormatLabels = [
@@ -511,7 +593,13 @@ function resolveEightXBetTargetURL(value: string) {
 }
 
 async function installEightXBetSocketSubscriptionBridge(context: BrowserContext) {
-  await context.addInitScript(({ batchSize, batchDelayMs }) => {
+  const installBridge = ({
+    batchSize,
+    batchDelayMs
+  }: {
+    batchSize: number;
+    batchDelayMs: number;
+  }) => {
     const nativeWebSocket = window.WebSocket;
     const desiredFixtureIDs = new Set<string>();
     const sockets = new Set<WebSocket>();
@@ -609,6 +697,35 @@ async function installEightXBetSocketSubscriptionBridge(context: BrowserContext)
       scheduleSubscriptionDrain(socket);
     };
 
+    const trackedSockets = new WeakSet<WebSocket>();
+    const trackSocket = (socket: WebSocket) => {
+      if (trackedSockets.has(socket) || !isSportsSocket(socket.url)) {
+        return;
+      }
+      trackedSockets.add(socket);
+      sockets.add(socket);
+      socket.addEventListener("message", (event) => {
+        if (typeof event.data !== "string" || !event.data.startsWith("CONNECTED")) {
+          return;
+        }
+        connectedSockets.add(socket);
+        syncSubscriptions(socket);
+      });
+      socket.addEventListener("close", () => {
+        const queue = subscriptionQueues.get(socket);
+        if (queue && queue.timer !== null) window.clearTimeout(queue.timer);
+        sockets.delete(socket);
+      });
+    };
+
+    // The app can retain the native constructor before our subclass is read.
+    // Intercepting prototype.send still discovers that socket before CONNECTED.
+    const nativeSend = nativeWebSocket.prototype.send;
+    nativeWebSocket.prototype.send = function(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+      trackSocket(this);
+      return nativeSend.call(this, data);
+    };
+
     class TrackedWebSocket extends nativeWebSocket {
       constructor(url: string | URL, protocols?: string | string[]) {
         if (protocols === undefined) {
@@ -616,29 +733,44 @@ async function installEightXBetSocketSubscriptionBridge(context: BrowserContext)
         } else {
           super(url, protocols);
         }
-        if (!isSportsSocket(String(url))) {
-          return;
-        }
-
-        sockets.add(this);
-        this.addEventListener("message", (event) => {
-          if (typeof event.data !== "string" || !event.data.startsWith("CONNECTED")) {
-            return;
-          }
-          connectedSockets.add(this);
-          syncSubscriptions(this);
-        });
-        this.addEventListener("close", () => {
-          const queue = subscriptionQueues.get(this);
-          if (queue && queue.timer !== null) window.clearTimeout(queue.timer);
-          sockets.delete(this);
-        });
+        trackSocket(this);
       }
     }
 
     window.WebSocket = TrackedWebSocket as typeof WebSocket;
+    const status = () => ({
+      sockets: sockets.size,
+      connected: Array.from(sockets).filter(
+        (socket) => connectedSockets.has(socket) && socket.readyState === nativeWebSocket.OPEN
+      ).length,
+      desired: desiredFixtureIDs.size
+    });
+    const retrySubscriptions = (fixtureIDs: string[]) => {
+      const retryFixtureIDs = new Set(fixtureIDs.filter((fixtureID) => /^\d+$/.test(fixtureID)));
+      for (const socket of sockets) {
+        if (!connectedSockets.has(socket) || socket.readyState !== nativeWebSocket.OPEN) {
+          continue;
+        }
+        const active = subscribedFixtureIDs.get(socket) ?? new Set<string>();
+        const queue = queueState(socket);
+        for (const fixtureID of retryFixtureIDs) {
+          if (!desiredFixtureIDs.has(fixtureID)) {
+            continue;
+          }
+          if (active.has(fixtureID)) {
+            sendFrame(socket, `UNSUBSCRIBE\nid:${subscriptionID(fixtureID)}`);
+            active.delete(fixtureID);
+          }
+          queue.pending.add(fixtureID);
+        }
+        subscribedFixtureIDs.set(socket, active);
+        scheduleSubscriptionDrain(socket);
+      }
+      return status();
+    };
     const bridgeWindow = window as typeof window & {
-      __surebetSetEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
+      __surebetSetEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => ReturnType<typeof status>;
+      __surebetRetryEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => ReturnType<typeof status>;
     };
     bridgeWindow.__surebetSetEightXBetFixtureSubscriptions = (fixtureIDs) => {
       desiredFixtureIDs.clear();
@@ -650,20 +782,81 @@ async function installEightXBetSocketSubscriptionBridge(context: BrowserContext)
       for (const socket of sockets) {
         syncSubscriptions(socket);
       }
+      return status();
     };
-  }, {
+    bridgeWindow.__surebetRetryEightXBetFixtureSubscriptions = retrySubscriptions;
+  };
+  const options = {
     batchSize: eightXBetSubscriptionBatchSize(),
     batchDelayMs: eightXBetSubscriptionBatchDelayMs()
+  };
+  // tsx injects __name calls into Function#toString output. The browser realm
+  // must receive that helper in the same init script as the bridge installer.
+  await context.addInitScript({
+    content:
+      `globalThis.__name ||= ((target) => target);` +
+      `(${installBridge.toString()})(${JSON.stringify(options)});`
   });
 }
 
 async function setEightXBetFixtureSubscriptions(page: Page, fixtureIDs: string[]) {
-  await page.evaluate((ids) => {
-    (window as typeof window & {
-      __surebetSetEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => void;
-    }).__surebetSetEightXBetFixtureSubscriptions?.(ids);
-  }, fixtureIDs);
-  console.log(`[8xbet-network] fixture subscriptions requested=${fixtureIDs.length}`);
+  const statuses = await Promise.all(
+    page.frames().map((frame) =>
+      frame.evaluate((ids) => {
+        const bridgeWindow = window as typeof window & {
+          __surebetSetEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => {
+            sockets: number;
+            connected: number;
+            desired: number;
+          };
+        };
+        return bridgeWindow.__surebetSetEightXBetFixtureSubscriptions?.(ids) ?? null;
+      }, fixtureIDs).catch(() => null)
+    )
+  );
+  const status = summarizeSubscriptionBridgeStatuses(statuses);
+  console.log(
+    `[8xbet-network] fixture subscriptions requested=${fixtureIDs.length}` +
+      ` frames=${page.frames().length} bridges=${status.bridges}` +
+      ` sockets=${status.sockets} connected=${status.connected}`
+  );
+}
+
+async function retryEightXBetFixtureSubscriptions(page: Page, fixtureIDs: string[]) {
+  const statuses = await Promise.all(
+    page.frames().map((frame) =>
+      frame.evaluate((ids) => {
+        return (window as typeof window & {
+          __surebetRetryEightXBetFixtureSubscriptions?: (fixtureIDs: string[]) => {
+            sockets: number;
+            connected: number;
+            desired: number;
+          };
+        }).__surebetRetryEightXBetFixtureSubscriptions?.(ids) ?? null;
+      }, fixtureIDs).catch(() => null)
+    )
+  );
+  const status = summarizeSubscriptionBridgeStatuses(statuses);
+  console.warn(
+    `[8xbet-network] fixture subscriptions retried=${fixtureIDs.length}` +
+      ` frames=${page.frames().length} bridges=${status.bridges}` +
+      ` sockets=${status.sockets} connected=${status.connected}`
+  );
+}
+
+function summarizeSubscriptionBridgeStatuses(
+  statuses: Array<{ sockets: number; connected: number; desired: number } | null>
+) {
+  return statuses.reduce(
+    (summary, status) => {
+      if (!status) return summary;
+      summary.bridges += 1;
+      summary.sockets += status.sockets;
+      summary.connected += status.connected;
+      return summary;
+    },
+    { bridges: 0, sockets: 0, connected: 0 }
+  );
 }
 
 function emptyEightXBetSnapshot(collectorId: string): OddsSnapshot {
@@ -682,6 +875,37 @@ function eightXBetReconcileIntervalMs() {
   return Math.max(envInt("EIGHTXBET_RECONCILE_MS", 15_000), 10_000);
 }
 
+function eightXBetCoverageGraceMs() {
+  return Math.max(envInt("EIGHTXBET_COVERAGE_GRACE_MS", 30_000), 10_000);
+}
+
+function eightXBetStreamStaleMs() {
+  return Math.max(envInt("EIGHTXBET_STREAM_STALE_MS", 30_000), 10_000);
+}
+
+function coverageIsIncomplete(stats: ReturnType<EightXBetNetworkFeed["coverageStats"]>) {
+  const allowedPending = Math.max(2, Math.floor(stats.metadataFixtures * 0.1));
+  return stats.pendingFixtures > allowedPending;
+}
+
+function assertEightXBetStreamLive(feed: EightXBetNetworkFeed) {
+  const stats = feed.coverageStats();
+  if (stats.metadataFixtures < 10) {
+    return;
+  }
+  const lastMessageAt = feed.lastOddsMessageAt();
+  const staleForMs =
+    lastMessageAt > 0 ? Date.now() - lastMessageAt : Number.POSITIVE_INFINITY;
+  if (staleForMs < eightXBetStreamStaleMs()) {
+    return;
+  }
+  throw new Error(
+    `8xbet source unhealthy: odds WebSocket is stale ` +
+      `(stale_ms=${Math.round(staleForMs)} metadata=${stats.metadataFixtures} ` +
+      `decoded=${stats.decodedFixtures})`
+  );
+}
+
 function eightXBetSubscriptionBatchSize() {
   return Math.min(Math.max(envInt("EIGHTXBET_SUBSCRIPTION_BATCH_SIZE", 4), 1), 20);
 }
@@ -692,4 +916,8 @@ function eightXBetSubscriptionBatchDelayMs() {
 
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function asError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error));
 }
