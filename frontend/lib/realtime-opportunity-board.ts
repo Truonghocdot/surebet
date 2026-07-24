@@ -129,7 +129,7 @@ export function applyRealtimeOddsQuotes(
       match_confidence: 0,
       match_ambiguous: false,
       latest_collected_at: fixtureLatest,
-      sources: clearSurebetLegs(sources)
+      sources: clearOpportunityLegs(sources)
     };
   });
 
@@ -156,10 +156,19 @@ export function applyRealtimeVerification(
     if (event.status !== "confirmed" || !opportunity) {
       return {
         ...fixture,
-        verification_status: fixture.has_surebet ? "candidate" as const : "none" as const,
+        opportunity_id: "",
+        market_name: "",
+        profit_percentage: 0,
+        expected_return: 0,
+        odds_profile: "unknown" as const,
         confirmed_at: "",
+        expires_at: "",
+        verification_status: "none" as const,
         valid_until: "",
-        sources: clearSurebetLegs(fixture.sources)
+        has_surebet: false,
+        match_confidence: 0,
+        match_ambiguous: false,
+        sources: clearOpportunityLegs(fixture.sources)
       };
     }
 
@@ -294,22 +303,23 @@ export function applyRealtimeMatchedFixtures(
     : snapshot;
 }
 
-function clearSurebetLegs(boardSources: OpportunityBoard["items"][number]["sources"]) {
+function clearOpportunityLegs(boardSources: OpportunityBoard["items"][number]["sources"]) {
   return boardSources.map((source) => ({
     ...source,
-    handicap: clearMarketSurebetLegs(source.handicap),
-    over_under: clearMarketSurebetLegs(source.over_under)
+    handicap: clearMarketOpportunityLegs(source.handicap),
+    over_under: clearMarketOpportunityLegs(source.over_under)
   }));
 }
 
-function clearMarketSurebetLegs(
+function clearMarketOpportunityLegs(
   markets: OpportunityBoard["items"][number]["sources"][number]["handicap"]
 ) {
   return markets.map((market) => ({
     ...market,
     outcomes: market.outcomes.map((outcome) => ({
       ...outcome,
-      is_surebet_leg: false
+      is_surebet_leg: false,
+      is_candidate_leg: false
     }))
   }));
 }

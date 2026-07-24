@@ -81,7 +81,7 @@ test("promotes only a confirmed verification event to actionable legs", () => {
   assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_surebet_leg, true);
 });
 
-test("downgrades an expired verification without waiting for REST", () => {
+test("clears an expired opportunity without waiting for REST", () => {
   const board = createBoard();
   board.items[0].verification_status = "confirmed";
   board.items[0].valid_until = "2099-07-18T08:00:03Z";
@@ -91,9 +91,12 @@ test("downgrades an expired verification without waiting for REST", () => {
     status: "expired"
   });
 
-  assert.equal(result.items[0].verification_status, "candidate");
+  assert.equal(result.items[0].verification_status, "none");
+  assert.equal(result.items[0].has_surebet, false);
+  assert.equal(result.items[0].opportunity_id, "");
   assert.equal(result.items[0].valid_until, "");
   assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_surebet_leg, false);
+  assert.equal(result.items[0].sources[0].handicap[0].outcomes[0].is_candidate_leg, false);
 });
 
 test("patches matched fixture source timestamps directly from websocket quotes", () => {

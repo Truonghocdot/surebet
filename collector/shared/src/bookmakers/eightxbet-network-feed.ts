@@ -158,7 +158,9 @@ export class EightXBetNetworkFeed {
 
     return {
       ...domSnapshot,
-      collectedAt: latestOccurredAt(this.fixtures, domSnapshot.collectedAt),
+      // A reconciliation re-observes every retained price, even when it has
+      // not changed since the source's last market event.
+      collectedAt: new Date().toISOString(),
       selections
     };
   }
@@ -1114,14 +1116,6 @@ function groupSelectionsByFixture(selections: OddsSelection[]) {
     grouped.set(selection.fixtureId, current);
   }
   return grouped;
-}
-
-function latestOccurredAt(fixtures: Map<string, FeedFixtureState>, fallback: string) {
-  let latest = new Date(fallback).getTime();
-  for (const state of fixtures.values()) {
-    latest = Math.max(latest, new Date(state.occurredAt).getTime());
-  }
-  return Number.isFinite(latest) ? new Date(latest).toISOString() : fallback;
 }
 
 function fixtureMetadataEqual(

@@ -68,7 +68,7 @@ function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
     const timer = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(timer);
   }, []);
-  const fixtures = board.items.filter(isCurrentMatchedFixture);
+  const fixtures = useOrderedFixtures(board.items);
 
   if (fixtures.length === 0) {
     return <EmptyBoard />;
@@ -101,6 +101,26 @@ function OpportunityBoardTable({ board }: { board: OpportunityBoard }) {
       </table>
     </div>
   );
+}
+
+function useOrderedFixtures(items: OpportunityBoardFixture[]) {
+  const baseOrder = useRef(new Map<string, number>());
+  const nextOrder = useRef(0);
+  const fixtures = items.filter(isCurrentMatchedFixture);
+
+  for (const fixture of fixtures) {
+    if (!baseOrder.current.has(fixture.id)) {
+      baseOrder.current.set(fixture.id, nextOrder.current);
+      nextOrder.current += 1;
+    }
+  }
+
+  return [...fixtures].sort((left, right) => {
+    if (left.has_surebet !== right.has_surebet) {
+      return left.has_surebet ? -1 : 1;
+    }
+    return (baseOrder.current.get(left.id) ?? 0) - (baseOrder.current.get(right.id) ?? 0);
+  });
 }
 
 function isCurrentMatchedFixture(fixture: OpportunityBoardFixture) {

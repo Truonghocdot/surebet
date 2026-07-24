@@ -131,13 +131,7 @@ export function buildCurrentOpportunityBoard(
       if (left.has_surebet !== right.has_surebet) {
         return left.has_surebet ? -1 : 1;
       }
-      if (right.profit_percentage !== left.profit_percentage) {
-        return right.profit_percentage - left.profit_percentage;
-      }
-      return (
-        new Date(right.latest_collected_at).getTime() -
-        new Date(left.latest_collected_at).getTime()
-      );
+      return 0;
     });
 }
 

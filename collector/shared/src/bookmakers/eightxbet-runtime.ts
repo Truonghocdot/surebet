@@ -669,7 +669,7 @@ function emptyEightXBetSnapshot(collectorId: string): OddsSnapshot {
 }
 
 function eightXBetReconcileIntervalMs() {
-  return Math.max(envInt("EIGHTXBET_RECONCILE_MS", 5 * 60_000), 60_000);
+  return Math.max(envInt("EIGHTXBET_RECONCILE_MS", 15_000), 10_000);
 }
 
 function eightXBetSubscriptionBatchSize() {
