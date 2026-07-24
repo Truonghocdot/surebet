@@ -41,6 +41,7 @@ export class EightXBetRuntime {
   private readonly confirmationSnapshots = new Map<string, Promise<OddsSnapshot>>();
   private oddsFormatAction = "unchanged";
   private oddsFormatLabel = "unknown";
+  private fixtureSubscriptionSignature = "";
 
   constructor(private readonly collectorId: string) {
     this.networkFeed = new EightXBetNetworkFeed(collectorId);
@@ -69,7 +70,7 @@ export class EightXBetRuntime {
           await onFixtureDeltas?.(deltas, fixtureId);
         },
         async (fixtureIds) => {
-          await setEightXBetFixtureSubscriptions(page, fixtureIds);
+          await this.syncNetworkSubscriptions(page, fixtureIds);
         }
       );
       let lastReconcileAt = Date.now();
@@ -77,7 +78,6 @@ export class EightXBetRuntime {
       while (!page.isClosed()) {
         assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
         if (Date.now() - lastReconcileAt >= eightXBetReconcileIntervalMs()) {
-          await this.refreshNetworkSubscriptions(page, targetURL);
           await this.networkFeed.flush();
           assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
           snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
@@ -224,6 +224,7 @@ export class EightXBetRuntime {
     this.context = null;
     this.page = null;
     this.targetURL = "";
+    this.fixtureSubscriptionSignature = "";
     this.detachTrafficRecorder?.();
     this.detachTrafficRecorder = null;
     this.detachNetworkFeed?.();
@@ -240,7 +241,16 @@ export class EightXBetRuntime {
     await waitForEightXBetReady(page, targetURL, this.networkFeed);
 
     const fixtureIds = await this.waitForMetadataFixtureIds(page);
+    await this.syncNetworkSubscriptions(page, fixtureIds);
+  }
+
+  private async syncNetworkSubscriptions(page: Page, fixtureIds: string[]) {
+    const signature = fixtureIds.join(",");
+    if (signature === this.fixtureSubscriptionSignature) {
+      return;
+    }
     await setEightXBetFixtureSubscriptions(page, fixtureIds);
+    this.fixtureSubscriptionSignature = signature;
   }
 
   private async prepareNetworkFeed(page: Page, targetURL: string) {

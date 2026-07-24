@@ -43,6 +43,9 @@ type ConfirmQuoteFrame = {
   timeout_ms?: number;
 };
 
+const eventStartAtLogTimes = new Map<string, number>();
+const eventStartAtLogIntervalMs = 60_000;
+
 export class BackendCollectorStreamSink implements CollectorSink {
   private readonly startedAt = new Date().toISOString();
   private readonly streamURL: string;
@@ -558,6 +561,25 @@ function logEventStartAtNormalization(
     const key = `${raw}=>${normalized}`;
     pairs.set(key, (pairs.get(key) ?? 0) + 1);
   }
+
+  if (pairs.size === 0) {
+    return;
+  }
+
+  const signature = [
+    source.collectorId,
+    source.bookmakerId,
+    source.lobbyId,
+    ...Array.from(pairs.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, count]) => `${key}:${count}`)
+  ].join("|");
+  const now = Date.now();
+  const previousLogAt = eventStartAtLogTimes.get(signature) ?? 0;
+  if (now - previousLogAt < eventStartAtLogIntervalMs) {
+    return;
+  }
+  eventStartAtLogTimes.set(signature, now);
 
   for (const [key, count] of pairs.entries()) {
     const [raw, normalized] = key.split("=>");
