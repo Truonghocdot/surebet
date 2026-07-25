@@ -124,6 +124,29 @@ test("drops a previous-day fixture even when its quotes were just recollected", 
   assert.deepEqual(buildCurrentOpportunityBoard([], odds), []);
 });
 
+test("drops a finished fixture from the shared matches board", () => {
+  const collectedAt = new Date().toISOString();
+  const odds = [
+    quote({
+      bookmaker_id: "8xbet",
+      fixture_id: "finished-8xbet",
+      match_state: "finished",
+      outcome_id: "finished-8xbet:home",
+      collected_at: collectedAt
+    }),
+    quote({
+      bookmaker_id: "jun88",
+      lobby_id: "cmd",
+      fixture_id: "finished-cmd",
+      match_state: "finished",
+      outcome_id: "finished-cmd:home",
+      collected_at: collectedAt
+    })
+  ];
+
+  assert.deepEqual(buildCurrentOpportunityBoard([], odds), []);
+});
+
 function quote(overrides: Partial<BackendOdds>): BackendOdds {
   return {
     bookmaker_id: "bookmaker",

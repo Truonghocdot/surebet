@@ -127,7 +127,9 @@ export function buildCurrentOpportunityBoard(
   );
 
   return groupMatchedFixtures(currentOdds, fixtureIndex)
-    .filter((fixture) => fixture.sources.size >= 2)
+    .filter(
+      (fixture) => fixture.sources.size >= 2 && fixture.match_state !== "finished"
+    )
     .map((fixture) =>
       serializeFixture(fixture, opportunitiesByFixture.get(fixture.id) ?? [])
     )

@@ -4,12 +4,10 @@ import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchDashboardSnapshot,
-  fetchMatchedFixtures,
   fetchOpportunityBoard
 } from "@/features/dashboard/api/crm-api";
 import {
   opportunitySchema,
-  type MatchedFixturesSnapshot,
   type OpportunityBoard
 } from "@/features/dashboard/schemas/crm-schemas";
 import { backendWebSocketURL } from "@/lib/realtime-url";
@@ -20,7 +18,6 @@ import {
 } from "@/lib/opportunity-visibility";
 import { useRealtimeNotificationStore } from "@/store/realtime-notification-store";
 import {
-  applyRealtimeMatchedFixtures,
   applyRealtimeOddsQuotes,
   applyRealtimeVerification,
   type RealtimeVerificationEvent,
@@ -29,7 +26,6 @@ import {
 
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
-  matchedFixtures: ["crm", "matched-fixtures"] as const,
   opportunityBoard: (role: string | null | undefined) =>
     ["crm", "opportunity-board", role ?? "anonymous"] as const
 };
@@ -49,13 +45,6 @@ export function useOpportunityBoardQuery() {
     select: (board) => filterOpportunityBoardForRole(board, role),
     refetchInterval: 15_000,
     refetchIntervalInBackground: false
-  });
-}
-
-export function useMatchedFixturesQuery() {
-  return useQuery({
-    queryKey: crmQueryKeys.matchedFixtures,
-    queryFn: fetchMatchedFixtures
   });
 }
 
@@ -95,7 +84,6 @@ export function useRealtimeWebSocket() {
       secondaryRefreshTimer = null;
       lastSecondaryRefreshAt = Date.now();
       void queryClient.invalidateQueries({ queryKey: crmQueryKeys.dashboard });
-      void queryClient.invalidateQueries({ queryKey: crmQueryKeys.matchedFixtures });
     };
 
     const scheduleBoardRefresh = () => {
@@ -146,14 +134,6 @@ export function useRealtimeWebSocket() {
                 crmQueryKeys.opportunityBoard(roleRef.current),
                 (current) => current
                   ? applyRealtimeOddsQuotes(current, quotes).board
-                  : current
-              );
-            }
-            if (quotes.length > 0) {
-              queryClient.setQueryData<MatchedFixturesSnapshot>(
-                crmQueryKeys.matchedFixtures,
-                (current) => current
-                  ? applyRealtimeMatchedFixtures(current, quotes)
                   : current
               );
             }
