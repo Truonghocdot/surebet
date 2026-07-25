@@ -101,6 +101,29 @@ test("keeps an ambiguous match visible without promoting it as a surebet", () =>
   );
 });
 
+test("drops a previous-day fixture even when its quotes were just recollected", () => {
+  const collectedAt = new Date().toISOString();
+  const expiredStartAt = new Date(Date.now() - 7 * 60 * 60 * 1_000).toISOString();
+  const odds = [
+    quote({
+      bookmaker_id: "8xbet",
+      fixture_id: "expired-8xbet",
+      event_start_at: expiredStartAt,
+      outcome_id: "expired-8xbet:home",
+      collected_at: collectedAt
+    }),
+    quote({
+      bookmaker_id: "jun88",
+      lobby_id: "cmd",
+      fixture_id: "expired-cmd",
+      outcome_id: "expired-cmd:home",
+      collected_at: collectedAt
+    })
+  ];
+
+  assert.deepEqual(buildCurrentOpportunityBoard([], odds), []);
+});
+
 function quote(overrides: Partial<BackendOdds>): BackendOdds {
   return {
     bookmaker_id: "bookmaker",

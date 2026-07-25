@@ -675,6 +675,19 @@ func TestDetectRejectsStaleQuotesAndAllowsFreshTimestampSkew(t *testing.T) {
 	}
 }
 
+func TestDetectRejectsExpiredEventWithFreshlyRecollectedQuotes(t *testing.T) {
+	now := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	over := testQuote(now, "over", "8xbet", "default", "Arsenal", "Milan", "", "Over 2.5", -0.5)
+	under := testQuote(now, "under", "jun88", "cmd", "Arsenal", "Milan", "", "Under 2.5", -0.5)
+	expiredStartAt := now.Add(-7 * time.Hour)
+	over.EventStartAt = &expiredStartAt
+
+	if items := detect(t, detector, []models.OddsQuote{over, under}); len(items) != 0 {
+		t.Fatalf("expected previous-day event to be rejected despite fresh collection time, got %+v", items)
+	}
+}
+
 func TestHasCompatibleQuoteTimes(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	if !hasCompatibleQuoteTimes(now, now.Add(-5*time.Minute)) {

@@ -74,11 +74,17 @@ export class EightXBetRuntime {
         }
       );
       let lastReconcileAt = Date.now();
+      const pageRefreshMs = eightXBetPageRefreshMs();
+      const pageRefreshAt = Date.now() + pageRefreshMs;
       let incompleteCoverageSince = coverageIsIncomplete(this.networkFeed.coverageStats())
         ? Date.now()
         : 0;
 
       while (!page.isClosed()) {
+        if (Date.now() >= pageRefreshAt) {
+          console.log(`[8xbet-runtime] recycling page after ${pageRefreshMs}ms`);
+          return;
+        }
         assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
         assertEightXBetStreamLive(this.networkFeed);
         if (Date.now() - lastReconcileAt >= eightXBetReconcileIntervalMs()) {
@@ -873,6 +879,10 @@ function emptyEightXBetSnapshot(collectorId: string): OddsSnapshot {
 
 function eightXBetReconcileIntervalMs() {
   return Math.max(envInt("EIGHTXBET_RECONCILE_MS", 15_000), 10_000);
+}
+
+function eightXBetPageRefreshMs() {
+  return Math.max(envInt("EIGHTXBET_PAGE_REFRESH_MS", 5 * 60 * 1_000), 60_000);
 }
 
 function eightXBetCoverageGraceMs() {

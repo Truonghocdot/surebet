@@ -235,7 +235,7 @@ export class EightXBetNetworkFeed {
 
   async applyFullMatchPayload(payload: unknown) {
     const parsed = parseEightXBetFullMatchPayload(payload);
-    if (!parsed) {
+    if (!parsed || !this.shouldAcceptFixture(parsed.match, parsed.fixtureId)) {
       return null;
     }
     this.applyMetadata(parsed.match);
@@ -309,7 +309,7 @@ export class EightXBetNetworkFeed {
     }
 
     const parsed = parseEightXBetFullMatchPayload(payload);
-    if (!parsed) {
+    if (!parsed || !this.shouldAcceptFixture(parsed.match, parsed.fixtureId)) {
       return;
     }
     this.applyMetadata(parsed.match);
@@ -586,7 +586,7 @@ export class EightXBetNetworkFeed {
     const active = new Set<string>();
     for (const match of matches) {
       const fixtureId = stringID(match.iid);
-      if (!fixtureId) continue;
+      if (!fixtureId || isExpiredEightXBetFixture(match)) continue;
       active.add(fixtureId);
       this.applyMetadata(match);
     }
@@ -596,6 +596,16 @@ export class EightXBetNetworkFeed {
     this.activeMetadataFixtureIds = active;
     this.logCoverage();
     this.notifyActiveFixtures();
+  }
+
+  private shouldAcceptFixture(match: Record<string, unknown>, fixtureId: string) {
+    if (isExpiredEightXBetFixture(match)) {
+      return false;
+    }
+    return (
+      this.activeMetadataFixtureIds === null ||
+      this.activeMetadataFixtureIds.has(fixtureId)
+    );
   }
 
   private retireFixturesMissingFromMetadata(active: Set<string>) {
@@ -1104,6 +1114,25 @@ function isStandardFootballFixture(match: Record<string, unknown>) {
   }
 
   return true;
+}
+
+function isExpiredEightXBetFixture(match: Record<string, unknown>) {
+  const eventStartAt = optionalTimestampOf(match.kickoffTime ?? match.kickoff);
+  if (!eventStartAt) {
+    return false;
+  }
+  const startedAt = Date.parse(eventStartAt);
+  return (
+    Number.isFinite(startedAt) &&
+    Date.now() - startedAt > eightXBetFixtureMaxAgeMs()
+  );
+}
+
+function eightXBetFixtureMaxAgeMs() {
+  return Math.max(
+    envInt("EIGHTXBET_FIXTURE_MAX_AGE_MS", 6 * 60 * 60 * 1_000),
+    60 * 60 * 1_000
+  );
 }
 
 function filterText(value: string) {

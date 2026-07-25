@@ -117,6 +117,18 @@ const metadataPayload = {
         ]
       },
       {
+        name: "Expired League",
+        matches: [
+          {
+            iid: 1006,
+            inplay: true,
+            kickoffTime: "2000-01-01T00:00:00.000Z",
+            home: { name: "Expired Home" },
+            away: { name: "Expired Away" }
+          }
+        ]
+      },
+      {
         name: "Brazil Serie A - Single Team Over/Under",
         matches: [
           {
@@ -156,8 +168,8 @@ assert.deepEqual(
   parseEightXBetStandardFixtures(metadataPayload).map((item) =>
     String((item as Record<string, unknown>).iid)
   ),
-  ["4824992"],
-  "metadata must retain standard football and drop exotic fixtures"
+  ["4824992", "1006"],
+  "the parser must retain standard football before runtime age filtering"
 );
 
 class FakeEmitter {
@@ -280,8 +292,25 @@ async function testMarketDeltaDelivery() {
     decodedFixtures: 1,
     fixturesWithQuotes: 1,
     pendingFixtures: 0,
-    filteredFixtures: 4
+    filteredFixtures: 5
   });
+  assert.equal(
+    await feed.applyFullMatchPayload({
+      code: 0,
+      data: {
+        data: {
+          iid: 1006,
+          kickoffTime: "2000-01-01T00:00:00.000Z",
+          home: { name: "Expired Home" },
+          away: { name: "Expired Away" },
+          tnName: "Expired League",
+          market: { ah: [{ k: "0", h: "0.90", a: "0.90" }] }
+        }
+      }
+    }),
+    null,
+    "a delayed full-match response must not revive an expired fixture"
+  );
   assert.equal(delivered.length, 2, "unchanged metadata must not emit quote deltas");
 
   page.emit("response", metadataResponse({ code: 500, data: { tournaments: [] } }));

@@ -20,6 +20,7 @@ import (
 const (
 	detectorMaxQuoteAge        = 300 * time.Second
 	detectorMaxQuoteSkew       = 5 * time.Minute
+	detectorMaxEventAge        = 6 * time.Hour
 	fixtureSimilarityThreshold = 0.40
 	wordSimilarityThreshold    = 0.40
 	fixtureMatchMargin         = 0.15
@@ -323,7 +324,7 @@ func normalizeQuotes(
 	result := make([]normalizedQuote, 0, len(quotes))
 	for _, quote := range quotes {
 		sourceKey := quoteSourceKey(quote)
-		if quote.Suspended || !isFreshQuote(now, quote.CollectedAt) {
+		if quote.Suspended || !isFreshQuote(now, quote.CollectedAt) || !isCurrentEvent(now, quote.EventStartAt) {
 			continue
 		}
 
@@ -373,6 +374,13 @@ func isFreshQuote(now, collectedAt time.Time) bool {
 
 	age := now.Sub(collectedAt.UTC())
 	return age >= -detectorMaxQuoteAge && age <= detectorMaxQuoteAge
+}
+
+func isCurrentEvent(now time.Time, eventStartAt *time.Time) bool {
+	if eventStartAt == nil || eventStartAt.IsZero() {
+		return true
+	}
+	return now.Sub(eventStartAt.UTC()) <= detectorMaxEventAge
 }
 
 func normalizeEventIdentity(quote models.OddsQuote) (eventIdentity, bool) {

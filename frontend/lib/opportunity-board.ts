@@ -56,6 +56,7 @@ type FixtureOpportunity = {
 };
 
 const CURRENT_OPPORTUNITY_AGE_MS = 15_000;
+const CURRENT_FIXTURE_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
 
 export type CurrentOpportunityBoardItem = {
   id: string;
@@ -89,7 +90,10 @@ export function buildCurrentOpportunityBoard(
   opportunities: BackendOpportunity[],
   odds: BackendOdds[]
 ) {
-  const currentOdds = odds.filter(isStandardBoardQuote);
+  const now = Date.now();
+  const currentOdds = odds.filter(
+    (quote) => isStandardBoardQuote(quote) && isCurrentBoardQuote(quote, now)
+  );
   const fixtureIndex = buildFixtureIdentityIndex(currentOdds);
   const exactQuotes = new Map<string, BackendOdds>();
   const fallbackQuotes = new Map<string, BackendOdds>();
@@ -453,6 +457,17 @@ function isStandardBoardQuote(quote: BackendOdds) {
   ].join(" ");
   return !/(?:corner|e-?soccer|specific\s*\d*\s*min|single[ -]?team|booking|cards?)/i.test(
     fixtureText
+  );
+}
+
+function isCurrentBoardQuote(quote: BackendOdds, now: number) {
+  if (!quote.event_start_at) {
+    return true;
+  }
+  const eventStartAt = Date.parse(quote.event_start_at);
+  return (
+    !Number.isFinite(eventStartAt) ||
+    now - eventStartAt <= CURRENT_FIXTURE_MAX_AGE_MS
   );
 }
 
