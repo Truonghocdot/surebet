@@ -29,6 +29,29 @@ chromium.use(stealth());
 let sharedBrowser: Browser | null = null;
 let sharedBrowserPromise: Promise<Browser> | null = null;
 
+export type StableSignatureState = {
+  signature: string | null;
+  since: number;
+};
+
+export function observeStableSignature(
+  previous: StableSignatureState,
+  signature: string | null,
+  now: number,
+  stableMs: number
+) {
+  if (signature === null || signature !== previous.signature) {
+    return {
+      state: { signature, since: now },
+      stable: false
+    };
+  }
+  return {
+    state: previous,
+    stable: now - previous.since >= stableMs
+  };
+}
+
 export class EightXBetRuntime {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
@@ -270,8 +293,21 @@ export class EightXBetRuntime {
   private async refreshNetworkSubscriptions(page: Page, targetURL: string) {
     await waitForEightXBetReady(page, targetURL, this.networkFeed);
 
-    const fixtureIds = await this.waitForMetadataFixtureIds(page);
-    await this.syncNetworkSubscriptions(page, fixtureIds);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const fixtureIds = await this.waitForMetadataFixtureIds(page);
+      await this.syncNetworkSubscriptions(page, fixtureIds);
+      const currentFixtureIds = this.networkFeed.activeFixtureIds();
+      if (currentFixtureIds?.join(",") === fixtureIds.join(",")) {
+        return;
+      }
+      console.warn(
+        `[8xbet-network] metadata changed while subscribing ` +
+          `attempt=${attempt}/3 requested=${fixtureIds.length} ` +
+          `current=${currentFixtureIds?.length ?? 0}`
+      );
+    }
+
+    throw new Error("8xbet in-play metadata kept changing during subscriptions.");
   }
 
   private async syncNetworkSubscriptions(page: Page, fixtureIds: string[]) {
@@ -303,33 +339,64 @@ export class EightXBetRuntime {
 
   private async waitForMetadataFixtureIds(page: Page) {
     const timeoutMs = Math.max(envInt("EIGHTXBET_METADATA_BOOTSTRAP_MS", 5_000), 1_000);
+    const stableMs = eightXBetBootstrapStableMs();
     const deadline = Date.now() + timeoutMs;
+    let stability: StableSignatureState = { signature: null, since: Date.now() };
     while (!page.isClosed() && Date.now() < deadline) {
       const fixtureIds = this.networkFeed.activeFixtureIds();
       if (fixtureIds !== null) {
-        return fixtureIds;
+        const signature = fixtureIds.join(",");
+        const observation = observeStableSignature(
+          stability,
+          signature,
+          Date.now(),
+          stableMs
+        );
+        stability = observation.state;
+        if (observation.stable) {
+          return fixtureIds;
+        }
       }
       await sleep(50);
     }
-    throw new Error("8xbet in-play metadata did not arrive in time.");
+    throw new Error(
+      `8xbet in-play metadata did not stabilize within ${timeoutMs}ms.`
+    );
   }
 
   private async waitForNetworkBootstrap(page: Page) {
     const deadline = Date.now() + Math.max(envInt("EIGHTXBET_NETWORK_BOOTSTRAP_MS", 10_000), 0);
+    const stableMs = eightXBetBootstrapStableMs();
     let snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
+    let stability: StableSignatureState = { signature: null, since: Date.now() };
 
-    while (
-      !page.isClosed() &&
-      Date.now() < deadline &&
-      (snapshot.selections.length === 0 ||
-        coverageIsIncomplete(this.networkFeed.coverageStats()))
-    ) {
+    while (!page.isClosed() && Date.now() < deadline) {
+      const coverage = this.networkFeed.coverageStats();
+      const viable =
+        snapshot.selections.length > 0 && !coverageIsIncomplete(coverage);
+      const signature = viable ? snapshotSelectionSignature(snapshot) : "";
+      const observation = observeStableSignature(
+        stability,
+        viable ? signature : null,
+        Date.now(),
+        stableMs
+      );
+      stability = observation.state;
+      if (observation.stable) {
+        return snapshot;
+      }
+
       await page.waitForTimeout(Math.min(streamPollIntervalMs(), 250));
       await this.networkFeed.flush();
       snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
     }
 
-    return snapshot;
+    const coverage = this.networkFeed.coverageStats();
+    throw new Error(
+      `8xbet bootstrap did not stabilize ` +
+        `(selections=${snapshot.selections.length} metadata=${coverage.metadataFixtures} ` +
+        `decoded=${coverage.decodedFixtures} pending=${coverage.pendingFixtures})`
+    );
   }
 }
 
@@ -883,6 +950,17 @@ function eightXBetReconcileIntervalMs() {
 
 function eightXBetPageRefreshMs() {
   return Math.max(envInt("EIGHTXBET_PAGE_REFRESH_MS", 5 * 60 * 1_000), 60_000);
+}
+
+function eightXBetBootstrapStableMs() {
+  return Math.max(envInt("EIGHTXBET_BOOTSTRAP_STABLE_MS", 1_000), 250);
+}
+
+function snapshotSelectionSignature(snapshot: OddsSnapshot) {
+  return snapshot.selections
+    .map((selection) => selection.outcomeId)
+    .sort()
+    .join(",");
 }
 
 function eightXBetCoverageGraceMs() {

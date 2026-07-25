@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/features/auth/server/session";
 import { buildCurrentOpportunityBoard } from "@/lib/opportunity-board";
+import { createOpportunityBoardStabilizer } from "@/lib/opportunity-board-stability";
 import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
 import {
   fetchBackendOdds,
@@ -8,6 +9,11 @@ import {
 } from "@/lib/server-dashboard-data";
 
 export const dynamic = "force-dynamic";
+
+const boardStabilizers = new Map<
+  string,
+  ReturnType<typeof createOpportunityBoardStabilizer>
+>();
 
 export async function GET() {
   try {
@@ -17,10 +23,14 @@ export async function GET() {
       fetchBackendOpportunities()
     ]);
     const opportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
+    const roleKey = user?.role ?? "anonymous";
+    const stabilize = boardStabilizers.get(roleKey) ?? createOpportunityBoardStabilizer();
+    boardStabilizers.set(roleKey, stabilize);
+    const items = stabilize(buildCurrentOpportunityBoard(opportunities, odds));
 
     return NextResponse.json(
       {
-        items: buildCurrentOpportunityBoard(opportunities, odds)
+        items
       },
       {
         headers: {

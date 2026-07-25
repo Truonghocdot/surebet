@@ -3,6 +3,7 @@ import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
   normalizeIndonesianToMalayOdds,
+  observeStableSignature,
   parseEightXBetOddsDiffFrame,
   parseEightXBetFullMatchPayload,
   parseEightXBetStandardFixtures,
@@ -11,6 +12,21 @@ import {
 import type { OddsDelta } from "@surebet/collector-shared";
 
 const occurredAt = "2026-07-16T21:39:09.520Z";
+
+let signatureState: { signature: string | null; since: number } = {
+  signature: null,
+  since: 0
+};
+let signatureObservation = observeStableSignature(signatureState, "1,2", 100, 1_000);
+assert.equal(signatureObservation.stable, false);
+signatureState = signatureObservation.state;
+signatureObservation = observeStableSignature(signatureState, "1,2", 1_099, 1_000);
+assert.equal(signatureObservation.stable, false);
+signatureObservation = observeStableSignature(signatureState, "1,2", 1_100, 1_000);
+assert.equal(signatureObservation.stable, true);
+signatureObservation = observeStableSignature(signatureState, "1,2,3", 1_101, 1_000);
+assert.equal(signatureObservation.stable, false, "a metadata change must restart settling");
+
 const snapshot = buildEightXBetNetworkFixtureSnapshot({
   occurredAt,
   metadata: {

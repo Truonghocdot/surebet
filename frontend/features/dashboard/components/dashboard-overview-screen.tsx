@@ -1,17 +1,20 @@
 "use client";
 
+import { useRef } from "react";
+
 import { DataPanel } from "@/components/dashboard/data-panel";
 import { SectionHeader } from "@/components/dashboard/section-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { QueryShell } from "@/features/dashboard/components/query-shell";
 import { useDashboardSnapshotQuery } from "@/features/dashboard/queries/use-crm-queries";
 import type {
-  DashboardSnapshot,
-  Opportunity
+  DashboardOpportunity,
+  DashboardSnapshot
 } from "@/features/dashboard/schemas/crm-schemas";
 
 export function DashboardOverviewScreen() {
   const query = useDashboardSnapshotQuery();
+  const opportunities = useStableOpportunityOrder(query.data?.opportunities ?? []);
 
   return (
     <div className="dashboard-page">
@@ -34,10 +37,10 @@ export function DashboardOverviewScreen() {
                 description=""
                 title="Cơ hội hiện tại"
               >
-                {snapshot.opportunities.length > 0 ? (
+                {opportunities.length > 0 ? (
                   <>
                     <div className="grid gap-3 md:hidden">
-                      {snapshot.opportunities.map((row) => (
+                      {opportunities.map((row) => (
                         <OverviewOpportunityCard key={row.id} row={row} />
                       ))}
                     </div>
@@ -55,15 +58,15 @@ export function DashboardOverviewScreen() {
                           </tr>
                         </thead>
                         <tbody>
-                          {snapshot.opportunities.map((row) => (
+                          {opportunities.map((row) => (
                             <tr
                               className="bg-[var(--surface-soft)] text-sm text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)]"
                               key={row.id}
                             >
                               <td className="rounded-l-[20px] px-4 py-4 font-medium">
-                                {row.fixture_id}
+                                {row.match_name}
                               </td>
-                              <td className="px-4 py-4">{row.market_name}</td>
+                              <td className="px-4 py-4">{row.market_label}</td>
                               <td className="px-4 py-4 text-teal-700">
                                 {row.profit_percentage.toFixed(2)}%
                               </td>
@@ -71,9 +74,7 @@ export function DashboardOverviewScreen() {
                                 {(row.expected_return * 100).toFixed(2)}%
                               </td>
                               <td className="px-4 py-4">
-                                {row.legs
-                                  .map((leg) => `${leg.bookmaker_id}/${leg.lobby_id}`)
-                                  .join(" và ")}
+                                <OpportunityLegs row={row} />
                               </td>
                               <td className="rounded-r-[20px] px-4 py-4 text-slate-500">
                                 {formatFreshness(row.detected_at)}
@@ -98,7 +99,7 @@ export function DashboardOverviewScreen() {
   );
 }
 
-function OverviewOpportunityCard({ row }: { row: Opportunity }) {
+function OverviewOpportunityCard({ row }: { row: DashboardOpportunity }) {
   return (
     <article className="rounded-[22px] border border-[color:var(--line)] bg-[var(--surface-soft)] p-4 shadow-[inset_0_0_0_1px_var(--line)]">
       <div className="flex items-start justify-between gap-3">
@@ -107,9 +108,9 @@ function OverviewOpportunityCard({ row }: { row: Opportunity }) {
             Trận đấu
           </p>
           <p className="mt-1 break-words font-semibold leading-6 text-[var(--ink)]">
-            {row.fixture_id}
+            {row.match_name}
           </p>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{row.market_name}</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{row.market_label}</p>
         </div>
         <span className="shrink-0 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
           {row.profit_percentage.toFixed(2)}%
@@ -126,12 +127,51 @@ function OverviewOpportunityCard({ row }: { row: Opportunity }) {
           className="sm:col-span-2"
           label="Hai cửa"
           value={row.legs
-            .map((leg) => `${leg.bookmaker_id}/${leg.lobby_id}`)
-            .join(" và ")}
+            .map((leg) => `${leg.selection_label} - ${leg.source_label} (${formatOdds(leg.odds)})`)
+            .join(" / ")}
         />
       </div>
     </article>
   );
+}
+
+function OpportunityLegs({ row }: { row: DashboardOpportunity }) {
+  return (
+    <div className="grid gap-1.5">
+      {row.legs.map((leg) => (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1"
+          key={`${leg.bookmaker_id}/${leg.lobby_id}/${leg.outcome_id}`}
+        >
+          <span className="font-medium text-[var(--ink)]">{leg.selection_label}</span>
+          <span className="text-xs text-[var(--muted)]">{leg.source_label}</span>
+          <span className="font-mono text-xs font-semibold text-teal-700">
+            {formatOdds(leg.odds)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function useStableOpportunityOrder(items: DashboardOpportunity[]) {
+  const order = useRef<string[]>([]);
+  const itemsByID = new Map(items.map((item) => [item.id, item]));
+  const knownIDs = new Set(order.current);
+  const newIDs = items
+    .filter((item) => !knownIDs.has(item.id))
+    .map((item) => item.id);
+  order.current = [
+    ...newIDs,
+    ...order.current.filter((id) => itemsByID.has(id))
+  ];
+  return order.current
+    .map((id) => itemsByID.get(id))
+    .filter((item): item is DashboardOpportunity => Boolean(item));
+}
+
+function formatOdds(value: number) {
+  return value > 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
 }
 
 function OverviewMetaField({

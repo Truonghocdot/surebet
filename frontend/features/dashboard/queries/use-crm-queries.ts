@@ -33,7 +33,9 @@ export const crmQueryKeys = {
 export function useDashboardSnapshotQuery() {
   return useQuery({
     queryKey: crmQueryKeys.dashboard,
-    queryFn: fetchDashboardSnapshot
+    queryFn: fetchDashboardSnapshot,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false
   });
 }
 

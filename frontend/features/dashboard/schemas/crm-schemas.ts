@@ -36,9 +36,20 @@ export const opportunitySchema = z.object({
   )
 });
 
+export const dashboardOpportunitySchema = opportunitySchema.extend({
+  match_name: z.string(),
+  market_label: z.string(),
+  legs: z.array(
+    opportunitySchema.shape.legs.element.extend({
+      selection_label: z.string(),
+      source_label: z.string()
+    })
+  )
+});
+
 export const dashboardSnapshotSchema = z.object({
   stats: z.array(statCardSchema),
-  opportunities: z.array(opportunitySchema)
+  opportunities: z.array(dashboardOpportunitySchema)
 });
 
 export const opportunityBoardOutcomeSchema = z.object({
@@ -98,6 +109,7 @@ export const opportunityBoardSchema = z.object({
 });
 
 export type DashboardSnapshot = z.infer<typeof dashboardSnapshotSchema>;
+export type DashboardOpportunity = z.infer<typeof dashboardOpportunitySchema>;
 export type Opportunity = z.infer<typeof opportunitySchema>;
 export type OpportunityBoard = z.infer<typeof opportunityBoardSchema>;
 export type OpportunityBoardFixture = z.infer<typeof opportunityBoardFixtureSchema>;

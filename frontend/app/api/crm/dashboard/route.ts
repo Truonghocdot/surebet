@@ -1,15 +1,38 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/features/auth/server/session";
+import {
+  buildActiveDashboardOpportunities,
+  createDashboardOpportunityStabilizer
+} from "@/lib/dashboard-opportunities";
 import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
-import { fetchBackendOpportunities } from "@/lib/server-dashboard-data";
+import {
+  fetchBackendOdds,
+  fetchBackendOpportunities
+} from "@/lib/server-dashboard-data";
+
+export const dynamic = "force-dynamic";
+
+const dashboardStabilizers = new Map<
+  string,
+  ReturnType<typeof createDashboardOpportunityStabilizer>
+>();
 
 export async function GET() {
   try {
-    const [user, rawOpportunities] = await Promise.all([
+    const [user, odds, rawOpportunities] = await Promise.all([
       getSessionUser(),
+      fetchBackendOdds(false),
       fetchBackendOpportunities()
     ]);
-    const opportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
+    const visibleOpportunities = filterOpportunitiesForRole(rawOpportunities, user?.role);
+    const roleKey = user?.role ?? "anonymous";
+    const stabilize = dashboardStabilizers.get(roleKey) ??
+      createDashboardOpportunityStabilizer();
+    dashboardStabilizers.set(roleKey, stabilize);
+    const opportunities = stabilize(
+      buildActiveDashboardOpportunities(visibleOpportunities, odds),
+      odds
+    );
 
     const uniqueFixtures = new Set(opportunities.map((item) => item.fixture_id)).size;
     const uniqueSources = new Set(
@@ -30,38 +53,45 @@ export async function GET() {
       .map((item) => item.detected_at)
       .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0];
 
-    return NextResponse.json({
-      stats: [
-        {
-          title: "Cơ hội hiện có",
-          value: String(opportunities.length),
-          delta:
-            opportunities.length > 0
-              ? `Trung bình ${avgProfit.toFixed(2)}%`
-              : "Chưa phát hiện cơ hội",
-          tone: opportunities.length > 0 ? "positive" : "neutral"
-        },
-        {
-          title: "Lợi nhuận tốt nhất",
-          value: opportunities.length > 0 ? `${bestProfit.toFixed(2)}%` : "0.00%",
-          delta: opportunities.length > 0 ? "Cơ hội cao nhất hiện tại" : "Chưa có dữ liệu",
-          tone: opportunities.length > 0 ? "positive" : "neutral"
-        },
-        {
-          title: "Trận có cơ hội",
-          value: String(uniqueFixtures),
-          delta: "",
-          tone: uniqueFixtures > 0 ? "neutral" : "warning"
-        },
-        {
-          title: "Nhà cái tham gia",
-          value: String(uniqueSources),
-          delta: latestDetectedAt ? `Mới nhất ${formatFreshness(latestDetectedAt)}` : "Đang chờ phát hiện",
-          tone: uniqueSources > 0 ? "positive" : "warning"
+    return NextResponse.json(
+      {
+        stats: [
+          {
+            title: "Cơ hội hiện có",
+            value: String(opportunities.length),
+            delta:
+              opportunities.length > 0
+                ? `Trung bình ${avgProfit.toFixed(2)}%`
+                : "Chưa phát hiện cơ hội",
+            tone: opportunities.length > 0 ? "positive" : "neutral"
+          },
+          {
+            title: "Lợi nhuận tốt nhất",
+            value: opportunities.length > 0 ? `${bestProfit.toFixed(2)}%` : "0.00%",
+            delta: opportunities.length > 0 ? "Cơ hội cao nhất hiện tại" : "Chưa có dữ liệu",
+            tone: opportunities.length > 0 ? "positive" : "neutral"
+          },
+          {
+            title: "Trận có cơ hội",
+            value: String(uniqueFixtures),
+            delta: "",
+            tone: uniqueFixtures > 0 ? "neutral" : "warning"
+          },
+          {
+            title: "Nhà cái tham gia",
+            value: String(uniqueSources),
+            delta: latestDetectedAt ? `Mới nhất ${formatFreshness(latestDetectedAt)}` : "Đang chờ phát hiện",
+            tone: uniqueSources > 0 ? "positive" : "warning"
+          }
+        ],
+        opportunities
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0"
         }
-      ],
-      opportunities
-    });
+      }
+    );
   } catch (error) {
     return NextResponse.json(
       {
