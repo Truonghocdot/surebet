@@ -4,7 +4,6 @@ Stack production nay dung:
 
 - `tykfk.site` -> frontend Next.js
 - `api.tykfk.site` -> backend Go API + websocket
-- `telegram-worker` -> worker Go gui Telegram tu queue
 - `admin.tykfk.site` -> Laravel Filament admin
 - PostgreSQL cho du lieu
 - 2 collector worker rieng cho 8xbet va Jun88 CMD
@@ -36,7 +35,7 @@ Can doi toi thieu:
 - `LARAVEL_APP_KEY`
 - `SEED_FRONTEND_USER_PASSWORD`
 - `SEED_SUPER_ADMIN_PASSWORD`
-- `TELEGRAM_BOT_TOKEN` neu bat thong bao Telegram
+- `TELEGRAM_BOT_TOKEN` neu giu webhook dong bo metadata Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
 
 Mac dinh production dang de:
@@ -78,7 +77,6 @@ Xem log:
 
 ```bash
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f caddy backend-api frontend laravel-admin
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f telegram-worker
 ```
 
 Restart rieng collector:

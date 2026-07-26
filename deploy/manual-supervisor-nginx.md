@@ -17,10 +17,16 @@ Tài liệu hướng dẫn triển khai ứng dụng trực tiếp bằng tài k
 - **Frontend (Next.js)**: `tykfk.site` -> `127.0.0.1:3000`
 - **Backend API & WebSocket (Go)**: `api.tykfk.site` -> `127.0.0.1:8080`
 - **Admin Panel (Laravel)**: `admin.tykfk.site` -> `127.0.0.1:9500`
-- **Worker Telegram (Go)**: Chạy ngầm qua Supervisor
-- **Worker Collector (Node.js/Playwright)**: Chạy 8xbet & jun88-cmd ngầm qua Supervisor
+- **Collector (Node.js/Playwright)**: Chạy 8xbet & jun88-cmd ngầm qua Supervisor
 - **Reverse Proxy**: Nginx
 - **Process Manager**: Supervisor
+
+### Ghi chú về Telegram
+
+- Đã bỏ hoàn toàn worker gửi surebet sang Telegram.
+- Đã bỏ hoàn toàn notification message Telegram cho surebet.
+- Frontend hiện nhận realtime qua WebSocket và phát Chrome Notification tại trình duyệt.
+- Các biến `TELEGRAM_*` chỉ còn cần nếu vẫn muốn giữ webhook để đồng bộ metadata chat/recipient.
 
 ---
 
@@ -199,9 +205,6 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_WEBHOOK_SECRET=
 TELEGRAM_API_BASE_URL=https://api.telegram.org
 TELEGRAM_REQUEST_TIMEOUT=10s
-TELEGRAM_SUREBET_DEDUP_WINDOW=30m
-TELEGRAM_QUEUE_POLL_INTERVAL=250ms
-TELEGRAM_QUEUE_BATCH_SIZE=25
 TELEGRAM_VERIFICATION_MODE=auto
 
 SUREBET_CONFIRM_TIMEOUT=2s
@@ -390,7 +393,6 @@ export PATH=/usr/local/go/bin:$PATH
 cd /var/www/html/surebet/backend
 mkdir -p bin
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/api ./cmd/api
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/telegram-worker ./cmd/telegram-worker
 ```
 
 ### 9.2. Build Frontend Next.js
@@ -433,7 +435,7 @@ Nội dung cấu hình:
 
 ```ini
 [group:surebet]
-programs=surebet-backend-api,surebet-telegram-worker,surebet-frontend,surebet-laravel-admin,surebet-collector-8xbet,surebet-collector-jun88-cmd
+programs=surebet-backend-api,surebet-frontend,surebet-laravel-admin,surebet-collector-8xbet,surebet-collector-jun88-cmd
 
 [program:surebet-backend-api]
 directory=/var/www/html/surebet/backend
@@ -446,19 +448,6 @@ killasgroup=true
 stopsignal=TERM
 stopwaitsecs=20
 stdout_logfile=/var/log/surebet/backend-api.log
-redirect_stderr=true
-
-[program:surebet-telegram-worker]
-directory=/var/www/html/surebet/backend
-command=/var/www/html/surebet/backend/bin/telegram-worker
-autostart=true
-autorestart=true
-startsecs=5
-stopasgroup=true
-killasgroup=true
-stopsignal=TERM
-stopwaitsecs=20
-stdout_logfile=/var/log/surebet/telegram-worker.log
 redirect_stderr=true
 
 [program:surebet-frontend]
@@ -516,6 +505,11 @@ stopwaitsecs=30
 stdout_logfile=/var/log/surebet/collector-jun88-cmd.log
 redirect_stderr=true
 ```
+
+Lưu ý:
+
+- Không còn `surebet-telegram-worker` trong group Supervisor.
+- Nếu VPS cũ từng có worker Telegram, hãy xóa hẳn block cũ của nó khỏi `/etc/supervisor/conf.d/surebet.conf` trước khi `reread/update`.
 
 Cập nhật và nạp file cấu hình vào Supervisor:
 
@@ -633,9 +627,118 @@ Kiểm tra trạng thái hoạt động:
 supervisorctl status
 ```
 
+Nếu server cũ từng chạy worker Telegram, dọn cấu hình cũ bằng các lệnh sau:
+
+```bash
+supervisorctl stop surebet:surebet-telegram-worker || true
+supervisorctl remove surebet:surebet-telegram-worker || true
+supervisorctl reread
+supervisorctl update
+```
+
 ---
 
-## 13. Các Lệnh Debug / Theo dõi Log
+## 13. Các Lệnh Update Code & Deploy lại
+
+### 13.1. Quy trình chuẩn sau khi update code
+
+```bash
+cd /var/www/html/surebet
+git fetch --all
+git pull --ff-only origin main
+```
+
+Sau đó build lại các phần đã thay đổi.
+
+### 13.2. Update toàn bộ stack app
+
+```bash
+export PATH=/usr/local/go/bin:$PATH
+
+cd /var/www/html/surebet/backend
+go mod download
+mkdir -p bin
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/api ./cmd/api
+
+cd /var/www/html/surebet/frontend
+npm ci
+npm run build
+
+cd /var/www/html/surebet/collector
+npm ci
+
+cd /var/www/html/surebet/laravel
+COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+php artisan migrate --force
+php artisan optimize:clear
+
+supervisorctl restart surebet:surebet-backend-api
+supervisorctl restart surebet:surebet-frontend
+supervisorctl restart surebet:surebet-laravel-admin
+supervisorctl restart surebet:surebet-collector-8xbet
+supervisorctl restart surebet:surebet-collector-jun88-cmd
+supervisorctl status
+```
+
+### 13.3. Chỉ update backend
+
+```bash
+export PATH=/usr/local/go/bin:$PATH
+cd /var/www/html/surebet/backend
+go mod download
+mkdir -p bin
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/api ./cmd/api
+supervisorctl restart surebet:surebet-backend-api
+tail -n 100 /var/log/surebet/backend-api.log
+```
+
+### 13.4. Chỉ update frontend
+
+```bash
+cd /var/www/html/surebet/frontend
+npm ci
+npm run build
+supervisorctl restart surebet:surebet-frontend
+tail -n 100 /var/log/surebet/frontend.log
+```
+
+### 13.5. Chỉ update collector
+
+```bash
+cd /var/www/html/surebet/collector
+npm ci
+supervisorctl restart surebet:surebet-collector-8xbet
+supervisorctl restart surebet:surebet-collector-jun88-cmd
+tail -n 100 /var/log/surebet/collector-8xbet.log
+tail -n 100 /var/log/surebet/collector-jun88-cmd.log
+```
+
+### 13.6. Chỉ update Laravel Admin
+
+```bash
+cd /var/www/html/surebet/laravel
+COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+php artisan migrate --force
+php artisan optimize:clear
+supervisorctl restart surebet:surebet-laravel-admin
+tail -n 100 /var/log/surebet/laravel-admin.log
+```
+
+### 13.7. Khi chỉ sửa file `.env`
+
+```bash
+supervisorctl restart surebet:surebet-backend-api
+supervisorctl restart surebet:surebet-frontend
+supervisorctl restart surebet:surebet-laravel-admin
+supervisorctl restart surebet:surebet-collector-8xbet
+supervisorctl restart surebet:surebet-collector-jun88-cmd
+```
+
+Chỉ restart đúng service liên quan là đủ, không cần restart toàn VPS.
+
+---
+
+## 14. Các Lệnh Debug / Theo dõi Log
 
 ```bash
 # Xem log Backend API
@@ -660,7 +763,7 @@ supervisorctl restart surebet:surebet-collector-8xbet
 
 ---
 
-## 14. Kiểm tra Nhanh sau khi Deploy
+## 15. Kiểm tra Nhanh sau khi Deploy
 
 ```bash
 # Kiểm tra API Health
@@ -671,4 +774,12 @@ curl -I http://127.0.0.1:3000
 
 # Kiểm tra Laravel Admin
 curl -I http://127.0.0.1:9500
+```
+
+Nếu muốn kiểm tra redirect public sau Nginx:
+
+```bash
+curl -I https://tykfk.site/
+curl -I https://api.tykfk.site/healthz
+curl -I https://admin.tykfk.site/
 ```

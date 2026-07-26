@@ -34,10 +34,6 @@ type VerificationStore interface {
 	SetRolloutMode(ctx context.Context, mode string) error
 }
 
-type ConfirmedOpportunityNotifier interface {
-	NotifyConfirmed(ctx context.Context, item dto.SurebetView) error
-}
-
 type VerificationBroadcaster interface {
 	Broadcast(event realtime.Event)
 }
@@ -51,7 +47,6 @@ type VerificationService struct {
 	candidates  CurrentSurebetReader
 	confirmer   HardSurebetConfirmer
 	store       VerificationStore
-	notifier    ConfirmedOpportunityNotifier
 	broadcaster VerificationBroadcaster
 	health      CollectorConnectionHealth
 	log         logger.Logger
@@ -77,14 +72,15 @@ func NewVerificationService(
 	candidates CurrentSurebetReader,
 	confirmer HardSurebetConfirmer,
 	store VerificationStore,
-	notifier ConfirmedOpportunityNotifier,
 	broadcaster VerificationBroadcaster,
 	health CollectorConnectionHealth,
 	log logger.Logger,
 ) *VerificationService {
 	return &VerificationService{
 		cfg: cfg, candidates: candidates, confirmer: confirmer, store: store,
-		notifier: notifier, broadcaster: broadcaster, health: health, log: log,
+		broadcaster:         broadcaster,
+		health:              health,
+		log:                 log,
 		pending:             make(map[string]dto.VerifiedFixtureRef),
 		generations:         make(map[string]uint64),
 		announcedCandidates: make(map[string]struct{}),
@@ -182,7 +178,7 @@ func (s *VerificationService) process(
 			case <-ctx.Done():
 				return
 			}
-			s.verifyCandidate(ctx, candidate, generations, mode)
+			s.verifyCandidate(ctx, candidate, generations)
 		}()
 	}
 	wait.Wait()
@@ -226,7 +222,6 @@ func (s *VerificationService) verifyCandidate(
 	ctx context.Context,
 	candidate dto.SurebetView,
 	generations map[string]uint64,
-	mode string,
 ) {
 	startedAt := time.Now()
 	item, confirmed, err := s.confirmer.ConfirmCurrentSurebet(ctx, candidate.ID)
@@ -268,11 +263,6 @@ func (s *VerificationService) verifyCandidate(
 	})
 	s.scheduleExpiry(item)
 	s.invalidationMu.Unlock()
-	if mode == "strict" && s.notifier != nil {
-		if err := s.notifier.NotifyConfirmed(ctx, item); err != nil && s.log != nil {
-			s.log.Warn("confirmed surebet notification enqueue failed", "error", err.Error(), "opportunity_id", item.ID)
-		}
-	}
 }
 
 // invalidateFixtures runs on the verification worker, never on the collector

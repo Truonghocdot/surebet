@@ -18,7 +18,7 @@ cd /var/www/html/surebet
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate
 
 Neu env chi ap vao vai service, co the lam hep:
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api telegram-worker laravel-admin frontend
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api laravel-admin frontend
 
 Neu env lien quan collector:
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate collector-8xbet collector-jun88-bti collector-jun88-saba collector-jun88-cmd collector-jun88-m9bet
@@ -44,7 +44,7 @@ docker compose -f deploy/production/docker-compose.yml --env-file deploy/product
 
 6. Xem trang thai va log
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env ps
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f caddy backend-api frontend laravel-admin telegram-worker
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f caddy backend-api frontend laravel-admin
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-8xbet
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-jun88-bti
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs -f collector-jun88-saba
@@ -63,8 +63,8 @@ docker compose -f deploy/production/docker-compose.yml --env-file deploy/product
 8. Deploy nhanh cho doi ten lobby moi
 Neu vua doi code logic ibc -> saba va m8 -> m9bet:
 cd /var/www/html/surebet
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build --no-cache backend-api telegram-worker collector-jun88-saba collector-jun88-m9bet frontend
-docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api telegram-worker collector-jun88-saba collector-jun88-m9bet frontend
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build --no-cache backend-api collector-jun88-saba collector-jun88-m9bet frontend
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --force-recreate backend-api collector-jun88-saba collector-jun88-m9bet frontend
 
 9. SQL migrate du lieu cu ibc -> saba va m8 -> m9bet
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'"'"'SQL'"'"'

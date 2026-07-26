@@ -14,7 +14,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U surebet -d surebet"]
       interval: 10s
-      timeout: 5s>
+      timeout: 5s
       retries: 10
 
   redis:
@@ -50,22 +50,6 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
-
-  telegram-worker:
-    build:
-      context: ../backend
-      target: worker
-    container_name: surebet-telegram-worker
-    environment:
-      APP_NAME: surebet-platform
-      APP_ENV: development
-      REDIS_ADDRESS: redis:6379
-      POSTGRES_DSN: postgres://surebet:surebet@postgres:5432/surebet?sslmode=disable
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   laravel-data:
     build:

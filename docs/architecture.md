@@ -14,10 +14,8 @@ flowchart LR
     V -->|request quote| EC
     V -->|request quote| JC
     V --> VR[(Redis verified TTL)]
-    VR --> T[Telegram worker]
     API -->|REST + WebSocket| F[Next.js dashboard]
     P[(PostgreSQL)] --> API
-    P --> T
 ```
 
 ## Nguồn dữ liệu
@@ -29,12 +27,12 @@ flowchart LR
 ## Lưu trữ
 
 - Redis là source of truth cho current odds và verified opportunity ngắn hạn.
-- PostgreSQL lưu người dùng, runtime settings, Telegram recipients và notification logs.
+- PostgreSQL lưu người dùng, runtime settings và metadata Telegram recipients.
 - Redis AOF được bật trong Compose để giảm mất current-state khi restart.
 
 ## Xác nhận cơ hội
 
-Candidate không được gửi Telegram. Backend yêu cầu hai collector đọc lại đúng fixture, market và outcome; detector chỉ tạo confirmed opportunity khi hai kết quả còn mới, không ambiguous và vẫn có lợi nhuận. Kết quả verified có TTL ngắn và bị vô hiệu ngay khi một leg đổi.
+Backend yêu cầu hai collector đọc lại đúng fixture, market và outcome; detector chỉ tạo confirmed opportunity khi hai kết quả còn mới, không ambiguous và vẫn có lợi nhuận. Kết quả verified có TTL ngắn, bị vô hiệu ngay khi một leg đổi và được phát tới frontend qua WebSocket.
 
 ## Public read path
 

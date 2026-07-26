@@ -106,9 +106,6 @@ services:
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
       TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL}
       TELEGRAM_REQUEST_TIMEOUT: ${TELEGRAM_REQUEST_TIMEOUT}
-      TELEGRAM_SUREBET_DEDUP_WINDOW: ${TELEGRAM_SUREBET_DEDUP_WINDOW}
-      TELEGRAM_QUEUE_POLL_INTERVAL: ${TELEGRAM_QUEUE_POLL_INTERVAL}
-      TELEGRAM_QUEUE_BATCH_SIZE: ${TELEGRAM_QUEUE_BATCH_SIZE}
       TELEGRAM_VERIFICATION_MODE: ${TELEGRAM_VERIFICATION_MODE:-auto}
       SUREBET_CONFIRM_TIMEOUT: ${SUREBET_CONFIRM_TIMEOUT:-2s}
       SUREBET_CONFIRM_VALIDITY: ${SUREBET_CONFIRM_VALIDITY:-2s}
@@ -121,30 +118,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  telegram-worker:
-    build:
-      context: ../../backend
-      dockerfile: Dockerfile.prod
-      target: telegram-worker
-    restart: unless-stopped
-    dns: *public-dns
-    environment:
-      APP_NAME: ${BACKEND_APP_NAME}
-      APP_ENV: ${BACKEND_APP_ENV}
-      BACKEND_API_URL: http://backend-api:8080
-      POSTGRES_DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL}
-      TELEGRAM_REQUEST_TIMEOUT: ${TELEGRAM_REQUEST_TIMEOUT}
-      TELEGRAM_SUREBET_DEDUP_WINDOW: ${TELEGRAM_SUREBET_DEDUP_WINDOW}
-      TELEGRAM_QUEUE_POLL_INTERVAL: ${TELEGRAM_QUEUE_POLL_INTERVAL}
-      TELEGRAM_QUEUE_BATCH_SIZE: ${TELEGRAM_QUEUE_BATCH_SIZE}
-    depends_on:
-      backend-api:
-        condition: service_started
-      postgres:
         condition: service_healthy
 
   frontend:

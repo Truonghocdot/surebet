@@ -58,7 +58,6 @@ func main() {
 	warmCancel()
 	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
 	telegramRecipientRepository := gormstore.NewTelegramRecipientRepository(db)
-	telegramLogRepository := gormstore.NewTelegramNotificationLogRepository(db)
 	realtimeHub := realtime.NewHub(log)
 	go realtimeHub.Run()
 	go func() {
@@ -72,12 +71,6 @@ func main() {
 	)
 	detector := calculator.NewDetectorWithLogger(log)
 	surebetQuery := surebet.NewQueryService(oddsStateRepository, detector)
-	telegramNotifier := telegram.NewNotifier(
-		cfg.Telegram,
-		telegramRecipientRepository,
-		telegramLogRepository,
-		log,
-	)
 	telegramAdmin := telegram.NewAdminService(telegramRecipientRepository)
 	telegramWebhook := telegram.NewWebhookService(
 		cfg.Telegram,
@@ -106,7 +99,6 @@ func main() {
 		surebetQuery,
 		confirmationService,
 		verifiedSurebetRepository,
-		telegramNotifier,
 		realtimeHub,
 		collectorStream,
 		log,

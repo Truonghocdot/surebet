@@ -51,14 +51,10 @@ type HTTPConfig struct {
 }
 
 type TelegramConfig struct {
-	BackendAPIURL        string
 	BotToken             string
 	WebhookSecret        string
 	APIBaseURL           string
 	RequestTimeout       time.Duration
-	DedupWindow          time.Duration
-	QueuePollInterval    time.Duration
-	QueueBatchSize       int
 	VerificationMode     string
 	ConfirmationTimeout  time.Duration
 	ConfirmationValidity time.Duration
@@ -119,14 +115,10 @@ func LoadFromEnv() Config {
 			WriteTimeout: envDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
 		},
 		Telegram: TelegramConfig{
-			BackendAPIURL:        envString("BACKEND_API_URL", "http://127.0.0.1:8080"),
 			BotToken:             envString("TELEGRAM_BOT_TOKEN", ""),
 			WebhookSecret:        envString("TELEGRAM_WEBHOOK_SECRET", ""),
 			APIBaseURL:           envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
 			RequestTimeout:       envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
-			DedupWindow:          envDuration("TELEGRAM_SUREBET_DEDUP_WINDOW", 30*time.Minute),
-			QueuePollInterval:    envDuration("TELEGRAM_QUEUE_POLL_INTERVAL", 250*time.Millisecond),
-			QueueBatchSize:       envInt("TELEGRAM_QUEUE_BATCH_SIZE", 25),
 			VerificationMode:     envString("TELEGRAM_VERIFICATION_MODE", "shadow"),
 			ConfirmationTimeout:  envDuration("SUREBET_CONFIRM_TIMEOUT", 2*time.Second),
 			ConfirmationValidity: envDuration("SUREBET_CONFIRM_VALIDITY", 2*time.Second),

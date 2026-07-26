@@ -167,7 +167,7 @@ export function AdminTelegramRecipientsScreen() {
       <SectionHeader
         eyebrow="Super Admin"
         title="Quản lý người nhận Telegram"
-        description="Thay dần phần Filament nặng nề bằng một khu quản trị gọn trong dashboard. Record tạo từ webhook vẫn mặc định tắt thông báo cho tới khi mình bật lại."
+        description="Danh sách metadata được đồng bộ từ webhook. Hệ thống không còn gửi surebet tự động qua Telegram."
       />
 
       <QueryShell<TelegramRecipient[]> {...query}>
@@ -190,8 +190,8 @@ export function AdminTelegramRecipientsScreen() {
                 <StatCard
                   title="Đang bật"
                   value={String(activeCount)}
-                  delta="Sẽ được worker dùng để gửi"
-                  tone={activeCount > 0 ? "positive" : "warning"}
+                  delta="Chỉ còn là dữ liệu cấu hình cũ"
+                  tone="neutral"
                 />
                 <StatCard
                   title="Tạo từ webhook"
@@ -311,7 +311,7 @@ export function AdminTelegramRecipientsScreen() {
                         <div>
                           <p className="font-semibold text-[var(--ink)]">Bật thông báo</p>
                           <p className="text-sm text-[var(--muted)]">
-                            Chỉ recipient đang bật mới được `telegram-worker` gửi surebet.
+                            Cấu hình cũ được giữ lại; không còn worker gửi surebet Telegram.
                           </p>
                         </div>
                         <input

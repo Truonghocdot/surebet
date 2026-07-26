@@ -25,7 +25,6 @@ func TestVerificationTriggerDoesNotBlockCollectorIngest(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 
 	startedAt := time.Now()
@@ -48,7 +47,7 @@ func TestVerificationTriggerDoesNotBlockCollectorIngest(t *testing.T) {
 
 func TestVerificationCandidateAttemptsAreRateLimitedByFingerprint(t *testing.T) {
 	service := NewVerificationService(
-		config.TelegramConfig{}, nil, nil, nil, nil, nil, nil, nil,
+		config.TelegramConfig{}, nil, nil, nil, nil, nil, nil,
 	)
 	candidate := confirmationCandidate()
 	now := time.Now()
@@ -87,7 +86,6 @@ func TestVerificationSkipsHardConfirmationWhenSuppressed(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 	refs := refsForOpportunity(candidate)
 	if err := service.process(context.Background(), refs, map[string]uint64{}); err != nil {
@@ -107,7 +105,6 @@ func TestVerificationServicePublishesCandidateOnce(t *testing.T) {
 		nil,
 		nil,
 		&verificationStoreStub{},
-		nil,
 		broadcaster,
 		nil,
 		nil,
@@ -137,7 +134,6 @@ func TestVerificationServiceDoesNotPublishExpiredOrAmbiguousCandidate(t *testing
 		nil,
 		nil,
 		&verificationStoreStub{},
-		nil,
 		broadcaster,
 		nil,
 		nil,
@@ -159,19 +155,17 @@ func TestVerificationServiceRejectsQuoteChangedDuringConfirmation(t *testing.T) 
 	confirmed := cloneSurebetView(candidate)
 	confirmed.VerificationStatus = "confirmed"
 	confirmed.Legs[0].Odds = -0.92
-	confirmed.Legs[1].Odds = 0.96
+	confirmed.Legs[1].Odds = -0.88
 	confirmed.ConfirmedAt = time.Now().UTC()
 	confirmed.ValidUntil = confirmed.ConfirmedAt.Add(2 * time.Second)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	store := &verificationStoreStub{}
-	notifier := &verificationNotifierStub{}
 	service := NewVerificationService(
 		config.TelegramConfig{VerificationMode: "strict"},
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
 		verificationConfirmerStub{item: confirmed, started: started, release: release},
 		store,
-		notifier,
 		nil,
 		nil,
 		nil,
@@ -197,9 +191,6 @@ func TestVerificationServiceRejectsQuoteChangedDuringConfirmation(t *testing.T) 
 	close(release)
 	if err := <-done; err != nil {
 		t.Fatalf("process verification: %v", err)
-	}
-	if notifier.Count() != 0 {
-		t.Fatal("changed quote must not enqueue a Telegram notification")
 	}
 	if store.Deleted() != candidate.ID {
 		t.Fatalf("changed quote must delete verified snapshot, got %q", store.Deleted())
@@ -209,7 +200,7 @@ func TestVerificationServiceRejectsQuoteChangedDuringConfirmation(t *testing.T) 
 func TestVerificationServiceAcceptsHardConfirmDeltaThatRemainsCurrent(t *testing.T) {
 	candidate := confirmationCandidate()
 	candidate.Legs[0].Odds = -0.92
-	candidate.Legs[1].Odds = 0.96
+	candidate.Legs[1].Odds = -0.88
 	confirmed := cloneSurebetView(candidate)
 	confirmed.VerificationStatus = "confirmed"
 	confirmed.ConfirmedAt = time.Now().UTC()
@@ -217,14 +208,13 @@ func TestVerificationServiceAcceptsHardConfirmDeltaThatRemainsCurrent(t *testing
 	started := make(chan struct{})
 	release := make(chan struct{})
 	store := &verificationStoreStub{}
-	notifier := &verificationNotifierStub{}
+	broadcaster := &verificationBroadcasterStub{}
 	service := NewVerificationService(
 		config.TelegramConfig{VerificationMode: "strict"},
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
 		verificationConfirmerStub{item: confirmed, started: started, release: release},
 		store,
-		notifier,
-		nil,
+		broadcaster,
 		nil,
 		nil,
 	)
@@ -250,7 +240,15 @@ func TestVerificationServiceAcceptsHardConfirmDeltaThatRemainsCurrent(t *testing
 	if err := <-done; err != nil {
 		t.Fatalf("process verification: %v", err)
 	}
-	if notifier.Count() != 1 {
+	confirmedPublished := false
+	for _, event := range broadcaster.Events() {
+		payload, ok := event.Payload.(dto.SurebetVerificationEvent)
+		if event.Type == "surebet_verification_updated" && ok && payload.Status == "confirmed" {
+			confirmedPublished = true
+			break
+		}
+	}
+	if !confirmedPublished {
 		t.Fatal("hard-confirm delta with the same current odds must remain actionable")
 	}
 }
@@ -358,11 +356,6 @@ func (s *verificationStoreStub) Deleted() string {
 	return s.deleted
 }
 
-type verificationNotifierStub struct {
-	mu    sync.Mutex
-	count int
-}
-
 type verificationBroadcasterStub struct {
 	mu     sync.Mutex
 	events []realtime.Event
@@ -378,19 +371,6 @@ func (s *verificationBroadcasterStub) Events() []realtime.Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]realtime.Event(nil), s.events...)
-}
-
-func (s *verificationNotifierStub) NotifyConfirmed(context.Context, dto.SurebetView) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.count++
-	return nil
-}
-
-func (s *verificationNotifierStub) Count() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.count
 }
 
 func refsForOpportunity(item dto.SurebetView) []dto.VerifiedFixtureRef {
