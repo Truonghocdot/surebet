@@ -16,7 +16,6 @@ import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { CMD_AVAILABILITY_CONFIG } from "./cmd-availability.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
 import {
-  assertSnapshotHasSelections,
   buildDeltas,
   heartbeatIntervalMs,
   heartbeatOf,
@@ -37,11 +36,11 @@ export class Jun88CmdRuntime {
         let target = await resolveCmdContentTarget(page);
 
         // Phase B: extract only match table HTML instead of full page dump
-        const initialSnapshot = await readStableCmdSnapshot(target, this.collectorId);
-        if (!initialSnapshot) {
-          throw new Error("Jun88 CMD initial market snapshot did not settle within 500ms");
+        const initialRead = await readStableCmdSnapshot(target, this.collectorId, "bootstrap");
+        if (!initialRead || initialRead.observedSelections === 0) {
+          throw new Error("Jun88 CMD initial page did not expose parseable market selections");
         }
-        assertSnapshotHasSelections(initialSnapshot, this.collectorId);
+        const initialSnapshot = initialRead.snapshot;
         let activeSnapshot: OddsSnapshot = {
           ...initialSnapshot,
           selections: []
@@ -98,27 +97,38 @@ export class Jun88CmdRuntime {
           }
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
-            const reconciledSnapshot = await readStableCmdSnapshot(target, this.collectorId);
-            if (!reconciledSnapshot) {
+            const reconciledRead = await readStableCmdSnapshot(
+              target,
+              this.collectorId,
+              "reconcile"
+            );
+            if (!reconciledRead || reconciledRead.snapshot.selections.length === 0) {
               lastReconcileAt = Date.now();
               continue;
             }
-            assertSnapshotHasSelections(reconciledSnapshot, this.collectorId);
+            const reconciledSnapshot = reconciledRead.snapshot;
             const reconciledSnapshotMap = selectionMap(reconciledSnapshot);
-            const removed = buildDeltas(
+            const reconciledFixtureIds = new Set(
+              reconciledSnapshot.selections.map((selection) => selection.fixtureId)
+            );
+            const previousReconciledFixtures = new Map(
+              Array.from(activeSnapshotMap).filter(([, selection]) =>
+                reconciledFixtureIds.has(selection.fixtureId)
+              )
+            );
+            const deltas = buildDeltas(
               reconciledSnapshot,
-              activeSnapshotMap,
+              previousReconciledFixtures,
               reconciledSnapshotMap
-            ).filter((delta) => delta.op === "remove");
+            );
             activeSnapshot = {
-              ...reconciledSnapshot,
+              ...activeSnapshot,
+              collectedAt: reconciledSnapshot.collectedAt,
               selections: []
             };
-            activeSnapshotMap = reconciledSnapshotMap;
-            await installCmdObserver(target, reconciledSnapshot);
-            await sink.pushBootstrap(reconciledSnapshot);
-            if (removed.length > 0) {
-              await sink.pushDelta(removed);
+            if (deltas.length > 0) {
+              await sink.pushDelta(deltas);
+              applyDeltasToSelectionMap(activeSnapshotMap, deltas);
             }
             lastReconcileAt = Date.now();
             continue;
@@ -621,8 +631,19 @@ export async function installCmdObserver(
         pending.timer = setTimeout(attempt, 100);
       };
 
+      const initializedRowKeys = new Set();
+      const seededOutcomeIds = new Set(Object.keys(seededFingerprints || {}));
       for (const rowNode of Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))) {
-        syncRow(rowNode, false);
+        const rowKey = rowNode.getAttribute("groupid") || rowNode.id || "";
+        if (!rowKey || initializedRowKeys.has(rowKey)) continue;
+        initializedRowKeys.add(rowKey);
+        const current = parseMatchGroup(rowKey);
+        if (current.some((item) => seededOutcomeIds.has(item.outcomeId))) {
+          syncRow(rowNode, false);
+          continue;
+        }
+        state.byRow[rowKey] = [];
+        scheduleStableRow(rowKey);
       }
 
       const observer = new MutationObserver((mutations) => {
@@ -721,33 +742,83 @@ async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
   return partial;
 }
 
+type StableCmdSnapshotRead = {
+  snapshot: OddsSnapshot;
+  observedFixtures: number;
+  observedSelections: number;
+  stableFixtures: number;
+  attempts: number;
+};
+
 async function readStableCmdSnapshot(
   target: Page | Frame,
-  collectorId: string
-): Promise<OddsSnapshot | null> {
-  const startedAt = Date.now();
+  collectorId: string,
+  mode: "bootstrap" | "reconcile"
+): Promise<StableCmdSnapshotRead | null> {
+  const readStartedAt = Date.now();
+  let attempts = 0;
   let previous = parseJun88CmdSnapshot(
     await extractCmdMatchHtml(target),
     target.url(),
     collectorId
   );
-  while (Date.now() - startedAt < 500) {
+  const settleStartedAt = Date.now();
+  do {
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    attempts += 1;
     const current = parseJun88CmdSnapshot(
       await extractCmdMatchHtml(target),
       target.url(),
       collectorId
     );
-    if (cmdSnapshotFingerprint(previous) === cmdSnapshotFingerprint(current)) {
-      return current;
+    const stable = selectStableCmdSnapshotFixtures(previous, current);
+    if (stable.selections.length > 0) {
+      const result = stableCmdSnapshotRead(stable, current, attempts);
+      logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
+      return result;
     }
     previous = current;
+  } while (Date.now() - settleStartedAt < 500);
+
+  if (previous.selections.length === 0) {
+    return null;
   }
-  return null;
+  const emptySnapshot = { ...previous, selections: [] };
+  const result = stableCmdSnapshotRead(emptySnapshot, previous, attempts);
+  logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
+  return result;
 }
 
-function cmdSnapshotFingerprint(snapshot: OddsSnapshot) {
-  return snapshot.selections
+export function selectStableCmdSnapshotFixtures(
+  previous: OddsSnapshot,
+  current: OddsSnapshot
+): OddsSnapshot {
+  const previousByFixture = selectionsByFixture(previous.selections);
+  const currentByFixture = selectionsByFixture(current.selections);
+  const stableSelections: OddsSelection[] = [];
+  for (const [fixtureId, selections] of currentByFixture) {
+    const previousSelections = previousByFixture.get(fixtureId);
+    if (!previousSelections ||
+      cmdFixtureFingerprint(previousSelections) !== cmdFixtureFingerprint(selections)) {
+      continue;
+    }
+    stableSelections.push(...selections);
+  }
+  return { ...current, selections: stableSelections };
+}
+
+function selectionsByFixture(selections: OddsSelection[]) {
+  const result = new Map<string, OddsSelection[]>();
+  for (const selection of selections) {
+    const fixtureSelections = result.get(selection.fixtureId) ?? [];
+    fixtureSelections.push(selection);
+    result.set(selection.fixtureId, fixtureSelections);
+  }
+  return result;
+}
+
+function cmdFixtureFingerprint(selections: OddsSelection[]) {
+  return selections
     .map((selection) => [
       selection.outcomeId,
       selection.outcomeName,
@@ -756,6 +827,33 @@ function cmdSnapshotFingerprint(snapshot: OddsSnapshot) {
     ].join("\u0000"))
     .sort()
     .join("\u0001");
+}
+
+function stableCmdSnapshotRead(
+  snapshot: OddsSnapshot,
+  observed: OddsSnapshot,
+  attempts: number
+): StableCmdSnapshotRead {
+  return {
+    snapshot,
+    observedFixtures: selectionsByFixture(observed.selections).size,
+    observedSelections: observed.selections.length,
+    stableFixtures: selectionsByFixture(snapshot.selections).size,
+    attempts
+  };
+}
+
+function logStableCmdSnapshot(
+  mode: "bootstrap" | "reconcile",
+  result: StableCmdSnapshotRead,
+  elapsedMs: number
+) {
+  console.log(
+    `[jun88-cmd] snapshot mode=${mode} ` +
+    `fixtures=${result.stableFixtures}/${result.observedFixtures} ` +
+    `selections=${result.snapshot.selections.length}/${result.observedSelections} ` +
+    `attempts=${result.attempts} elapsed_ms=${elapsedMs}`
+  );
 }
 
 async function installCmdDeltaBinding(

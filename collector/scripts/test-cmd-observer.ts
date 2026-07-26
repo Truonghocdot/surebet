@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
-import { installCmdObserver } from "../shared/src/bookmakers/jun88-cmd-runtime.js";
+import {
+  installCmdObserver,
+  selectStableCmdSnapshotFixtures
+} from "../shared/src/bookmakers/jun88-cmd-runtime.js";
 import { parseJun88CmdSnapshot } from "../shared/src/bookmakers/parsers/jun88-cmd-parser.js";
 
 void main();
@@ -12,6 +15,27 @@ async function main() {
   const html = await readFile(fixturePath, "utf8");
   const snapshot = parseJun88CmdSnapshot(html, "https://cmd.test", "jun88-cmd");
   assert.ok(snapshot.selections.length > 0, "CMD fixture must contain selections");
+  const fixtureIDs = Array.from(new Set(snapshot.selections.map((selection) => selection.fixtureId)));
+  assert.ok(fixtureIDs.length > 1, "CMD fixture must contain multiple fixtures");
+  const changingFixtureID = fixtureIDs[0];
+  const nextSnapshot = {
+    ...snapshot,
+    selections: snapshot.selections.map((selection) =>
+      selection.fixtureId === changingFixtureID
+        ? { ...selection, odds: Number((selection.odds + 0.01).toFixed(2)) }
+        : selection
+    )
+  };
+  const stableSubset = selectStableCmdSnapshotFixtures(snapshot, nextSnapshot);
+  assert.equal(
+    stableSubset.selections.some((selection) => selection.fixtureId === changingFixtureID),
+    false,
+    "CMD bootstrap must omit only the fixture which is still changing"
+  );
+  assert.ok(
+    stableSubset.selections.length > 0,
+    "A changing fixture must not prevent stable fixtures from bootstrapping"
+  );
 
   process.env.CMD_DOM_SCAN_MS = "100";
   const browser = await chromium.launch({ headless: true });
@@ -136,6 +160,22 @@ async function main() {
         (delta.marketId === "o-u-ou" || delta.marketId === "o-u-ou-1st");
     }));
     console.log("CMD observer removed an O/U market missing from the DOM");
+
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    const omittedFixtureID = fixtureIDs[0];
+    const partialBootstrap = {
+      ...snapshot,
+      selections: snapshot.selections.filter(
+        (selection) => selection.fixtureId !== omittedFixtureID
+      )
+    };
+    batches.length = 0;
+    await installCmdObserver(page, partialBootstrap);
+    await assertEventually(() => batches.flat().some((item) => {
+      const delta = item as { fixtureId?: string; op?: string };
+      return delta.fixtureId === omittedFixtureID && delta.op === "upsert";
+    }));
+    console.log("CMD observer emitted a fixture omitted from the partial bootstrap");
   } finally {
     await browser.close();
   }
