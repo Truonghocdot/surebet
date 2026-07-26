@@ -17,13 +17,18 @@ export class EightXBetCollector {
     let bootstrapSent = false;
     let lastHeartbeatAt = 0;
 
-    const flushSnapshot = async (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => {
+    const flushSnapshot = async (
+      snapshot: OddsSnapshot,
+      mode: "bootstrap" | "observation"
+    ) => {
       const previousSummary = currentSnapshot ? summarizeSnapshot(currentSnapshot) : null;
       const nextSummary = summarizeSnapshot(snapshot);
       logEightXBetSnapshotTelemetry(mode, previousSummary, nextSummary);
-      await sink.pushBootstrap(snapshot);
+      await deliverEightXBetSnapshot(sink, snapshot, mode);
+      if (mode === "bootstrap") {
+        bootstrapSent = true;
+      }
       currentSnapshot = snapshot;
-      bootstrapSent = true;
       await maybeHeartbeat(snapshot);
     };
 
@@ -97,6 +102,28 @@ export class EightXBetCollector {
   }
 }
 
+export async function deliverEightXBetSnapshot(
+  sink: CollectorSink,
+  snapshot: OddsSnapshot,
+  mode: "bootstrap" | "observation"
+) {
+  if (mode === "bootstrap") {
+    await sink.pushBootstrap(snapshot);
+    return;
+  }
+
+  const fixtureIds = Array.from(
+    new Set(snapshot.selections.map((selection) => selection.fixtureId))
+  );
+  if (sink.observeFixtureMarketBatches) {
+    await sink.observeFixtureMarketBatches(fixtureIds, snapshot.collectedAt);
+    return;
+  }
+  for (const fixtureId of fixtureIds) {
+    await sink.observeFixtureMarketBatch?.(fixtureId, snapshot.collectedAt);
+  }
+}
+
 function summarizeSnapshot(snapshot: OddsSnapshot) {
   const fixtures = new Set<string>();
   const markets = new Set<string>();
@@ -121,7 +148,7 @@ function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
 }
 
 function logEightXBetSnapshotTelemetry(
-  mode: "bootstrap" | "delta",
+  mode: "bootstrap" | "observation",
   previous: { fixtures: number; markets: number; outcomes: number } | null,
   next: { fixtures: number; markets: number; outcomes: number }
 ) {

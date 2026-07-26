@@ -176,7 +176,7 @@ func TestOddsStateRepositoryBatchObservationDoesNotReportStateChanges(t *testing
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
 
-	initialAt := time.Date(2026, 7, 16, 10, 0, 0, 0, time.UTC)
+	initialAt := time.Now().UTC().Add(-30 * time.Second)
 	event := testQuoteUpsertEvent("fixture-batch", "market-a", "outcome-a", initialAt)
 	if changed, err := repo.ApplyQuoteUpsertBatch(context.Background(), []dto.CollectorStreamQuoteUpsert{event}); err != nil || len(changed) != 1 {
 		t.Fatalf("apply initial batch: changed=%d err=%v", len(changed), err)

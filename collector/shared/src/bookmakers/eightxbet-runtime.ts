@@ -23,6 +23,8 @@ const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_GAME_SETTINGS_SELECTOR =
   '[data-testid="component-card-mine-gameSetting"]';
+const EIGHTXBET_HARD_RECYCLE_DEFAULT_MS = 30 * 60 * 1_000;
+const EIGHTXBET_HARD_RECYCLE_MIN_MS = EIGHTXBET_HARD_RECYCLE_DEFAULT_MS;
 
 chromium.use(stealth());
 
@@ -62,7 +64,6 @@ export class EightXBetRuntime {
   private detachNetworkFeed: (() => void) | null = null;
   private readonly networkFeed: EightXBetNetworkFeed;
   private readonly confirmationSnapshots = new Map<string, Promise<OddsSnapshot>>();
-  private oddsFormatAction = "unchanged";
   private oddsFormatLabel = "unknown";
   private fixtureSubscriptionSignature = "";
 
@@ -72,7 +73,7 @@ export class EightXBetRuntime {
 
   async streamSnapshots(
     context: CollectContext,
-    onSnapshot: (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => Promise<void>,
+    onSnapshot: (snapshot: OddsSnapshot, mode: "bootstrap" | "observation") => Promise<void>,
     onFixtureDeltas?: (
       deltas: OddsDelta[],
       fixtureId: string,
@@ -84,7 +85,7 @@ export class EightXBetRuntime {
     const page = await this.ensurePage(targetURL);
 
     try {
-      await this.prepareNetworkFeed(page, targetURL);
+      await this.prepareNetworkFeed(page);
       let snapshot = await this.waitForNetworkBootstrap(page);
       await onSnapshot(snapshot, "bootstrap");
 
@@ -98,20 +99,31 @@ export class EightXBetRuntime {
         }
       );
       let lastReconcileAt = Date.now();
-      const pageRefreshMs = eightXBetPageRefreshMs();
-      const pageRefreshAt = Date.now() + pageRefreshMs;
+      const reconcileMs = eightXBetReconcileIntervalMs();
+      const hardRecycleMs = eightXBetHardRecycleMs();
+      const hardRecycleAt = Date.now() + hardRecycleMs;
+      console.log(
+        `[8xbet-runtime] recovery policy reconcile_ms=${reconcileMs}` +
+          ` hard_recycle_ms=${hardRecycleMs}` +
+          ` stream_stale_ms=${eightXBetStreamStaleMs()}` +
+          ` coverage_grace_ms=${eightXBetCoverageGraceMs()}`
+      );
       let incompleteCoverageSince = coverageIsIncomplete(this.networkFeed.coverageStats())
         ? Date.now()
         : 0;
 
       while (!page.isClosed()) {
-        if (Date.now() >= pageRefreshAt) {
-          console.log(`[8xbet-runtime] recycling page after ${pageRefreshMs}ms`);
-          return;
-        }
         assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
         assertEightXBetStreamLive(this.networkFeed);
-        if (Date.now() - lastReconcileAt >= eightXBetReconcileIntervalMs()) {
+        if (Date.now() >= hardRecycleAt) {
+          // Drain pending market removals before the last-resort page reset.
+          await this.networkFeed.flush();
+          console.log(
+            `[8xbet-runtime] hard-recycling page after ${hardRecycleMs}ms fallback`
+          );
+          return;
+        }
+        if (Date.now() - lastReconcileAt >= reconcileMs) {
           const pendingFixtureIds = this.networkFeed.pendingActiveFixtureIds();
           if (pendingFixtureIds.length > 0) {
             await retryEightXBetFixtureSubscriptions(page, pendingFixtureIds);
@@ -132,7 +144,7 @@ export class EightXBetRuntime {
             incompleteCoverageSince = 0;
           }
           snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
-          await onSnapshot(snapshot, "bootstrap");
+          await onSnapshot(snapshot, "observation");
           lastReconcileAt = Date.now();
           continue;
         }
@@ -264,7 +276,7 @@ export class EightXBetRuntime {
 
     try {
       await waitForEightXBetReady(page, targetURL, this.networkFeed);
-      await this.inspectNetworkOddsFormat(page);
+      await this.captureOddsFormatLabel(page);
       return page;
     } catch (error) {
       await writeDebugArtifacts(page, `${this.collectorId}-odds-format-gate-failed`);
@@ -291,9 +303,7 @@ export class EightXBetRuntime {
     }
   }
 
-  private async refreshNetworkSubscriptions(page: Page, targetURL: string) {
-    await waitForEightXBetReady(page, targetURL, this.networkFeed);
-
+  private async refreshNetworkSubscriptions(page: Page) {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const fixtureIds = await this.waitForMetadataFixtureIds(page);
       await this.syncNetworkSubscriptions(page, fixtureIds);
@@ -320,22 +330,16 @@ export class EightXBetRuntime {
     this.fixtureSubscriptionSignature = signature;
   }
 
-  private async prepareNetworkFeed(page: Page, targetURL: string) {
-    await this.refreshNetworkSubscriptions(page, targetURL);
+  private async prepareNetworkFeed(page: Page) {
+    await this.refreshNetworkSubscriptions(page);
     const diagnostics = await waitForEightXBetExpectedOddsFormat(page, this.networkFeed);
-    logEightXBetOddsFormat("after", this.oddsFormatLabel, diagnostics, this.oddsFormatAction);
+    logEightXBetOddsFormat(this.oddsFormatLabel, diagnostics);
   }
 
-  private async inspectNetworkOddsFormat(page: Page) {
-    await waitForEightXBetOddsObservation(page, this.networkFeed, 1_500);
-    const diagnostics = this.networkFeed.oddsFormatDiagnostics();
-    assertEightXBetOddsFormatHealthy(diagnostics);
-
+  private async captureOddsFormatLabel(page: Page) {
     // The WebSocket destination carries the authoritative price display.
     // Changing the page setting reloads the stream and discards bootstrap data.
     this.oddsFormatLabel = (await readEightXBetOddsFormatLabel(page)) || "network:pd1";
-    this.oddsFormatAction = "feed-verified";
-    logEightXBetOddsFormat("before", this.oddsFormatLabel, diagnostics, this.oddsFormatAction);
   }
 
   private async waitForMetadataFixtureIds(page: Page) {
@@ -611,20 +615,6 @@ async function waitForEightXBetExpectedOddsFormat(
   );
 }
 
-async function waitForEightXBetOddsObservation(
-  page: Page,
-  feed: EightXBetNetworkFeed,
-  timeoutMs: number
-) {
-  const deadline = Date.now() + timeoutMs;
-  while (!page.isClosed() && Date.now() < deadline) {
-    if (feed.oddsFormatDiagnostics().observationCount > 0) {
-      return;
-    }
-    await page.waitForTimeout(50);
-  }
-}
-
 function assertEightXBetOddsFormatHealthy(diagnostics: EightXBetOddsFormatDiagnostics) {
   if (diagnostics.unhealthyReason) {
     throw new Error(
@@ -635,13 +625,11 @@ function assertEightXBetOddsFormatHealthy(diagnostics: EightXBetOddsFormatDiagno
 }
 
 function logEightXBetOddsFormat(
-  stage: "before" | "after",
   label: string,
-  diagnostics: EightXBetOddsFormatDiagnostics,
-  action: string
+  diagnostics: EightXBetOddsFormatDiagnostics
 ) {
   console.log(
-    `[8xbet-format] stage=${stage} action=${action} label=${JSON.stringify(label)} ` +
+    `[8xbet-format] stage=ready action=feed-verified label=${JSON.stringify(label)} ` +
     `destination=${diagnostics.destination || "none"} suffix=${diagnostics.priceDisplay || "none"} ` +
     `raw_odds=${formatRawOddsSamples(diagnostics)} healthy=${diagnostics.healthy}`
   );
@@ -892,7 +880,9 @@ async function setEightXBetFixtureSubscriptions(page: Page, fixtureIDs: string[]
   console.log(
     `[8xbet-network] fixture subscriptions requested=${fixtureIDs.length}` +
       ` frames=${page.frames().length} bridges=${status.bridges}` +
-      ` sockets=${status.sockets} connected=${status.connected}`
+      ` sockets=${status.sockets} connected=${status.connected}` +
+      ` batch_size=${eightXBetSubscriptionBatchSize()}` +
+      ` batch_delay_ms=${eightXBetSubscriptionBatchDelayMs()}`
   );
 }
 
@@ -949,8 +939,23 @@ function eightXBetReconcileIntervalMs() {
   return Math.max(envInt("EIGHTXBET_RECONCILE_MS", 15_000), 10_000);
 }
 
-function eightXBetPageRefreshMs() {
-  return Math.max(envInt("EIGHTXBET_PAGE_REFRESH_MS", 5 * 60 * 1_000), 60_000);
+export function resolveEightXBetHardRecycleMs(
+  hardRecycleMs = Number.NaN,
+  legacyPageRefreshMs = Number.NaN
+) {
+  const configured = Number.isFinite(hardRecycleMs)
+    ? hardRecycleMs
+    : Number.isFinite(legacyPageRefreshMs)
+      ? legacyPageRefreshMs
+      : EIGHTXBET_HARD_RECYCLE_DEFAULT_MS;
+  return Math.max(Math.trunc(configured), EIGHTXBET_HARD_RECYCLE_MIN_MS);
+}
+
+function eightXBetHardRecycleMs() {
+  return resolveEightXBetHardRecycleMs(
+    envInt("EIGHTXBET_HARD_RECYCLE_MS", Number.NaN),
+    envInt("EIGHTXBET_PAGE_REFRESH_MS", Number.NaN)
+  );
 }
 
 function eightXBetBootstrapStableMs() {
@@ -996,11 +1001,11 @@ function assertEightXBetStreamLive(feed: EightXBetNetworkFeed) {
 }
 
 function eightXBetSubscriptionBatchSize() {
-  return Math.min(Math.max(envInt("EIGHTXBET_SUBSCRIPTION_BATCH_SIZE", 4), 1), 20);
+  return Math.min(Math.max(envInt("EIGHTXBET_SUBSCRIPTION_BATCH_SIZE", 6), 1), 20);
 }
 
 function eightXBetSubscriptionBatchDelayMs() {
-  return Math.max(envInt("EIGHTXBET_SUBSCRIPTION_BATCH_DELAY_MS", 250), 50);
+  return Math.max(envInt("EIGHTXBET_SUBSCRIPTION_BATCH_DELAY_MS", 150), 50);
 }
 
 function sleep(milliseconds: number) {

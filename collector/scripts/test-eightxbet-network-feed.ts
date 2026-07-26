@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { deliverEightXBetSnapshot } from "../eightxbet/src/index.js";
 import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
@@ -7,7 +8,8 @@ import {
   parseEightXBetOddsDiffFrame,
   parseEightXBetFullMatchPayload,
   parseEightXBetStandardFixtures,
-  readEightXBetOddsFormatLabel
+  readEightXBetOddsFormatLabel,
+  resolveEightXBetHardRecycleMs
 } from "@surebet/collector-shared";
 import type { OddsDelta } from "@surebet/collector-shared";
 
@@ -26,6 +28,82 @@ signatureObservation = observeStableSignature(signatureState, "1,2", 1_100, 1_00
 assert.equal(signatureObservation.stable, true);
 signatureObservation = observeStableSignature(signatureState, "1,2,3", 1_101, 1_000);
 assert.equal(signatureObservation.stable, false, "a metadata change must restart settling");
+
+assert.equal(
+  resolveEightXBetHardRecycleMs(),
+  30 * 60 * 1_000,
+  "a healthy page must only use the 30-minute hard fallback by default"
+);
+assert.equal(
+  resolveEightXBetHardRecycleMs(45 * 60 * 1_000, 5 * 60 * 1_000),
+  45 * 60 * 1_000,
+  "the explicit hard-recycle setting must take precedence"
+);
+assert.equal(
+  resolveEightXBetHardRecycleMs(Number.NaN, 20 * 60 * 1_000),
+  30 * 60 * 1_000,
+  "the legacy page-refresh setting must remain supported without restoring short recycle gaps"
+);
+assert.equal(
+  resolveEightXBetHardRecycleMs(1_000),
+  30 * 60 * 1_000,
+  "hard recycle must not accept a value below the 30-minute safety floor"
+);
+
+const deliveredModes: string[] = [];
+const observedFixtureBatches: Array<{ fixtureIds: string[]; observedAt: string }> = [];
+const deliveryTestSink = {
+  pushBootstrap: async () => {
+    deliveredModes.push("bootstrap");
+  },
+  pushDelta: async () => undefined,
+  heartbeat: async () => undefined,
+  observeFixtureMarketBatches: async (fixtureIds: string[], observedAt: string) => {
+    deliveredModes.push("observation");
+    observedFixtureBatches.push({ fixtureIds, observedAt });
+  }
+};
+const deliveryTestSnapshot = {
+  source: { collectorId: "8xbet", bookmakerId: "8xbet", lobbyId: "default" } as const,
+  collectedAt: occurredAt,
+  selections: [
+    {
+      fixtureId: "fixture-a",
+      marketId: "hdp-ah",
+      outcomeId: "fixture-a-home",
+      outcomeName: "Home +0",
+      odds: 0.9,
+      availableStake: 0,
+      suspended: false
+    },
+    {
+      fixtureId: "fixture-a",
+      marketId: "hdp-ah",
+      outcomeId: "fixture-a-away",
+      outcomeName: "Away -0",
+      odds: 0.9,
+      availableStake: 0,
+      suspended: false
+    },
+    {
+      fixtureId: "fixture-b",
+      marketId: "o-u-ou",
+      outcomeId: "fixture-b-over",
+      outcomeName: "Over 2.5",
+      odds: 0.95,
+      availableStake: 0,
+      suspended: false
+    }
+  ]
+};
+async function testSnapshotDeliveryModes() {
+  await deliverEightXBetSnapshot(deliveryTestSink, deliveryTestSnapshot, "bootstrap");
+  await deliverEightXBetSnapshot(deliveryTestSink, deliveryTestSnapshot, "observation");
+  assert.deepEqual(deliveredModes, ["bootstrap", "observation"]);
+  assert.deepEqual(observedFixtureBatches, [
+    { fixtureIds: ["fixture-a", "fixture-b"], observedAt: occurredAt }
+  ]);
+}
 
 const snapshot = buildEightXBetNetworkFixtureSnapshot({
   occurredAt,
@@ -431,6 +509,7 @@ async function testOddsFormatLabelUsesLocatorAPI() {
 }
 
 Promise.all([
+  testSnapshotDeliveryModes(),
   testMarketDeltaDelivery(),
   testOddsFormatGateRejectsUnexpectedFeed(),
   testOddsFormatLabelUsesLocatorAPI()
