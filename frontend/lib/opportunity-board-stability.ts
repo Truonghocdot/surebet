@@ -5,7 +5,10 @@ type StabilityOptions = {
   idleResetMs?: number;
 };
 
-const DEFAULT_COLLAPSE_GRACE_MS = 10_000;
+// A collector restart can take longer than one polling interval to bootstrap
+// both sources. Keep the fixture shell during that gap, while clearTransient
+// removes all odds and surebet state so no stale price is shown as active.
+const DEFAULT_COLLAPSE_GRACE_MS = 30_000;
 const DEFAULT_IDLE_RESET_MS = 30_000;
 
 export function createOpportunityBoardStabilizer(options: StabilityOptions = {}) {

@@ -39,6 +39,24 @@ test("accepts normal changes, recovery, and an empty board after inactivity", ()
   assert.deepEqual(stabilize([], 40_001), []);
 });
 
+test("default grace covers a collector bootstrap gap without retaining active odds", () => {
+  const stabilize = createOpportunityBoardStabilizer();
+  const complete = Array.from({ length: 4 }, (_, index) => fixture(index, true));
+
+  assert.equal(stabilize(complete, 1_000).length, 4);
+  const transient = stabilize([], 25_000);
+  assert.equal(transient.length, 4);
+  assert.ok(transient.every((item) => !item.has_surebet));
+  assert.ok(transient.every((item) =>
+    item.sources.every((source) =>
+      source.handicap.every((market) =>
+        market.outcomes.every((outcome) => outcome.is_stale && outcome.odds === 0)
+      )
+    )
+  ));
+  assert.deepEqual(stabilize([], 56_000), []);
+});
+
 function fixture(index: number, hasSurebet = false): CurrentOpportunityBoardItem {
   return {
     id: `fixture-${index}`,

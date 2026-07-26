@@ -254,17 +254,28 @@ function summarizeFixture(fixture: OpportunityBoardFixture): MatchedFixtureSumma
 }
 
 function summarizeSource(source: OpportunityBoardSource): MatchedSourceSummary {
+  const markets = [...source.handicap, ...source.over_under];
+  const activeMarkets = markets.filter((market) =>
+    market.outcomes.some(isActiveOutcome)
+  );
   return {
     id: source.id,
     bookmakerID: source.bookmaker_id,
     lobbyID: source.lobby_id,
-    quoteCount: [...source.handicap, ...source.over_under].reduce(
-      (total, market) => total + market.outcomes.length,
+    quoteCount: markets.reduce(
+      (total, market) =>
+        total + market.outcomes.filter(isActiveOutcome).length,
       0
     ),
-    marketCount: source.handicap.length + source.over_under.length,
+    marketCount: activeMarkets.length,
     latestCollectedAt: source.latest_collected_at
   };
+}
+
+function isActiveOutcome(
+  outcome: OpportunityBoardSource["handicap"][number]["outcomes"][number]
+) {
+  return !outcome.is_stale && Number.isFinite(outcome.odds) && outcome.odds !== 0;
 }
 
 function addMarketKeys(
@@ -273,7 +284,9 @@ function addMarketKeys(
   markets: OpportunityBoardSource["handicap"]
 ) {
   for (const market of markets) {
-    keys.add(`${type}\u0000${market.period}\u0000${market.line}`);
+    if (market.outcomes.some(isActiveOutcome)) {
+      keys.add(`${type}\u0000${market.period}\u0000${market.line}`);
+    }
   }
 }
 
