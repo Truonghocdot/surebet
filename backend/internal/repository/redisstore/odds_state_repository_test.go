@@ -172,7 +172,7 @@ func TestOddsStateRepositoryRepeatedObservationDoesNotAppendHistory(t *testing.T
 	}
 }
 
-func TestOddsStateRepositoryBatchObservationDoesNotReportChanges(t *testing.T) {
+func TestOddsStateRepositoryBatchObservationDoesNotReportStateChanges(t *testing.T) {
 	repo, cleanup := newTestOddsStateRepository(t)
 	defer cleanup()
 
@@ -188,7 +188,11 @@ func TestOddsStateRepositoryBatchObservationDoesNotReportChanges(t *testing.T) {
 		t.Fatalf("apply observation batch: %v", err)
 	}
 	if len(changed) != 0 {
-		t.Fatalf("expected observation batch to report no state changes, got %d", len(changed))
+		t.Fatalf("expected observation-only batch not to report state changes, got %+v", changed)
+	}
+	current, err := repo.ListCurrent(context.Background(), "jun88", "cmd", "")
+	if err != nil || len(current) != 1 || !current[0].LastObservedAt.Equal(event.OccurredAt) {
+		t.Fatalf("expected observation freshness in current state, got %+v err=%v", current, err)
 	}
 
 	history, err := repo.ListByFixture(context.Background(), "fixture-batch")
@@ -197,6 +201,52 @@ func TestOddsStateRepositoryBatchObservationDoesNotReportChanges(t *testing.T) {
 	}
 	if len(history) != 1 {
 		t.Fatalf("expected one batch history record, got %d", len(history))
+	}
+}
+
+func TestOddsStateRepositoryBatchReturnsUnchangedSiblingsWithChangedQuote(t *testing.T) {
+	repo, cleanup := newTestOddsStateRepository(t)
+	defer cleanup()
+
+	initialAt := time.Date(2026, 7, 16, 11, 0, 0, 0, time.UTC)
+	changed := testQuoteUpsertEvent("fixture-complete", "market-a", "outcome-home", initialAt)
+	unchanged := testQuoteUpsertEvent("fixture-complete", "market-a", "outcome-away", initialAt)
+	if accepted, err := repo.ApplyQuoteUpsertBatch(
+		context.Background(),
+		[]dto.CollectorStreamQuoteUpsert{changed, unchanged},
+	); err != nil || len(accepted) != 2 {
+		t.Fatalf("apply initial complete batch: accepted=%d err=%v", len(accepted), err)
+	}
+
+	observedAt := initialAt.Add(2 * time.Second)
+	changed.OccurredAt = observedAt
+	changed.Quote.Odds = 0.91
+	unchanged.OccurredAt = observedAt
+	accepted, err := repo.ApplyQuoteUpsertBatch(
+		context.Background(),
+		[]dto.CollectorStreamQuoteUpsert{changed, unchanged},
+	)
+	if err != nil {
+		t.Fatalf("apply changed complete batch: %v", err)
+	}
+	if len(accepted) != 2 {
+		t.Fatalf("expected changed quote and unchanged sibling, got %+v", accepted)
+	}
+	for _, quote := range accepted {
+		if !quote.LastObservedAt.Equal(observedAt) {
+			t.Fatalf("expected complete batch observation at %s, got %+v", observedAt, quote)
+		}
+		if quote.OutcomeID == "outcome-away" && !quote.ChangedAt.Equal(initialAt) {
+			t.Fatalf("unchanged sibling changed its price timestamp: %+v", quote)
+		}
+	}
+
+	history, err := repo.ListByFixture(context.Background(), "fixture-complete")
+	if err != nil {
+		t.Fatalf("list complete batch history: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("expected two initial prices and one changed price, got %d", len(history))
 	}
 }
 

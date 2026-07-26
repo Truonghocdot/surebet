@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import {
+  configureCmdUpstreamRefresh,
   installCmdObserver,
   selectStableCmdSnapshotFixtures
 } from "../shared/src/bookmakers/jun88-cmd-runtime.js";
@@ -38,17 +39,47 @@ async function main() {
   );
 
   process.env.CMD_DOM_SCAN_MS = "100";
+  process.env.CMD_LIVE_POLL_MS = "2000";
+  process.env.CMD_TODAY_POLL_MS = "5000";
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
     const batches: unknown[][] = [];
+    const observations: Array<{ fixtureIds?: string[]; observedAt?: string }> = [];
     await page.exposeBinding("__surebet_cmd_emit__", async (_source, value) => {
       if (Array.isArray(value)) {
         batches.push(value);
       }
     });
+    await page.exposeBinding("__surebet_cmd_observe__", async (_source, value) => {
+      if (value && typeof value === "object") {
+        observations.push(value as { fixtureIds?: string[]; observedAt?: string });
+      }
+    });
     await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => {
+      const win = window as typeof window & Record<string, unknown>;
+      win.LastRunningVersion = "version-1";
+      win.onLoadedIncRunningData = () => undefined;
+    });
+    await configureCmdUpstreamRefresh(page);
     await installCmdObserver(page, snapshot);
+
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 350));
+    assert.equal(observations.length, 0, "An unchanged DOM must not fake an upstream observation");
+    await page.evaluate(() => {
+      const callback = (window as typeof window & Record<string, unknown>)
+        .onLoadedIncRunningData;
+      if (typeof callback === "function") {
+        callback();
+      }
+    });
+    await assertEventually(() => observations.length === 1);
+    assert.equal(
+      observations[0]?.fixtureIds?.length,
+      fixtureIDs.length,
+      "One upstream response must observe all stable fixtures in one binding call"
+    );
 
     const observerOutcomeIDs = new Set(await page.evaluate(() => {
       const state = (
@@ -91,6 +122,21 @@ async function main() {
       const delta = item as { odds?: number; op?: string };
       return delta.op === "upsert" && delta.odds === changedOdds;
     }));
+    const changedBatch = batches.find((batch) => batch.some((item) => {
+      const delta = item as { odds?: number; op?: string };
+      return delta.op === "upsert" && delta.odds === changedOdds;
+    })) ?? [];
+    const changedFixtureID = (changedBatch.find((item) =>
+      (item as { odds?: number }).odds === changedOdds
+    ) as { fixtureId?: string } | undefined)?.fixtureId;
+    assert.equal(
+      changedBatch.filter((item) =>
+        (item as { fixtureId?: string; op?: string }).fixtureId === changedFixtureID &&
+        (item as { op?: string }).op === "upsert"
+      ).length,
+      snapshot.selections.filter((selection) => selection.fixtureId === changedFixtureID).length,
+      "A changed CMD price must emit the complete stable fixture"
+    );
     console.log(`CMD observer fallback emitted odds ${changedOdds}`);
 
     batches.length = 0;

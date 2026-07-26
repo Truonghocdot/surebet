@@ -129,5 +129,6 @@ export interface CollectorSink {
   heartbeat(payload: CollectorHeartbeat): Promise<void>;
   pushFixtureMarketSnapshot?(snapshot: FixtureMarketSnapshot): Promise<void>;
   observeFixtureMarketBatch?(fixtureId: string, observedAt: string): Promise<void>;
+  observeFixtureMarketBatches?(fixtureIds: string[], observedAt: string): Promise<void>;
   setQuoteConfirmationHandler?(handler: QuoteConfirmationHandler | null): void;
 }

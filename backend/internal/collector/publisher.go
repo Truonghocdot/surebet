@@ -112,6 +112,8 @@ func buildOddsEvent(eventType eventbus.EventType, sourceID, bookmakerID, lobbyID
 			AvailableStake:   quote.AvailableStake,
 			Suspended:        quote.Suspended,
 			CollectedAt:      quote.CollectedAt,
+			LastObservedAt:   quote.LastObservedAt,
+			ChangedAt:        quote.ChangedAt,
 			ProtocolVersion:  quote.ProtocolVersion,
 			BatchID:          quote.BatchID,
 			SourceEventID:    quote.SourceEventID,

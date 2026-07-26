@@ -162,14 +162,30 @@ export class BackendCollectorStreamSink implements CollectorSink {
   }
 
   async observeFixtureMarketBatch(fixtureId: string, observedAt: string): Promise<void> {
-    const batch = this.latestFixtureBatches.get(fixtureId);
-    if (!batch) {
+    await this.observeFixtureMarketBatches([fixtureId], observedAt);
+  }
+
+  async observeFixtureMarketBatches(fixtureIds: string[], observedAt: string): Promise<void> {
+    const batches = Array.from(new Set(fixtureIds)).flatMap((fixtureId) => {
+      const batch = this.latestFixtureBatches.get(fixtureId);
+      return batch ? [{ fixtureId, batch }] : [];
+    });
+    if (batches.length === 0) {
       return;
     }
     await this.enqueue(async () => {
       await this.ensureConnected();
       await this.replayLatestBootstrapIfNeeded();
-      if (this.latestFixtureBatches.get(fixtureId) !== batch) {
+      const items = batches.flatMap(({ fixtureId, batch }) =>
+        this.latestFixtureBatches.get(fixtureId) === batch
+          ? [{
+              fixture_id: fixtureId,
+              batch_id: batch.batchId,
+              fingerprint: batch.fingerprint
+            }]
+          : []
+      );
+      if (items.length === 0) {
         return;
       }
       await this.sendFrame({
@@ -179,11 +195,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
         seq: this.nextSeq(),
         observed_at: observedAt,
         source: serializeSource(this.source),
-        items: [{
-          fixture_id: fixtureId,
-          batch_id: batch.batchId,
-          fingerprint: batch.fingerprint
-        }]
+        items
       });
     });
   }

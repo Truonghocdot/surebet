@@ -191,6 +191,14 @@ func TestObserveFixtureBatchesRefreshesV1WhenProtocolIsV1(t *testing.T) {
 				t.Fatalf("expected v1 LastObservedAt=%s, got %s",
 					observation.ObservedAt.UTC(), item.LastObservedAt)
 			}
+			if !item.CollectedAt.Equal(observation.ObservedAt.UTC()) {
+				t.Fatalf("expected v1 CollectedAt=%s, got %s",
+					observation.ObservedAt.UTC(), item.CollectedAt)
+			}
+			if !item.ChangedAt.Equal(staleAt) {
+				t.Fatalf("observation bridge changed state timestamp: got %s, want %s",
+					item.ChangedAt, staleAt)
+			}
 		}
 	}
 	if v1Refreshed == 0 {

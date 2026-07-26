@@ -24,6 +24,7 @@ import {
   type RealtimeOddsQuote
 } from "@/lib/realtime-opportunity-board";
 import { buildOpportunityNotificationDetails } from "@/lib/opportunity-notification";
+import { mergeOpportunityBoardsMonotonically } from "@/lib/opportunity-board-merge";
 
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
@@ -44,8 +45,14 @@ export function useOpportunityBoardQuery() {
   const role = useSessionStore((state) => state.user?.role);
   return useQuery({
     queryKey: crmQueryKeys.opportunityBoard(role),
-    queryFn: fetchOpportunityBoard,
+    queryFn: ({ signal }) => fetchOpportunityBoard(signal),
     select: (board) => filterOpportunityBoardForRole(board, role),
+    retry: false,
+    structuralSharing: (previous, incoming) =>
+      mergeOpportunityBoardsMonotonically(
+        previous as OpportunityBoard | undefined,
+        incoming as OpportunityBoard
+      ),
     // Keep the REST safety net aligned with the v2 market freshness window.
     refetchInterval: 3_000,
     refetchIntervalInBackground: false
@@ -73,6 +80,7 @@ export function useRealtimeWebSocket() {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let boardRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     let secondaryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let boardMutationQueue = Promise.resolve();
     let lastBoardRefreshAt = 0;
     let lastSecondaryRefreshAt = 0;
 
@@ -110,6 +118,50 @@ export function useRealtimeWebSocket() {
       secondaryRefreshTimer = setTimeout(flushSecondaryQueries, delay);
     };
 
+    const enqueueRealtimeOdds = (quotes: RealtimeOddsQuote[]) => {
+      const queryKey = crmQueryKeys.opportunityBoard(roleRef.current);
+      boardMutationQueue = boardMutationQueue
+        .catch(() => undefined)
+        .then(async () => {
+          await queryClient.cancelQueries({ queryKey }, { silent: true });
+          if (closed) {
+            return;
+          }
+          queryClient.setQueryData<OpportunityBoard>(queryKey, (current) => current
+            ? applyRealtimeOddsQuotes(current, quotes).board
+            : current
+          );
+          scheduleBoardRefresh();
+        })
+        .catch(() => {
+          if (!closed) {
+            scheduleBoardRefresh();
+          }
+        });
+    };
+
+    const enqueueRealtimeVerification = (verification: RealtimeVerificationEvent) => {
+      const queryKey = crmQueryKeys.opportunityBoard(roleRef.current);
+      boardMutationQueue = boardMutationQueue
+        .catch(() => undefined)
+        .then(async () => {
+          await queryClient.cancelQueries({ queryKey }, { silent: true });
+          if (closed) {
+            return;
+          }
+          queryClient.setQueryData<OpportunityBoard>(queryKey, (current) => current
+            ? applyRealtimeVerification(current, verification)
+            : current
+          );
+          scheduleBoardRefresh();
+        })
+        .catch(() => {
+          if (!closed) {
+            scheduleBoardRefresh();
+          }
+        });
+    };
+
     const connect = () => {
       if (closed) {
         return;
@@ -134,14 +186,9 @@ export function useRealtimeWebSocket() {
             const quotes = extractRealtimeOddsQuotes(message);
             const hasBoardQuote = quotes.some(isRealtimeBoardQuote);
             if (hasBoardQuote) {
-              queryClient.setQueryData<OpportunityBoard>(
-                crmQueryKeys.opportunityBoard(roleRef.current),
-                (current) => current
-                  ? applyRealtimeOddsQuotes(current, quotes).board
-                  : current
-              );
+              enqueueRealtimeOdds(quotes);
             }
-            if (quotes.length === 0 || hasBoardQuote) {
+            if (quotes.length === 0) {
               scheduleBoardRefresh();
             }
             scheduleSecondaryRefresh();
@@ -153,12 +200,7 @@ export function useRealtimeWebSocket() {
               !verification.opportunity ||
               isOpportunityVisibleForRole(verification.opportunity, roleRef.current)
             )) {
-              queryClient.setQueryData<OpportunityBoard>(
-                crmQueryKeys.opportunityBoard(roleRef.current),
-                (current) => current
-                  ? applyRealtimeVerification(current, verification)
-                  : current
-              );
+              enqueueRealtimeVerification(verification);
               if (verification.status === "confirmed" && verification.opportunity) {
                 pushNotification(opportunityNotification("confirmed", verification.opportunity));
               }

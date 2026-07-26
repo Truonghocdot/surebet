@@ -34,6 +34,7 @@ export class Jun88CmdRuntime {
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
       try {
         let target = await resolveCmdContentTarget(page);
+        await configureCmdUpstreamRefresh(target);
 
         // Phase B: extract only match table HTML instead of full page dump
         const initialRead = await readStableCmdSnapshot(target, this.collectorId, "bootstrap");
@@ -53,6 +54,7 @@ export class Jun88CmdRuntime {
             selection = await readCmdConfirmedSelection(target, request);
           } catch {
             target = await resolveCmdContentTarget(page);
+            await configureCmdUpstreamRefresh(target);
             selection = await readCmdConfirmedSelection(target, request);
           }
           const observedAt = new Date().toISOString();
@@ -81,14 +83,21 @@ export class Jun88CmdRuntime {
             throw streamFailure;
           }
         });
-        await installCmdObservationBinding(page, async (fixtureId, observedAt) => {
-          await sink.observeFixtureMarketBatch?.(fixtureId, observedAt);
+        await installCmdObservationBinding(page, async (fixtureIds, observedAt) => {
+          if (sink.observeFixtureMarketBatches) {
+            await sink.observeFixtureMarketBatches(fixtureIds, observedAt);
+            return;
+          }
+          for (const fixtureId of fixtureIds) {
+            await sink.observeFixtureMarketBatch?.(fixtureId, observedAt);
+          }
         });
         await installCmdObserver(target, initialSnapshot);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         let lastHeartbeatAt = Date.now();
         let lastReconcileAt = Date.now();
+        let lastObserverHealthAt = Date.now();
         const heartbeatMs = heartbeatIntervalMs();
 
         while (!page.isClosed()) {
@@ -96,7 +105,20 @@ export class Jun88CmdRuntime {
             throw streamFailure;
           }
 
+          if (Date.now() - lastObserverHealthAt >= cmdObserverHealthIntervalMs()) {
+            if (!await isCmdObserverHealthy(target)) {
+              target = await resolveCmdContentTarget(page);
+              await configureCmdUpstreamRefresh(target);
+              await installCmdObserver(target, {
+                source: activeSnapshot.source,
+                selections: []
+              });
+            }
+            lastObserverHealthAt = Date.now();
+          }
+
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
+            await configureCmdUpstreamRefresh(target);
             const reconciledRead = await readStableCmdSnapshot(
               target,
               this.collectorId,
@@ -120,6 +142,10 @@ export class Jun88CmdRuntime {
               reconciledSnapshot,
               previousReconciledFixtures,
               reconciledSnapshotMap
+            ).filter((delta) =>
+              delta.op === "remove" ||
+              delta.suspended ||
+              !activeSnapshotMap.has(delta.outcomeId)
             );
             activeSnapshot = {
               ...activeSnapshot,
@@ -149,6 +175,63 @@ export class Jun88CmdRuntime {
       }
     });
   }
+}
+
+export async function configureCmdUpstreamRefresh(target: Page | Frame): Promise<void> {
+  const liveSeconds = Math.ceil(cmdLivePollIntervalMs() / 1_000);
+  const todaySeconds = Math.ceil(cmdTodayPollIntervalMs() / 1_000);
+  const script = `
+    (() => {
+      const liveSeconds = ${liveSeconds};
+      const todaySeconds = ${todaySeconds};
+      const win = window;
+      win.LiveSeconds = liveSeconds;
+      win.TodayOrEarlySeconds = todaySeconds;
+
+      for (const name of [
+        "onLoadedIncRunningData",
+        "onLoadedIncTodayData",
+        "onLoadedIncEarlyData"
+      ]) {
+        const current = win[name];
+        if (typeof current !== "function" || current.__surebetCmdUpstreamHook) {
+          continue;
+        }
+        const wrapped = function(...args) {
+          const result = current.apply(this, args);
+          win.__surebet_cmd_upstream_tick__ =
+            Number(win.__surebet_cmd_upstream_tick__ || 0) + 1;
+          win.__surebet_cmd_upstream_version__ = String(win.LastRunningVersion || "");
+          return result;
+        };
+        wrapped.__surebetCmdUpstreamHook = true;
+        win[name] = wrapped;
+      }
+
+      if (typeof win.ResetLiveTimerCounter === "function") {
+        win.ResetLiveTimerCounter();
+      } else {
+        win.secondsLiveLeft = liveSeconds;
+      }
+      if (typeof win.ResetTodayLiveCounter === "function") {
+        win.ResetTodayLiveCounter();
+      } else {
+        win.secondsTodayLeft = todaySeconds;
+      }
+    })()
+  `;
+  await target.evaluate(script);
+}
+
+async function isCmdObserverHealthy(target: Page | Frame) {
+  return target.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __surebet_cmd_stream__?: { observer?: MutationObserver; scanTimer?: number };
+      }
+    ).__surebet_cmd_stream__;
+    return Boolean(state?.observer && state.scanTimer);
+  }).catch(() => false);
 }
 
 async function readCmdConfirmedSelection(
@@ -276,7 +359,7 @@ export async function installCmdObserver(
       const state = win.__surebet_cmd_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
       state.rowFingerprints = {};
-      state.lastObservedAt = {};
+      state.observedUpstreamTick = Number(win.__surebet_cmd_upstream_tick__ || 0);
       if (state.observer) state.observer.disconnect();
       if (state.scanTimer) clearInterval(state.scanTimer);
       for (const pending of Object.values(state.settleTimers || {})) {
@@ -483,11 +566,23 @@ export async function installCmdObserver(
 
         if (emit) {
           const observedAt = new Date().toISOString();
-          const sourceEventId = "cmd:" + observedAt;
-          for (const item of current) {
+          const providerVersion = String(win.LastRunningVersion || "").trim();
+          const upstreamTick = Number(win.__surebet_cmd_upstream_tick__ || 0);
+          const sourceEventId = providerVersion
+            ? "cmd:" + providerVersion + ":" + upstreamTick
+            : "cmd:local:" + observedAt;
+          const changed = current.some((item) => {
             const fingerprint = item.odds + "|" + item.outcomeName + "|" + item.suspended;
-            if (state.seen[item.outcomeId] !== fingerprint) {
-              state.seen[item.outcomeId] = fingerprint;
+            return state.seen[item.outcomeId] !== fingerprint;
+          }) || previous.some((item) => !currentMap[item.outcomeId]);
+
+          if (changed) {
+            // A stable CMD row is the atomic observation unit. Re-send every
+            // outcome in the fixture so v1 consumers never receive one new leg
+            // paired with an older sibling.
+            for (const item of current) {
+              state.seen[item.outcomeId] =
+                item.odds + "|" + item.outcomeName + "|" + item.suspended;
               state.queue.push({
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
                 collectedAt: observedAt,
@@ -509,31 +604,31 @@ export async function installCmdObserver(
                 op: "upsert"
               });
             }
-          }
 
-          for (const item of previous) {
-            if (!currentMap[item.outcomeId]) {
-              delete state.seen[item.outcomeId];
-              state.queue.push({
-                source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
-                collectedAt: observedAt,
-                fixtureId: item.fixtureId,
-                sport: item.sport,
-                homeTeam: item.homeTeam,
-                awayTeam: item.awayTeam,
-                leagueName: item.leagueName,
-                matchState: item.matchState,
-                marketId: item.marketId,
-                outcomeId: item.outcomeId,
-                outcomeName: item.outcomeName,
-                odds: item.odds,
-                availableStake: item.availableStake,
-                suspended: true,
-                sourceEventId,
-                rawOdds: item.rawOdds,
-                oddsFormat: item.oddsFormat,
-                op: "remove"
-              });
+            for (const item of previous) {
+              if (!currentMap[item.outcomeId]) {
+                delete state.seen[item.outcomeId];
+                state.queue.push({
+                  source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
+                  collectedAt: observedAt,
+                  fixtureId: item.fixtureId,
+                  sport: item.sport,
+                  homeTeam: item.homeTeam,
+                  awayTeam: item.awayTeam,
+                  leagueName: item.leagueName,
+                  matchState: item.matchState,
+                  marketId: item.marketId,
+                  outcomeId: item.outcomeId,
+                  outcomeName: item.outcomeName,
+                  odds: item.odds,
+                  availableStake: item.availableStake,
+                  suspended: true,
+                  sourceEventId,
+                  rawOdds: item.rawOdds,
+                  oddsFormat: item.oddsFormat,
+                  op: "remove"
+                });
+              }
             }
           }
         }
@@ -693,28 +788,36 @@ export async function installCmdObserver(
           groupRows.push(row);
           groupedRows.set(rowKey, groupRows);
         }
+        const upstreamTick = Number(win.__surebet_cmd_upstream_tick__ || 0);
+        const hasNewUpstreamResponse = upstreamTick > Number(state.observedUpstreamTick || 0);
         for (const [rowKey, groupRows] of groupedRows) {
           const fingerprint = fingerprintRows(groupRows);
           if (state.rowFingerprints[rowKey] !== fingerprint) {
             scheduleStableRow(rowKey);
-            continue;
-          }
-          const now = Date.now();
-          if (!state.settleTimers[rowKey] &&
-            now - (state.lastObservedAt[rowKey] || 0) >= 1_000 &&
-            typeof win[observationBindingName] === "function") {
-            state.lastObservedAt[rowKey] = now;
-            Promise.resolve(win[observationBindingName]({
-              fixtureId: state.byRow[rowKey]?.[0]?.fixtureId || rowKey,
-              observedAt: new Date(now).toISOString()
-            })).catch(() => {
-              state.lastObservedAt[rowKey] = 0;
-            });
           }
         }
 
         for (const rowKey of Object.keys(state.byRow)) {
           if (!groupedRows.has(rowKey)) scheduleStableRow(rowKey);
+        }
+
+        if (hasNewUpstreamResponse &&
+          Object.keys(state.settleTimers).length === 0 &&
+          typeof win[observationBindingName] === "function") {
+          const fixtureIds = Array.from(groupedRows.keys())
+            .map((rowKey) => state.byRow[rowKey]?.[0]?.fixtureId || "")
+            .filter(Boolean);
+          const previousTick = Number(state.observedUpstreamTick || 0);
+          state.observedUpstreamTick = upstreamTick;
+          Promise.resolve(win[observationBindingName]({
+            fixtureIds: Array.from(new Set(fixtureIds)),
+            observedAt: new Date().toISOString(),
+            providerVersion: String(win.LastRunningVersion || "")
+          })).catch(() => {
+            if (Number(state.observedUpstreamTick || 0) === upstreamTick) {
+              state.observedUpstreamTick = previousTick;
+            }
+          });
         }
       }, scanIntervalMs);
     })
@@ -870,18 +973,25 @@ async function installCmdDeltaBinding(
 
 async function installCmdObservationBinding(
   page: Page,
-  onObservation: (fixtureId: string, observedAt: string) => Promise<void>
+  onObservation: (fixtureIds: string[], observedAt: string) => Promise<void>
 ) {
   await page.exposeBinding(CMD_OBSERVATION_BINDING, async (_source, value: unknown) => {
     if (!value || typeof value !== "object") {
       return;
     }
-    const observation = value as { fixtureId?: unknown; observedAt?: unknown };
-    if (typeof observation.fixtureId !== "string" ||
+    const observation = value as { fixtureIds?: unknown; observedAt?: unknown };
+    if (!Array.isArray(observation.fixtureIds) ||
       typeof observation.observedAt !== "string") {
       return;
     }
-    await onObservation(observation.fixtureId, observation.observedAt);
+    const fixtureIds = Array.from(new Set(
+      observation.fixtureIds.filter((fixtureId): fixtureId is string =>
+        typeof fixtureId === "string" && fixtureId.trim() !== ""
+      )
+    ));
+    if (fixtureIds.length > 0) {
+      await onObservation(fixtureIds, observation.observedAt);
+    }
   });
 }
 
@@ -928,5 +1038,17 @@ function cmdReconcileIntervalMs() {
 }
 
 function cmdDomScanIntervalMs() {
-  return Math.max(envInt("CMD_DOM_SCAN_MS", 500), 100);
+  return Math.max(envInt("CMD_DOM_SCAN_MS", 200), 100);
+}
+
+function cmdLivePollIntervalMs() {
+  return Math.min(Math.max(envInt("CMD_LIVE_POLL_MS", 2_000), 1_000), 10_000);
+}
+
+function cmdTodayPollIntervalMs() {
+  return Math.min(Math.max(envInt("CMD_TODAY_POLL_MS", 5_000), 2_000), 30_000);
+}
+
+function cmdObserverHealthIntervalMs() {
+  return Math.min(Math.max(envInt("CMD_OBSERVER_HEALTH_MS", 2_000), 1_000), 10_000);
 }

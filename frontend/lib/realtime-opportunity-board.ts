@@ -13,9 +13,12 @@ export type RealtimeOddsQuote = {
   odds: number;
   suspended?: boolean;
   collected_at: string;
+  last_observed_at?: string;
+  changed_at?: string;
   batch_id?: string;
   coherence_status?: string;
   market_observed_at?: string;
+  price_changed_at?: string;
 };
 
 type PatchResult = {
@@ -60,10 +63,12 @@ export function applyRealtimeOddsQuotes(
   let changed = false;
   const items = board.items.map((fixture) => {
     let fixtureChanged = false;
-    let fixtureLatest = fixture.latest_collected_at;
+    let fixtureLatestObserved = fixture.latest_observed_at || fixture.latest_collected_at;
+    let fixtureLatestCollected = fixture.latest_collected_at;
     const sources = fixture.sources.map((source) => {
       let sourceChanged = false;
-      let sourceLatest = source.latest_collected_at;
+      let sourceLatestObserved = source.latest_observed_at || source.latest_collected_at;
+      let sourceLatestCollected = source.latest_collected_at;
       const patchMarkets = (markets: typeof source.handicap) =>
         markets.map((market) => {
           const marketUpdates = market.outcomes.map((outcome) => {
@@ -87,9 +92,27 @@ export function applyRealtimeOddsQuotes(
           fixtureChanged = true;
           sourceChanged = true;
           for (const item of received) {
-            sourceLatest = latestTimestamp(sourceLatest, item.update!.collected_at);
-            fixtureLatest = latestTimestamp(fixtureLatest, item.update!.collected_at);
+            const observedAt = realtimeObservedTimestamp(item.update!);
+            sourceLatestObserved = latestTimestamp(sourceLatestObserved, observedAt);
+            fixtureLatestObserved = latestTimestamp(fixtureLatestObserved, observedAt);
+            sourceLatestCollected = latestTimestamp(
+              sourceLatestCollected,
+              item.update!.collected_at
+            );
+            fixtureLatestCollected = latestTimestamp(
+              fixtureLatestCollected,
+              item.update!.collected_at
+            );
           }
+
+          const marketObservedAt = received.reduce(
+            (latest, item) => latestTimestamp(latest, realtimeObservedTimestamp(item.update!)),
+            market.observed_at ?? ""
+          );
+          const marketPriceChangedAt = received.reduce(
+            (latest, item) => latestTimestamp(latest, realtimePriceChangedTimestamp(item.update!)),
+            market.price_changed_at ?? ""
+          );
 
           const batchIDs = new Set(
             received.map((item) => item.update?.batch_id).filter(Boolean)
@@ -100,15 +123,19 @@ export function applyRealtimeOddsQuotes(
             (!item.update?.coherence_status || item.update.coherence_status === "coherent")
           );
           if (!usable) {
-            return lockMarket(market);
+            return lockMarket(market, marketObservedAt, marketPriceChangedAt);
           }
 
           return {
             ...market,
+            observed_at: marketObservedAt,
+            price_changed_at: marketPriceChangedAt,
             outcomes: marketUpdates.map(({ outcome, update }) => ({
               ...outcome,
               odds: update!.odds,
-              collected_at: update!.market_observed_at || update!.collected_at,
+              collected_at: update!.collected_at,
+              observed_at: realtimeObservedTimestamp(update!),
+              price_changed_at: realtimePriceChangedTimestamp(update!),
               is_stale: false,
               is_surebet_leg: false,
               is_candidate_leg: false
@@ -123,7 +150,8 @@ export function applyRealtimeOddsQuotes(
       }
       return {
         ...source,
-        latest_collected_at: sourceLatest,
+        latest_collected_at: sourceLatestCollected,
+        latest_observed_at: sourceLatestObserved,
         handicap,
         over_under: overUnder
       };
@@ -147,7 +175,8 @@ export function applyRealtimeOddsQuotes(
       valid_until: "",
       match_confidence: 0,
       match_ambiguous: false,
-      latest_collected_at: fixtureLatest,
+      latest_collected_at: fixtureLatestCollected,
+      latest_observed_at: fixtureLatestObserved,
       sources: clearOpportunityLegs(sources)
     };
   });
@@ -160,13 +189,19 @@ export function applyRealtimeOddsQuotes(
 }
 
 function lockMarket(
-  market: OpportunityBoard["items"][number]["sources"][number]["handicap"][number]
+  market: OpportunityBoard["items"][number]["sources"][number]["handicap"][number],
+  observedAt: string,
+  priceChangedAt: string
 ) {
   return {
     ...market,
+    observed_at: observedAt,
+    price_changed_at: priceChangedAt,
     outcomes: market.outcomes.map((outcome) => ({
       ...outcome,
       odds: 0,
+      observed_at: observedAt,
+      price_changed_at: priceChangedAt,
       is_stale: true,
       is_surebet_leg: false,
       is_candidate_leg: false
@@ -366,6 +401,31 @@ function quoteKey(quote: {
   ]
     .map((value) => value.trim().toLowerCase())
     .join("\u0000");
+}
+
+function realtimeObservedTimestamp(quote: RealtimeOddsQuote) {
+  return firstUsableTimestamp(
+    quote.market_observed_at,
+    quote.last_observed_at,
+    quote.collected_at
+  );
+}
+
+function realtimePriceChangedTimestamp(quote: RealtimeOddsQuote) {
+  return firstUsableTimestamp(
+    quote.price_changed_at,
+    quote.changed_at,
+    quote.collected_at
+  );
+}
+
+function firstUsableTimestamp(...values: Array<string | undefined>) {
+  for (const value of values) {
+    if (value && Date.parse(value) > 0) {
+      return value;
+    }
+  }
+  return values.find(Boolean) ?? "";
 }
 
 function latestTimestamp(current: string, next: string) {

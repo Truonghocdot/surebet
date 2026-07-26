@@ -59,6 +59,8 @@ export const opportunityBoardOutcomeSchema = z.object({
   side: z.string(),
   odds: z.number(),
   collected_at: z.string(),
+  observed_at: z.string().optional(),
+  price_changed_at: z.string().optional(),
   is_stale: z.boolean().optional(),
   is_surebet_leg: z.boolean(),
   is_candidate_leg: z.boolean()
@@ -68,6 +70,8 @@ export const opportunityBoardMarketSchema = z.object({
   id: z.string(),
   period: z.string(),
   line: z.string(),
+  observed_at: z.string().optional(),
+  price_changed_at: z.string().optional(),
   outcomes: z.array(opportunityBoardOutcomeSchema)
 });
 
@@ -76,6 +80,7 @@ export const opportunityBoardSourceSchema = z.object({
   bookmaker_id: z.string(),
   lobby_id: z.string(),
   latest_collected_at: z.string(),
+  latest_observed_at: z.string().optional(),
   handicap: z.array(opportunityBoardMarketSchema),
   over_under: z.array(opportunityBoardMarketSchema)
 });
@@ -94,6 +99,7 @@ export const opportunityBoardFixtureSchema = z.object({
     "unknown"
   ]),
   latest_collected_at: z.string(),
+  latest_observed_at: z.string().optional(),
   confirmed_at: z.string(),
   expires_at: z.string(),
   league_names: z.array(z.string()),

@@ -37,6 +37,8 @@ type OddsQuotePayload struct {
 	AvailableStake   float64   `json:"available_stake"`
 	Suspended        bool      `json:"suspended"`
 	CollectedAt      time.Time `json:"collected_at"`
+	LastObservedAt   time.Time `json:"last_observed_at,omitempty"`
+	ChangedAt        time.Time `json:"changed_at,omitempty"`
 	ProtocolVersion  int       `json:"protocol_version,omitempty"`
 	BatchID          string    `json:"batch_id,omitempty"`
 	SourceEventID    string    `json:"source_event_id,omitempty"`

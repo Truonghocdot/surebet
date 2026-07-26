@@ -286,8 +286,9 @@ func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
 	defer r.cacheMu.Unlock()
 	currentItems := r.currentSourceLocked(source)
 	pipe := r.client.TxPipeline()
-	changedQuotes := make([]models.OddsQuote, 0, len(events))
+	acceptedQuotes := make(map[string]models.OddsQuote, len(events))
 	preparedQuotes := make(map[string]models.OddsQuote, len(events))
+	hasStateChange := false
 	if events[0].SnapshotID != "" {
 		members := make([]any, 0, len(events))
 		for _, next := range nextQuotes {
@@ -311,11 +312,12 @@ func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
 			continue
 		}
 		preparedQuotes[logicKey] = prepared
+		acceptedQuotes[logicKey] = prepared
 		if stateChanged {
+			hasStateChange = true
 			if err := storeQuotePipeline(ctx, pipe, source, prepared, r.historyTTL, r.historyMaxEntries); err != nil {
 				return nil, err
 			}
-			changedQuotes = append(changedQuotes, prepared)
 		}
 	}
 
@@ -325,8 +327,26 @@ func (r *OddsStateRepository) ApplyQuoteUpsertBatch(
 	for logicKey, quote := range preparedQuotes {
 		currentItems[logicKey] = quote
 	}
+	if !hasStateChange {
+		return nil, nil
+	}
 
-	return changedQuotes, nil
+	result := make([]models.OddsQuote, 0, len(acceptedQuotes))
+	seen := make(map[string]struct{}, len(acceptedQuotes))
+	for _, next := range nextQuotes {
+		logicKey := logicQuoteKey(next)
+		accepted, ok := acceptedQuotes[logicKey]
+		if !ok {
+			continue
+		}
+		if _, duplicated := seen[logicKey]; duplicated {
+			continue
+		}
+		seen[logicKey] = struct{}{}
+		result = append(result, accepted)
+	}
+
+	return result, nil
 }
 
 func (r *OddsStateRepository) ApplyQuoteRemove(

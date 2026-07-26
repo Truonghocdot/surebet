@@ -9,7 +9,10 @@ export async function fetchDashboardSnapshot() {
   return dashboardSnapshotSchema.parse(response.data);
 }
 
-export async function fetchOpportunityBoard() {
-  const response = await crmHttp.get("/crm/opportunity-board");
+export async function fetchOpportunityBoard(signal?: AbortSignal) {
+  const response = await crmHttp.get("/crm/opportunity-board", {
+    signal,
+    timeout: 3_000
+  });
   return opportunityBoardSchema.parse(response.data);
 }

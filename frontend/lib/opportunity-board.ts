@@ -21,6 +21,8 @@ type BoardOutcome = {
   side: string;
   odds: number;
   collected_at: string;
+  observed_at?: string;
+  price_changed_at?: string;
   is_stale: boolean;
   is_surebet_leg: boolean;
   is_candidate_leg: boolean;
@@ -31,6 +33,8 @@ type BoardMarket = {
   id: string;
   period: string;
   line: string;
+  observed_at?: string;
+  price_changed_at?: string;
   outcomes: BoardOutcome[];
 };
 
@@ -39,6 +43,7 @@ type MutableSource = {
   bookmaker_id: string;
   lobby_id: string;
   latest_collected_at: string;
+  latest_observed_at: string;
   markets: Record<MarketType, Map<string, BoardMarket>>;
 };
 
@@ -47,6 +52,7 @@ type MutableFixture = {
   match_name: string;
   match_state: string;
   latest_collected_at: string;
+  latest_observed_at: string;
   league_names: Set<string>;
   sources: Map<string, MutableSource>;
 };
@@ -69,6 +75,7 @@ export type CurrentOpportunityBoardItem = {
   expected_return: number;
   odds_profile: OpportunityOddsProfile;
   latest_collected_at: string;
+  latest_observed_at?: string;
   confirmed_at: string;
   expires_at: string;
   league_names: string[];
@@ -82,6 +89,7 @@ export type CurrentOpportunityBoardItem = {
     bookmaker_id: string;
     lobby_id: string;
     latest_collected_at: string;
+    latest_observed_at?: string;
     handicap: BoardMarket[];
     over_under: BoardMarket[];
   }>;
@@ -221,6 +229,7 @@ function groupMatchedFixtures(
       match_name: displayMatchName(quote),
       match_state: quote.match_state || "unknown",
       latest_collected_at: quote.collected_at,
+      latest_observed_at: quoteObservedTimestamp(quote),
       league_names: new Set<string>(),
       sources: new Map<string, MutableSource>()
     };
@@ -228,6 +237,10 @@ function groupMatchedFixtures(
     fixture.latest_collected_at = latestTimestamp(
       fixture.latest_collected_at,
       quote.collected_at
+    );
+    fixture.latest_observed_at = latestTimestamp(
+      fixture.latest_observed_at,
+      quoteObservedTimestamp(quote)
     );
     if (quote.league_name.trim()) {
       fixture.league_names.add(quote.league_name.trim());
@@ -238,6 +251,7 @@ function groupMatchedFixtures(
       bookmaker_id: quote.bookmaker_id,
       lobby_id: quote.lobby_id,
       latest_collected_at: quote.collected_at,
+      latest_observed_at: quoteObservedTimestamp(quote),
       markets: {
         handicap: new Map<string, BoardMarket>(),
         over_under: new Map<string, BoardMarket>()
@@ -247,6 +261,10 @@ function groupMatchedFixtures(
       source.latest_collected_at,
       quote.collected_at
     );
+    source.latest_observed_at = latestTimestamp(
+      source.latest_observed_at,
+      quoteObservedTimestamp(quote)
+    );
 
     const period = quote.period || inferPeriod(quote.market_id);
     const line = quote.line || inferLine(quote.outcome_name);
@@ -255,8 +273,18 @@ function groupMatchedFixtures(
       id: `${fixtureID}\u0000${sourceID}\u0000${marketKey}`,
       period,
       line,
+      observed_at: quoteObservedTimestamp(quote),
+      price_changed_at: quotePriceChangedTimestamp(quote),
       outcomes: []
     };
+    market.observed_at = latestTimestamp(
+      market.observed_at ?? "",
+      quoteObservedTimestamp(quote)
+    );
+    market.price_changed_at = latestTimestamp(
+      market.price_changed_at ?? "",
+      quotePriceChangedTimestamp(quote)
+    );
     const outcome: BoardOutcome = {
       fixture_id: quote.fixture_id,
       outcome_id: quote.outcome_id,
@@ -264,6 +292,8 @@ function groupMatchedFixtures(
       side: quote.side || inferSide(marketType, quote.outcome_name),
       odds: quote.odds,
       collected_at: quote.collected_at,
+      observed_at: quoteObservedTimestamp(quote),
+      price_changed_at: quotePriceChangedTimestamp(quote),
       is_stale: false,
       is_surebet_leg: false,
       is_candidate_leg: false,
@@ -321,6 +351,7 @@ function serializeFixture(
       ? classifyOpportunityOddsProfile(bestOpportunity)
       : "unknown",
     latest_collected_at: fixture.latest_collected_at,
+    latest_observed_at: fixture.latest_observed_at,
     confirmed_at: bestOpportunity?.confirmed_at ?? "",
     expires_at: bestOpportunity?.expires_at ?? "",
     verification_status: verificationStatus,
@@ -337,6 +368,7 @@ function serializeFixture(
         bookmaker_id: source.bookmaker_id,
         lobby_id: source.lobby_id,
         latest_collected_at: source.latest_collected_at,
+        latest_observed_at: source.latest_observed_at,
         handicap: serializeMarkets(source.markets.handicap, candidateQuoteKeys, confirmedQuoteKeys),
         over_under: serializeMarkets(source.markets.over_under, candidateQuoteKeys, confirmedQuoteKeys)
       }))
@@ -574,4 +606,29 @@ function latestTimestamp(current: string, next: string) {
     return current;
   }
   return new Date(next).getTime() > new Date(current).getTime() ? next : current;
+}
+
+function quoteObservedTimestamp(quote: BackendOdds) {
+  return firstUsableTimestamp(
+    quote.market_observed_at,
+    quote.last_observed_at,
+    quote.collected_at
+  );
+}
+
+function quotePriceChangedTimestamp(quote: BackendOdds) {
+  return firstUsableTimestamp(
+    quote.price_changed_at,
+    quote.changed_at,
+    quote.collected_at
+  );
+}
+
+function firstUsableTimestamp(...values: Array<string | undefined>) {
+  for (const value of values) {
+    if (value && Date.parse(value) > 0) {
+      return value;
+    }
+  }
+  return values.find(Boolean) ?? "";
 }

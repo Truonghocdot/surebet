@@ -140,7 +140,7 @@ function FixtureRows({ fixture, now }: { fixture: OpportunityBoardFixture; now: 
             <p className="break-words font-semibold text-[var(--ink)]">{source.bookmaker_id}</p>
             <p className="mt-1 text-xs text-[var(--muted)]">{source.lobby_id || "default"}</p>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              {formatFreshness(source.latest_collected_at)}
+              {formatFreshness(source.latest_observed_at || source.latest_collected_at)}
             </p>
           </td>
           <td className="border-b border-[color:var(--line)] px-4 py-3 align-top">
@@ -199,7 +199,7 @@ function FixtureCell({
         ) : null}
         <div className="mt-3 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
           <span>{matchStateLabel(fixture.match_state)}</span>
-          <span>{formatFreshness(fixture.latest_collected_at)}</span>
+          <span>{formatFreshness(fixture.latest_observed_at || fixture.latest_collected_at)}</span>
         </div>
       </div>
     </td>
@@ -257,7 +257,8 @@ function OutcomeOdds({
 }) {
   const isConfirmedLeg = confirmedActive && outcome.is_surebet_leg;
   const isStale = Boolean(outcome.is_stale);
-  const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${isConfirmedLeg}\u0000${isStale}`;
+  const priceChangedAt = outcome.price_changed_at || outcome.collected_at;
+  const signature = `${outcome.odds}\u0000${priceChangedAt}\u0000${isConfirmedLeg}\u0000${isStale}`;
   const previousSignature = useRef<string | null>(null);
   const [isFlashing, setIsFlashing] = useState(false);
 

@@ -69,17 +69,63 @@ test("applies a complete coherent fixture market batch", () => {
   });
 
   const result = applyRealtimeOddsQuotes(board, [
-    realtimeQuote({ odds: -0.72, batch_id: "batch-2", coherence_status: "coherent" }),
+    realtimeQuote({
+      odds: -0.72,
+      batch_id: "batch-2",
+      coherence_status: "coherent",
+      market_observed_at: "2026-07-18T08:00:03Z",
+      price_changed_at: "2026-07-18T08:00:02Z"
+    }),
     realtimeQuote({
       outcome_id: "fixture-8x:hdp-ah:away-0-5",
       odds: 0.76,
       batch_id: "batch-2",
-      coherence_status: "coherent"
+      coherence_status: "coherent",
+      market_observed_at: "2026-07-18T08:00:03Z",
+      price_changed_at: "2026-07-18T08:00:02Z"
     })
   ]);
   const outcomes = result.board.items[0].sources[0].handicap[0].outcomes;
   assert.deepEqual(outcomes.map((outcome) => outcome.odds), [-0.72, 0.76]);
   assert.ok(outcomes.every((outcome) => !outcome.is_stale));
+  assert.ok(outcomes.every((outcome) => outcome.observed_at === "2026-07-18T08:00:03Z"));
+  assert.ok(outcomes.every((outcome) => outcome.price_changed_at === "2026-07-18T08:00:02Z"));
+  assert.equal(result.board.items[0].sources[0].latest_observed_at, "2026-07-18T08:00:03Z");
+});
+
+test("uses changed_at instead of an observation refresh for the price timestamp", () => {
+  const board = createBoard();
+  board.items[0].sources[0].handicap[0].outcomes.push({
+    fixture_id: "fixture-8x",
+    outcome_id: "fixture-8x:hdp-ah:away-0-5",
+    outcome_name: "Away -0.5",
+    side: "away",
+    odds: 0.8,
+    collected_at: "2026-07-18T08:00:00Z",
+    is_surebet_leg: false,
+    is_candidate_leg: false
+  });
+
+  const result = applyRealtimeOddsQuotes(board, [
+    realtimeQuote({
+      odds: -0.72,
+      collected_at: "2026-07-18T08:00:20Z",
+      last_observed_at: "2026-07-18T08:00:20Z",
+      changed_at: "2026-07-18T08:00:20Z"
+    }),
+    realtimeQuote({
+      outcome_id: "fixture-8x:hdp-ah:away-0-5",
+      odds: 0.8,
+      collected_at: "2026-07-18T08:00:20Z",
+      last_observed_at: "2026-07-18T08:00:20Z",
+      changed_at: "2026-07-18T08:00:00Z"
+    })
+  ]);
+  const outcomes = result.board.items[0].sources[0].handicap[0].outcomes;
+
+  assert.equal(outcomes[0].price_changed_at, "2026-07-18T08:00:20Z");
+  assert.equal(outcomes[1].price_changed_at, "2026-07-18T08:00:00Z");
+  assert.ok(outcomes.every((outcome) => outcome.observed_at === "2026-07-18T08:00:20Z"));
 });
 
 test("requests reconciliation when a new standard outcome is not on the board", () => {
