@@ -52,10 +52,9 @@ export function isOpportunityVisibleForRole(
 
 export function isOpportunityOddsProfileVisibleForRole(
   profile: OpportunityOddsProfile,
-  role: string | null | undefined
+  _role: string | null | undefined
 ) {
-  return profile === "two_negative" ||
-    (profile === "one_negative_one_positive" && role === "super_admin");
+  return profile === "two_negative";
 }
 
 export function filterOpportunityBoardForRole(

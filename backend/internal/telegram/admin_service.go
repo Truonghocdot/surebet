@@ -46,7 +46,7 @@ func (s AdminService) CreateRecipient(
 		IsActive:                       request.IsActive,
 		Notes:                          strings.TrimSpace(request.Notes),
 		Source:                         "manual",
-		ReceivesOneNegativeOnePositive: request.ReceivesOneNegativeOnePositive,
+		ReceivesOneNegativeOnePositive: false,
 		ReceivesTwoNegative:            request.ReceivesTwoNegative,
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func (s AdminService) UpdateRecipient(
 	recipient.ChatID = strings.TrimSpace(request.ChatID)
 	recipient.IsActive = request.IsActive
 	recipient.Notes = strings.TrimSpace(request.Notes)
-	recipient.ReceivesOneNegativeOnePositive = request.ReceivesOneNegativeOnePositive
+	recipient.ReceivesOneNegativeOnePositive = false
 	recipient.ReceivesTwoNegative = request.ReceivesTwoNegative
 	if strings.TrimSpace(recipient.Source) == "" {
 		recipient.Source = "manual"
@@ -99,7 +99,7 @@ func mapTelegramRecipientView(recipient models.TelegramRecipient) dto.TelegramRe
 		ChatType:                       recipient.ChatType,
 		TelegramUsername:               recipient.TelegramUsername,
 		MembershipStatus:               recipient.MembershipStatus,
-		ReceivesOneNegativeOnePositive: recipient.ReceivesOneNegativeOnePositive,
+		ReceivesOneNegativeOnePositive: false,
 		ReceivesTwoNegative:            recipient.ReceivesTwoNegative,
 		LastSeenAt:                     recipient.LastSeenAt,
 		CreatedAt:                      recipient.CreatedAt,

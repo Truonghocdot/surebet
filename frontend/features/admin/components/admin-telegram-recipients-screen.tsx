@@ -38,7 +38,7 @@ const emptyForm: FormState = {
   chat_id: "",
   is_active: true,
   notes: "",
-  receives_one_negative_one_positive: true,
+  receives_one_negative_one_positive: false,
   receives_two_negative: true
 };
 
@@ -67,8 +67,7 @@ export function AdminTelegramRecipientsScreen() {
       chat_id: selectedRecipient.chat_id,
       is_active: selectedRecipient.is_active,
       notes: selectedRecipient.notes,
-      receives_one_negative_one_positive:
-        selectedRecipient.receives_one_negative_one_positive,
+      receives_one_negative_one_positive: false,
       receives_two_negative: selectedRecipient.receives_two_negative
     });
   }, [selectedRecipient]);
@@ -334,29 +333,9 @@ export function AdminTelegramRecipientsScreen() {
                         <div>
                           <p className="font-semibold text-[var(--ink)]">Loại kèo được nhận</p>
                           <p className="text-sm text-[var(--muted)]">
-                            Chọn cho từng Telegram nhận kèo `1 âm 1 dương`, `2 âm`, hoặc bật cả hai.
+                            Hệ thống hiện chỉ phát surebet có cả hai leg odds âm.
                           </p>
                         </div>
-
-                        <label className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-medium text-[var(--ink)]">1 âm 1 dương</p>
-                            <p className="text-sm text-[var(--muted)]">
-                              Một leg odds âm và một leg odds dương.
-                            </p>
-                          </div>
-                          <input
-                            checked={form.receives_one_negative_one_positive}
-                            className="mt-1 size-5 shrink-0 accent-[var(--accent)]"
-                            onChange={(event) =>
-                              setForm((current) => ({
-                                ...current,
-                                receives_one_negative_one_positive: event.target.checked
-                              }))
-                            }
-                            type="checkbox"
-                          />
-                        </label>
 
                         <label className="flex items-start justify-between gap-3">
                           <div>
@@ -378,7 +357,7 @@ export function AdminTelegramRecipientsScreen() {
                           />
                         </label>
 
-                        {!form.receives_one_negative_one_positive && !form.receives_two_negative ? (
+                        {!form.receives_two_negative ? (
                           <p className="text-sm text-[var(--danger)]">
                             Recipient này sẽ không nhận loại surebet nào cho tới khi bật lại ít nhất một lựa chọn.
                           </p>
@@ -468,15 +447,8 @@ function formatRelative(value: string) {
 }
 
 function formatRecipientTypes(recipient: TelegramRecipient) {
-  const labels: string[] = [];
-  if (recipient.receives_one_negative_one_positive) {
-    labels.push("1 am 1 duong");
-  }
   if (recipient.receives_two_negative) {
-    labels.push("2 am");
+    return "2 am";
   }
-  if (labels.length === 0) {
-    return "khong gui";
-  }
-  return labels.join(" + ");
+  return "khong gui";
 }

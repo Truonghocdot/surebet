@@ -1068,6 +1068,12 @@ func buildOpportunity(
 	left, right normalizedQuote,
 	now time.Time,
 ) (models.SurebetOpportunity, bool) {
+	// The product only surfaces two-negative Malay-odds opportunities. Keep
+	// this invariant in the detector so candidates, hard confirmation and all
+	// notification channels use the same rule.
+	if left.quote.Odds >= 0 || right.quote.Odds >= 0 {
+		return models.SurebetOpportunity{}, false
+	}
 	if (left.quote.ProtocolVersion >= 2) != (right.quote.ProtocolVersion >= 2) {
 		return models.SurebetOpportunity{}, false
 	}

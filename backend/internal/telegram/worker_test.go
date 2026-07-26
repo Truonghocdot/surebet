@@ -28,7 +28,7 @@ func TestWorkerRevalidatesAndFormatsCurrentSurebetBeforeSend(t *testing.T) {
 	}))
 	defer telegramServer.Close()
 
-	current := workerTestSurebet("opportunity-a", -0.92, 0.96)
+	current := workerTestSurebet("opportunity-a", -0.92, -0.88)
 	queue := &workerQueueStub{jobs: []models.TelegramNotificationLog{{
 		ID:            "job-a",
 		RecipientID:   7,
@@ -60,7 +60,7 @@ func TestWorkerRevalidatesAndFormatsCurrentSurebetBeforeSend(t *testing.T) {
 }
 
 func TestBackendSurebetReaderLoadsVerifiedRegistryEntry(t *testing.T) {
-	expected := workerTestSurebet("opportunity-confirmed", -0.8, 0.9)
+	expected := workerTestSurebet("opportunity-confirmed", -0.8, -0.9)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet {
 			t.Fatalf("unexpected backend method: %s", request.Method)
@@ -139,7 +139,7 @@ func TestWorkerExpiresInsteadOfRetryingWhenConfirmationFails(t *testing.T) {
 }
 
 func TestWorkerExpiresSurebetPastItsExpiryBeforeSend(t *testing.T) {
-	current := workerTestSurebet("opportunity-expired", -0.92, 0.96)
+	current := workerTestSurebet("opportunity-expired", -0.92, -0.88)
 	current.ExpiresAt = time.Now().UTC().Add(-time.Second)
 	current.ValidUntil = current.ExpiresAt
 	queue := &workerQueueStub{jobs: []models.TelegramNotificationLog{{
@@ -163,6 +163,32 @@ func TestWorkerExpiresSurebetPastItsExpiryBeforeSend(t *testing.T) {
 	}
 	if len(queue.sent) != 0 {
 		t.Fatalf("expired job must not be sent, got %+v", queue.sent)
+	}
+}
+
+func TestWorkerExpiresQueuedMixedSignSurebet(t *testing.T) {
+	current := workerTestSurebet("opportunity-mixed", -0.92, 0.96)
+	queue := &workerQueueStub{jobs: []models.TelegramNotificationLog{{
+		ID:            "job-mixed",
+		RecipientID:   7,
+		OpportunityID: current.ID,
+	}}}
+	worker := NewWorker(
+		config.TelegramConfig{BotToken: "token"},
+		workerRecipientStub{recipient: workerTestRecipient()},
+		queue,
+		workerSurebetReaderStub{item: current, confirmed: true},
+		logger.NewStdLogger(io.Discard, "test"),
+	)
+
+	if err := worker.processBatch(context.Background(), 1); err != nil {
+		t.Fatalf("process batch: %v", err)
+	}
+	if len(queue.expired) != 1 || queue.expired[0] != "job-mixed" {
+		t.Fatalf("expected mixed-sign job to expire, got %+v", queue.expired)
+	}
+	if len(queue.sent) != 0 {
+		t.Fatalf("mixed-sign job must not be sent, got %+v", queue.sent)
 	}
 }
 

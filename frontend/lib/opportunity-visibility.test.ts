@@ -20,9 +20,9 @@ test("admin sees only two-negative opportunities", () => {
   assert.equal(isOpportunityVisibleForRole(opportunity(-0.91, 0.88), "admin"), false);
 });
 
-test("super admin sees two-negative and mixed opportunities", () => {
+test("super admin also sees only two-negative opportunities", () => {
   assert.equal(isOpportunityVisibleForRole(opportunity(-0.91, -0.88), "super_admin"), true);
-  assert.equal(isOpportunityVisibleForRole(opportunity(-0.91, 0.88), "super_admin"), true);
+  assert.equal(isOpportunityVisibleForRole(opportunity(-0.91, 0.88), "super_admin"), false);
 });
 
 test("removes mixed opportunity state from an admin board without removing the match", () => {
@@ -55,6 +55,6 @@ test("removes mixed opportunity state from an admin board without removing the m
   assert.equal(adminBoard.items[0].opportunity_id, "");
 
   const superAdminBoard = filterOpportunityBoardForRole(board, "super_admin");
-  assert.equal(superAdminBoard, board);
-  assert.equal(superAdminBoard.items[0].has_surebet, true);
+  assert.equal(superAdminBoard.items[0].has_surebet, false);
+  assert.equal(superAdminBoard.items[0].opportunity_id, "");
 });

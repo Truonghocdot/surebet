@@ -117,14 +117,8 @@ func (n *Notifier) NotifyConfirmed(ctx context.Context, item dto.SurebetView) er
 }
 
 func recipientAcceptsOpportunity(recipient models.TelegramRecipient, item dto.SurebetView) bool {
-	switch classifyOpportunityOddsProfile(item) {
-	case opportunityOddsProfileOneNegativeOnePositive:
-		return recipient.ReceivesOneNegativeOnePositive
-	case opportunityOddsProfileTwoNegative:
-		return recipient.ReceivesTwoNegative
-	default:
-		return recipient.ReceivesOneNegativeOnePositive || recipient.ReceivesTwoNegative
-	}
+	return classifyOpportunityOddsProfile(item) == opportunityOddsProfileTwoNegative &&
+		recipient.ReceivesTwoNegative
 }
 
 func classifyOpportunityOddsProfile(item dto.SurebetView) opportunityOddsProfile {

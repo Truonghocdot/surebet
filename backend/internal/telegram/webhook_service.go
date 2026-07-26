@@ -141,7 +141,7 @@ func (s *WebhookService) upsertRecipientFromChat(
 
 		recipient = models.TelegramRecipient{
 			ChatID:                         chatID,
-			ReceivesOneNegativeOnePositive: true,
+			ReceivesOneNegativeOnePositive: false,
 			ReceivesTwoNegative:            true,
 		}
 		wasCreated = true

@@ -106,15 +106,15 @@ func TestNotifierFiltersRecipientsByOddsProfile(t *testing.T) {
 		t.Fatalf("enqueue two-negative surebet: %v", err)
 	}
 
-	if len(logs.created) != 4 {
-		t.Fatalf("expected 4 queued jobs, got %d", len(logs.created))
+	if len(logs.created) != 2 {
+		t.Fatalf("expected 2 two-negative jobs, got %d", len(logs.created))
 	}
 
-	assertRecipientQueuedForOpportunity(t, logs.created, 1, "mixed-1", true)
+	assertRecipientQueuedForOpportunity(t, logs.created, 1, "mixed-1", false)
 	assertRecipientQueuedForOpportunity(t, logs.created, 1, "double-neg-1", false)
 	assertRecipientQueuedForOpportunity(t, logs.created, 2, "mixed-1", false)
 	assertRecipientQueuedForOpportunity(t, logs.created, 2, "double-neg-1", true)
-	assertRecipientQueuedForOpportunity(t, logs.created, 3, "mixed-1", true)
+	assertRecipientQueuedForOpportunity(t, logs.created, 3, "mixed-1", false)
 	assertRecipientQueuedForOpportunity(t, logs.created, 3, "double-neg-1", true)
 }
 

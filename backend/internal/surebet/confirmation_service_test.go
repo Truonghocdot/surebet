@@ -15,7 +15,7 @@ func TestConfirmationServiceHardConfirmsCurrentDetectorResult(t *testing.T) {
 	candidate := confirmationCandidate()
 	service := NewConfirmationService(
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
-		confirmationConfirmerStub{oddsByBookmaker: map[string]float64{"8xbet": -0.92, "jun88": 0.96}},
+		confirmationConfirmerStub{oddsByBookmaker: map[string]float64{"8xbet": -0.92, "jun88": -0.88}},
 		calculator.NewDetector(),
 	)
 
@@ -105,7 +105,7 @@ func TestConfirmationServiceDoesNotCacheCompletedConfirmation(t *testing.T) {
 	}
 
 	reader.mu.Lock()
-	reader.items[0].Legs[0].Odds = 0.51
+	reader.items[0].Legs[0].Odds = -0.51
 	reader.mu.Unlock()
 	_, confirmed, err = service.ConfirmCurrentSurebet(context.Background(), candidate.ID)
 	if err != nil || !confirmed {
@@ -154,6 +154,21 @@ func TestConfirmationServiceRejectsOddsThatNoLongerArbitrage(t *testing.T) {
 	)
 	if _, confirmed, err := service.ConfirmCurrentSurebet(context.Background(), candidate.ID); err != nil || confirmed {
 		t.Fatalf("non-arbitrage confirmed odds must be rejected: confirmed=%t err=%v", confirmed, err)
+	}
+}
+
+func TestConfirmationServiceRejectsMixedSignOdds(t *testing.T) {
+	candidate := confirmationCandidate()
+	service := NewConfirmationService(
+		confirmationReaderStub{items: []dto.SurebetView{candidate}},
+		confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
+			"8xbet": -0.92,
+			"jun88": 0.96,
+		}},
+		calculator.NewDetector(),
+	)
+	if _, confirmed, err := service.ConfirmCurrentSurebet(context.Background(), candidate.ID); err != nil || confirmed {
+		t.Fatalf("mixed-sign confirmed odds must be rejected: confirmed=%t err=%v", confirmed, err)
 	}
 }
 
@@ -242,7 +257,7 @@ func (invalidOddsFormatConfirmer) ConfirmQuote(
 ) (dto.CollectorConfirmQuoteResponse, error) {
 	response, err := confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
 		"8xbet": -0.92,
-		"jun88": 0.96,
+		"jun88": -0.88,
 	}}.ConfirmQuote(ctx, source, fixtureID, marketID, outcomeID)
 	if source.BookmakerID == "8xbet" {
 		response.Selection.OddsFormat = ""
@@ -257,7 +272,7 @@ func (skewedConfirmationConfirmer) ConfirmQuote(
 ) (dto.CollectorConfirmQuoteResponse, error) {
 	response, err := confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
 		"8xbet": -0.92,
-		"jun88": 0.96,
+		"jun88": -0.88,
 	}}.ConfirmQuote(ctx, source, fixtureID, marketID, outcomeID)
 	if source.BookmakerID == "8xbet" {
 		response.ObservedAt = response.ObservedAt.Add(-1500 * time.Millisecond)
@@ -295,7 +310,7 @@ func (c *countingConfirmationConfirmer) ConfirmQuote(
 	c.mu.Unlock()
 	return confirmationConfirmerStub{oddsByBookmaker: map[string]float64{
 		"8xbet": -0.92,
-		"jun88": 0.96,
+		"jun88": -0.88,
 	}}.ConfirmQuote(ctx, source, fixtureID, marketID, outcomeID)
 }
 
@@ -390,7 +405,7 @@ func confirmationCandidate() dto.SurebetView {
 				MarketID:    "hdp-ah",
 				OutcomeID:   "home-plus-0.5",
 				OutcomeName: "Team A +0.5",
-				Odds:        0.50,
+				Odds:        -0.50,
 			},
 			{
 				BookmakerID: "jun88",
@@ -399,7 +414,7 @@ func confirmationCandidate() dto.SurebetView {
 				MarketID:    "hdp-ah",
 				OutcomeID:   "away-minus-0.5",
 				OutcomeName: "Team B -0.5",
-				Odds:        0.50,
+				Odds:        -0.50,
 			},
 		},
 	}

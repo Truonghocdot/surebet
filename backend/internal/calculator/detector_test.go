@@ -40,13 +40,13 @@ func TestNormalizeMalayOdds(t *testing.T) {
 	}
 }
 
-func TestDetectOverUnderUsesDecimalOddsAndBestQuote(t *testing.T) {
+func TestDetectOverUnderUsesTwoNegativeOddsAndBestQuote(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })
 	quotes := []models.OddsQuote{
 		testQuote(now, "over-worse", "book-a", "bti", "Arsenal", "Milan", "Premier League", "Over 2.5", -0.75),
 		testQuote(now, "over-best", "book-a", "bti", "Arsenal", "Milan", "Premier League", "Over 2.5", -0.5),
-		testQuote(now, "under-positive", "book-b", "cmd", "Arsenal", "Milan", "Premier League", "Under 2.5", 0.8),
+		testQuote(now, "under-negative", "book-b", "cmd", "Arsenal", "Milan", "Premier League", "Under 2.5", -0.8),
 	}
 
 	items := detect(t, detector, quotes)
@@ -55,11 +55,24 @@ func TestDetectOverUnderUsesDecimalOddsAndBestQuote(t *testing.T) {
 	}
 
 	item := items[0]
-	assertAlmostEqual(t, item.ExpectedReturn, 0.125)
-	assertAlmostEqual(t, item.ProfitPercentage, 12.5)
+	assertAlmostEqual(t, item.ExpectedReturn, 0.2857)
+	assertAlmostEqual(t, item.ProfitPercentage, 28.5714)
 	assertAlmostEqual(t, item.Legs[0].Stake+item.Legs[1].Stake, 1)
 	if !containsOutcomeID(item.Legs, "over-best") {
 		t.Fatalf("expected best decimal quote to be selected, got %+v", item.Legs)
+	}
+}
+
+func TestDetectRejectsOneNegativeOnePositiveOpportunity(t *testing.T) {
+	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
+	detector := newDetector(func() time.Time { return now })
+	quotes := []models.OddsQuote{
+		testQuote(now, "over-negative", "book-a", "bti", "Arsenal", "Milan", "Premier League", "Over 2.5", -0.5),
+		testQuote(now, "under-positive", "book-b", "cmd", "Arsenal", "Milan", "Premier League", "Under 2.5", 0.8),
+	}
+
+	if items := detect(t, detector, quotes); len(items) != 0 {
+		t.Fatalf("expected mixed-sign odds to be rejected, got %+v", items)
 	}
 }
 
