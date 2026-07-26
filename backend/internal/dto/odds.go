@@ -52,7 +52,6 @@ type SurebetLegView struct {
 	OutcomeID   string    `json:"outcome_id"`
 	OutcomeName string    `json:"outcome_name"`
 	Odds        float64   `json:"odds"`
-	Stake       float64   `json:"stake"`
 	ObservedAt  time.Time `json:"observed_at,omitempty"`
 }
 

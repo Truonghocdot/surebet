@@ -23,7 +23,6 @@ export type BackendOpportunity = {
     outcome_id: string;
     outcome_name: string;
     odds: number;
-    stake: number;
     observed_at?: string;
   }>;
 };

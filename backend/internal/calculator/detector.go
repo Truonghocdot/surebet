@@ -1122,14 +1122,11 @@ func buildOpportunity(
 		ExpiresAt:        expiresAt,
 		MatchConfidence:  math.Min(left.event.matchConfidence, right.event.matchConfidence),
 		MatchAmbiguous:   left.event.matchAmbiguous || right.event.matchAmbiguous,
-		Legs:             buildLegs(left, right, combinedProbability),
+		Legs:             buildLegs(left, right),
 	}, true
 }
 
-func buildLegs(left, right normalizedQuote, combinedProbability float64) []models.SurebetLeg {
-	leftStake := left.impliedProbability / combinedProbability
-	rightStake := right.impliedProbability / combinedProbability
-
+func buildLegs(left, right normalizedQuote) []models.SurebetLeg {
 	return []models.SurebetLeg{
 		{
 			BookmakerID: left.quote.BookmakerID,
@@ -1139,7 +1136,6 @@ func buildLegs(left, right normalizedQuote, combinedProbability float64) []model
 			OutcomeID:   left.quote.OutcomeID,
 			OutcomeName: left.quote.OutcomeName,
 			Odds:        left.quote.Odds,
-			Stake:       round(leftStake),
 			ObservedAt:  left.quote.LastObservedAt,
 		},
 		{
@@ -1150,7 +1146,6 @@ func buildLegs(left, right normalizedQuote, combinedProbability float64) []model
 			OutcomeID:   right.quote.OutcomeID,
 			OutcomeName: right.quote.OutcomeName,
 			Odds:        right.quote.Odds,
-			Stake:       round(rightStake),
 			ObservedAt:  right.quote.LastObservedAt,
 		},
 	}

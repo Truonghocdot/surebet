@@ -75,8 +75,7 @@ test("keeps an ambiguous match visible without promoting it as a surebet", () =>
       market_id: item.market_id,
       outcome_id: item.outcome_id,
       outcome_name: item.outcome_name,
-      odds: item.odds,
-      stake: 0.5
+      odds: item.odds
     }))
   };
 

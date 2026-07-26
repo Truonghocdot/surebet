@@ -57,7 +57,6 @@ func TestDetectOverUnderUsesTwoNegativeOddsAndBestQuote(t *testing.T) {
 	item := items[0]
 	assertAlmostEqual(t, item.ExpectedReturn, 0.2857)
 	assertAlmostEqual(t, item.ProfitPercentage, 28.5714)
-	assertAlmostEqual(t, item.Legs[0].Stake+item.Legs[1].Stake, 1)
 	if !containsOutcomeID(item.Legs, "over-best") {
 		t.Fatalf("expected best decimal quote to be selected, got %+v", item.Legs)
 	}

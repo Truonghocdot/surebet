@@ -147,7 +147,6 @@ func mapOpportunity(item models.SurebetOpportunity) dto.SurebetView {
 			OutcomeID:   leg.OutcomeID,
 			OutcomeName: leg.OutcomeName,
 			Odds:        leg.Odds,
-			Stake:       leg.Stake,
 			ObservedAt:  leg.ObservedAt,
 		})
 	}

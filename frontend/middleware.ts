@@ -68,7 +68,6 @@ export const config = {
     "/matches/:path*",
     "/opportunities/:path*",
     "/admin/:path*",
-    "/collector-config/:path*",
-    "/calculator/:path*"
+    "/collector-config/:path*"
   ]
 };

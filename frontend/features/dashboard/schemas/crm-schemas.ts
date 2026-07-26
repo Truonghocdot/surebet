@@ -30,7 +30,6 @@ export const opportunitySchema = z.object({
       outcome_id: z.string(),
       outcome_name: z.string(),
       odds: z.number(),
-      stake: z.number(),
       observed_at: z.string().optional()
     })
   )

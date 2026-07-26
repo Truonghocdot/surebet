@@ -162,8 +162,7 @@ test("promotes only a confirmed verification event to actionable legs", () => {
           market_id: "hdp-ah",
           outcome_id: "fixture-8x:hdp-ah:home-0-5",
           outcome_name: "Home +0.5",
-          odds: -0.91,
-          stake: 0.5
+          odds: -0.91
         },
         {
           bookmaker_id: "jun88",
@@ -172,8 +171,7 @@ test("promotes only a confirmed verification event to actionable legs", () => {
           market_id: "hdp-ah",
           outcome_id: "fixture-cmd:hdp-ah:away-0-5",
           outcome_name: "Away -0.5",
-          odds: 0.82,
-          stake: 0.5
+          odds: 0.82
         }
       ]
     }
@@ -231,8 +229,7 @@ test("does not confirm when a CMD leg is no longer active on the board", () => {
           market_id: "hdp-ah",
           outcome_id: "fixture-8x:hdp-ah:home-0-5",
           outcome_name: "Home +0.5",
-          odds: -0.91,
-          stake: 0.5
+          odds: -0.91
         },
         {
           bookmaker_id: "jun88",
@@ -241,8 +238,7 @@ test("does not confirm when a CMD leg is no longer active on the board", () => {
           market_id: "hdp-ah",
           outcome_id: "fixture-cmd:hdp-ah:away-1-5",
           outcome_name: "Away -1.5",
-          odds: -0.88,
-          stake: 0.5
+          odds: -0.88
         }
       ]
     }

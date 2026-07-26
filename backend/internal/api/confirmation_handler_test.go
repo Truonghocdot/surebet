@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -38,7 +39,13 @@ func TestHandleConfirmSurebetReturnsFreshResult(t *testing.T) {
 	ctx.Request.Header.Set("X-Surebet-Internal-Token", "internal-token")
 	ctx.Params = gin.Params{{Key: "id", Value: "opportunity-a"}}
 
-	expected := dto.SurebetView{ID: "opportunity-a"}
+	expected := dto.SurebetView{
+		ID: "opportunity-a",
+		Legs: []dto.SurebetLegView{{
+			BookmakerID: "8xbet",
+			Odds:        -0.91,
+		}},
+	}
 	server := &Server{deps: Dependencies{
 		SurebetConfirm: confirmationServiceStub{item: expected, confirmed: true},
 		InternalToken:  "internal-token",
@@ -56,6 +63,9 @@ func TestHandleConfirmSurebetReturnsFreshResult(t *testing.T) {
 	}
 	if payload.Data.ID != expected.ID {
 		t.Fatalf("unexpected confirmed opportunity: %+v", payload.Data)
+	}
+	if strings.Contains(recorder.Body.String(), `"stake"`) {
+		t.Fatalf("confirmed opportunity must not expose stake allocation: %s", recorder.Body.String())
 	}
 }
 
