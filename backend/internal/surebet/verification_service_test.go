@@ -8,8 +8,95 @@ import (
 
 	"surebet/backend/internal/config"
 	"surebet/backend/internal/dto"
+	"surebet/backend/internal/models"
 	"surebet/backend/internal/realtime"
 )
+
+func TestVerificationTriggerDoesNotBlockCollectorIngest(t *testing.T) {
+	store := &blockingVerificationStore{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	service := NewVerificationService(
+		config.TelegramConfig{},
+		confirmationReaderStub{items: nil},
+		nil,
+		store,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	startedAt := time.Now()
+	service.Trigger([]models.OddsQuote{{
+		BookmakerID: "8xbet",
+		LobbyID:     "default",
+		FixtureID:   "fixture-1",
+	}})
+	if elapsed := time.Since(startedAt); elapsed > 100*time.Millisecond {
+		t.Fatalf("verification trigger blocked ingest for %s", elapsed)
+	}
+
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("verification worker did not start invalidation")
+	}
+	close(store.release)
+}
+
+func TestVerificationCandidateAttemptsAreRateLimitedByFingerprint(t *testing.T) {
+	service := NewVerificationService(
+		config.TelegramConfig{}, nil, nil, nil, nil, nil, nil, nil,
+	)
+	candidate := confirmationCandidate()
+	now := time.Now()
+
+	if !service.reserveVerification(candidate, now) {
+		t.Fatal("first candidate observation must be verified")
+	}
+	if service.reserveVerification(candidate, now.Add(time.Second)) {
+		t.Fatal("unchanged candidate must not be verified for every observation refresh")
+	}
+
+	changed := cloneSurebetView(candidate)
+	changed.Legs[0].Odds += 0.01
+	if service.reserveVerification(changed, now.Add(2*time.Second)) {
+		t.Fatal("changed candidate must respect the short verification cooldown")
+	}
+	if !service.reserveVerification(changed, now.Add(6*time.Second)) {
+		t.Fatal("changed candidate must be verified after its cooldown")
+	}
+	if service.reserveVerification(changed, now.Add(20*time.Second)) {
+		t.Fatal("unchanged fingerprint must respect the retry interval")
+	}
+	if !service.reserveVerification(changed, now.Add(37*time.Second)) {
+		t.Fatal("unchanged fingerprint must be retried after the retry interval")
+	}
+}
+
+func TestVerificationSkipsHardConfirmationWhenSuppressed(t *testing.T) {
+	candidate := confirmationCandidate()
+	confirmer := &countingVerificationConfirmer{item: candidate}
+	service := NewVerificationService(
+		config.TelegramConfig{VerificationMode: "suppressed"},
+		confirmationReaderStub{items: []dto.SurebetView{candidate}},
+		confirmer,
+		&verificationStoreStub{},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	refs := refsForOpportunity(candidate)
+	if err := service.process(context.Background(), refs, map[string]uint64{}); err != nil {
+		t.Fatalf("process suppressed verification: %v", err)
+	}
+	if confirmer.Count() != 0 {
+		t.Fatal("suppressed verification must not call collectors")
+	}
+}
 
 func TestVerificationServicePublishesCandidateOnce(t *testing.T) {
 	candidate := confirmationCandidate()
@@ -174,6 +261,28 @@ type verificationConfirmerStub struct {
 	release chan struct{}
 }
 
+type countingVerificationConfirmer struct {
+	mu    sync.Mutex
+	item  dto.SurebetView
+	count int
+}
+
+func (s *countingVerificationConfirmer) ConfirmCurrentSurebet(
+	context.Context,
+	string,
+) (dto.SurebetView, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.count++
+	return s.item, true, nil
+}
+
+func (s *countingVerificationConfirmer) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
+}
+
 func (s verificationConfirmerStub) ConfirmCurrentSurebet(
 	context.Context,
 	string,
@@ -186,6 +295,21 @@ func (s verificationConfirmerStub) ConfirmCurrentSurebet(
 type verificationStoreStub struct {
 	mu      sync.Mutex
 	deleted string
+}
+
+type blockingVerificationStore struct {
+	verificationStoreStub
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingVerificationStore) InvalidateFixtures(
+	context.Context,
+	[]dto.VerifiedFixtureRef,
+) ([]string, error) {
+	close(s.started)
+	<-s.release
+	return nil, nil
 }
 
 func (s *verificationStoreStub) Get(context.Context, string) (dto.SurebetView, bool, error) {

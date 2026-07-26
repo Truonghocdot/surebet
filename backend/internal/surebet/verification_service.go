@@ -15,6 +15,12 @@ import (
 	"surebet/backend/internal/realtime"
 )
 
+const (
+	verificationChangeCooldown = 5 * time.Second
+	verificationRetryInterval  = 30 * time.Second
+	verificationAttemptTTL     = 10 * time.Minute
+)
+
 type HardSurebetConfirmer interface {
 	ConfirmCurrentSurebet(ctx context.Context, opportunityID string) (dto.SurebetView, bool, error)
 }
@@ -55,9 +61,15 @@ type VerificationService struct {
 	pending             map[string]dto.VerifiedFixtureRef
 	generations         map[string]uint64
 	announcedCandidates map[string]struct{}
+	attempts            map[string]verificationAttempt
 	running             bool
 	timer               *time.Timer
 	lastSummaryAt       time.Time
+}
+
+type verificationAttempt struct {
+	fingerprint string
+	attemptedAt time.Time
 }
 
 func NewVerificationService(
@@ -76,6 +88,7 @@ func NewVerificationService(
 		pending:             make(map[string]dto.VerifiedFixtureRef),
 		generations:         make(map[string]uint64),
 		announcedCandidates: make(map[string]struct{}),
+		attempts:            make(map[string]verificationAttempt),
 	}
 }
 
@@ -83,12 +96,8 @@ func (s *VerificationService) Trigger(quotes []models.OddsQuote) {
 	if s == nil || len(quotes) == 0 {
 		return
 	}
-	s.invalidationMu.Lock()
-	defer s.invalidationMu.Unlock()
 
 	s.mu.Lock()
-	refs := make([]dto.VerifiedFixtureRef, 0, len(quotes))
-	seen := make(map[string]struct{}, len(quotes))
 	for _, quote := range quotes {
 		ref := dto.VerifiedFixtureRef{
 			BookmakerID: quote.BookmakerID,
@@ -98,31 +107,7 @@ func (s *VerificationService) Trigger(quotes []models.OddsQuote) {
 		key := fixtureRefKey(ref)
 		s.pending[key] = ref
 		s.generations[key]++
-		if _, exists := seen[key]; !exists {
-			refs = append(refs, ref)
-			seen[key] = struct{}{}
-		}
 	}
-	s.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	invalidated, err := s.store.InvalidateFixtures(ctx, refs)
-	cancel()
-	if err != nil {
-		if s.log != nil {
-			s.log.Warn("verified surebet invalidation failed", "error", err.Error())
-		}
-	} else {
-		for _, id := range invalidated {
-			s.publish(dto.SurebetVerificationEvent{
-				OpportunityID: id,
-				Status:        "expired",
-				Reason:        "source quote changed",
-			})
-		}
-	}
-
-	s.mu.Lock()
 	if !s.running && s.timer == nil {
 		s.timer = time.AfterFunc(50*time.Millisecond, s.runPending)
 	}
@@ -145,6 +130,7 @@ func (s *VerificationService) runPending() {
 	s.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	s.invalidateFixtures(refs)
 	err := s.process(ctx, refs, generations)
 	cancel()
 	if err != nil && s.log != nil {
@@ -172,9 +158,20 @@ func (s *VerificationService) process(
 	for _, candidate := range affected {
 		s.publishCandidate(candidate)
 	}
+	mode := s.effectiveMode(ctx)
+	if mode == "suppressed" || (s.health != nil && !s.health.RequiredSourcesConnected()) {
+		return nil
+	}
+
+	queued := make([]dto.SurebetView, 0, len(affected))
+	for _, candidate := range affected {
+		if s.reserveVerification(candidate, time.Now()) {
+			queued = append(queued, candidate)
+		}
+	}
 	semaphore := make(chan struct{}, 2)
 	var wait sync.WaitGroup
-	for _, candidate := range affected {
+	for _, candidate := range queued {
 		candidate := candidate
 		wait.Add(1)
 		go func() {
@@ -185,17 +182,51 @@ func (s *VerificationService) process(
 			case <-ctx.Done():
 				return
 			}
-			s.verifyCandidate(ctx, candidate, generations)
+			s.verifyCandidate(ctx, candidate, generations, mode)
 		}()
 	}
 	wait.Wait()
 	return ctx.Err()
 }
 
+func (s *VerificationService) reserveVerification(
+	candidate dto.SurebetView,
+	now time.Time,
+) bool {
+	if candidate.ID == "" {
+		return false
+	}
+	fingerprint := confirmationCandidateKey(candidate)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if previous, found := s.attempts[candidate.ID]; found {
+		cooldown := verificationChangeCooldown
+		if previous.fingerprint == fingerprint {
+			cooldown = verificationRetryInterval
+		}
+		if now.Sub(previous.attemptedAt) < cooldown {
+			return false
+		}
+	}
+	s.attempts[candidate.ID] = verificationAttempt{
+		fingerprint: fingerprint,
+		attemptedAt: now,
+	}
+	for id, attempt := range s.attempts {
+		if now.Sub(attempt.attemptedAt) > verificationAttemptTTL {
+			delete(s.attempts, id)
+			delete(s.announcedCandidates, id)
+		}
+	}
+	return true
+}
+
 func (s *VerificationService) verifyCandidate(
 	ctx context.Context,
 	candidate dto.SurebetView,
 	generations map[string]uint64,
+	mode string,
 ) {
 	startedAt := time.Now()
 	item, confirmed, err := s.confirmer.ConfirmCurrentSurebet(ctx, candidate.ID)
@@ -236,12 +267,40 @@ func (s *VerificationService) verifyCandidate(
 		Opportunity:   &item,
 	})
 	s.scheduleExpiry(item)
-	mode := s.effectiveMode(ctx)
 	s.invalidationMu.Unlock()
 	if mode == "strict" && s.notifier != nil {
 		if err := s.notifier.NotifyConfirmed(ctx, item); err != nil && s.log != nil {
 			s.log.Warn("confirmed surebet notification enqueue failed", "error", err.Error(), "opportunity_id", item.ID)
 		}
+	}
+}
+
+// invalidateFixtures runs on the verification worker, never on the collector
+// ingest path. Quote batches can arrive several times per second; doing the
+// Redis invalidation here coalesces them and keeps realtime odds publishing
+// independent from verification latency.
+func (s *VerificationService) invalidateFixtures(refs []dto.VerifiedFixtureRef) {
+	if s.store == nil || len(refs) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	s.invalidationMu.Lock()
+	defer s.invalidationMu.Unlock()
+	invalidated, err := s.store.InvalidateFixtures(ctx, refs)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("verified surebet invalidation failed", "error", err.Error())
+		}
+		return
+	}
+	for _, id := range invalidated {
+		s.publish(dto.SurebetVerificationEvent{
+			OpportunityID: id,
+			Status:        "expired",
+			Reason:        "source quote changed",
+		})
 	}
 }
 
