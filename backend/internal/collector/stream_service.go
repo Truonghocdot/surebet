@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"strings"
-	"sync"
-	"time"
-
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-
+	"net/http"
+	"strings"
 	"surebet/backend/internal/dto"
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/models"
 	"surebet/backend/internal/repository"
+	"sync"
+	"time"
 )
 
 type StreamOddsStateStore interface {

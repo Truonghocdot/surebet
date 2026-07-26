@@ -87,6 +87,73 @@ Restart rieng collector:
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-8xbet collector-jun88-cmd
 ```
 
+## Rollout odds state v2
+
+### 1. Chay bridge v1 trong production
+
+Giu cau hinh sau trong `deploy/production/.env`:
+
+```dotenv
+ODDS_STATE_PROTOCOL=v1
+```
+
+Build va recreate `backend-api`. `fixture_observed_batch` v2 se refresh freshness
+cua quote v1 chi khi fixture, market, outcome, line, odds, batch va fingerprint
+khop voi snapshot v2 coherent. Market da bi xoa, suspended hoac doi line se khong
+duoc bridge giu song.
+
+```bash
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env build backend-api
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --no-deps backend-api
+```
+
+### 2. Theo doi shadow tu 7 den 14 ngay
+
+Chay report hang ngay:
+
+```bash
+deploy/production/report-odds-v3-shadow.sh
+```
+
+Chi chuyen sang v2 khi ca `8xbet:default` va `jun88:cmd` deu co
+`ready_for_v2: true` lien tuc. Report ap dung cac nguong:
+
+- theo doi toi thieu 7 ngay;
+- 100% batch accepted la complete;
+- mismatch, ke ca outcome thieu o mot trong hai namespace, nho hon 0.1%;
+- it nhat 20 latency sample trong cua so 30 phut;
+- p95 collector-to-backend khong qua 500 ms.
+
+Co the doc mot source truc tiep khi can debug:
+
+```bash
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env exec -T redis \
+  redis-cli HGETALL odds:v3:shadow:metrics:8xbet:default
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env exec -T redis \
+  redis-cli HGETALL odds:v3:shadow:metrics:jun88:cmd
+```
+
+### 3. Chuyen read path sang v2
+
+Sau khi hai source dat nguong, doi bien moi truong va recreate backend:
+
+```dotenv
+ODDS_STATE_PROTOCOL=v2
+```
+
+```bash
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env up -d --no-deps --force-recreate backend-api
+```
+
+Bridge v1 tu dong tat khi backend doc v2. Neu can rollback trong chu ky theo doi,
+doi lai `ODDS_STATE_PROTOCOL=v1` va recreate `backend-api`.
+
+### 4. Cleanup sau khi v2 stable
+
+Chi o mot deploy sau, khi v2 da chay on dinh het cua so rollback, moi xoa bridge
+trong `ObserveFixtureBatches` va duong `quote_upsert` v1. Truoc khi xoa, xac nhan
+khong con consumer nao doc namespace `odds:v2` hoac frame protocol v1.
+
 Webhook Telegram:
 
 - URL: `https://api.tykfk.site/api/telegram/webhook`

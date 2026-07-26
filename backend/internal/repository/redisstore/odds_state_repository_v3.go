@@ -25,13 +25,14 @@ type fixtureBatchVersion struct {
 }
 
 type coherentShadowSample struct {
-	BatchID       string `json:"batch_id"`
-	ObservedAtMS  int64  `json:"observed_at_ms"`
-	LatencyMS     int64  `json:"latency_ms"`
-	Outcomes      int    `json:"outcomes"`
-	Compared      int    `json:"compared"`
-	Mismatched    int    `json:"mismatched"`
-	MissingLegacy int    `json:"missing_legacy"`
+	BatchID         string `json:"batch_id"`
+	ObservedAtMS    int64  `json:"observed_at_ms"`
+	LatencyMS       int64  `json:"latency_ms"`
+	Outcomes        int    `json:"outcomes"`
+	Compared        int    `json:"compared"`
+	Mismatched      int    `json:"mismatched"`
+	MissingLegacy   int    `json:"missing_legacy"`
+	MissingCoherent int    `json:"missing_coherent"`
 }
 
 func (r *OddsStateRepository) ApplyFixtureMarketSnapshot(
@@ -152,6 +153,8 @@ func (r *OddsStateRepository) ObserveFixtureBatches(
 	pipe := r.client.TxPipeline()
 	prepared := make(map[string]models.OddsQuote)
 
+	verifiedObservations := make(map[string]dto.CollectorStreamFixtureObservation)
+
 	for _, observation := range event.Items {
 		if observation.FixtureID == "" || observation.BatchID == "" || observation.Fingerprint == "" {
 			return errors.New("fixture observation is missing fixture_id, batch_id, or fingerprint")
@@ -161,6 +164,7 @@ func (r *OddsStateRepository) ObserveFixtureBatches(
 			version.Fingerprint != observation.Fingerprint {
 			continue
 		}
+		verifiedObservations[observation.FixtureID] = observation
 		for logicKey, current := range currentItems {
 			if current.FixtureID != observation.FixtureID || current.BatchID != observation.BatchID ||
 				current.BatchFingerprint != observation.Fingerprint {
@@ -182,7 +186,35 @@ func (r *OddsStateRepository) ObserveFixtureBatches(
 		}
 	}
 
-	if len(prepared) == 0 {
+	// V1 compatibility bridge: when production reads v1 state, refresh the
+	// LastObservedAt of matching v1 quotes so they don't expire after the
+	// 25-second freshness window while the market is still open. This bridge
+	// is automatically disabled once ODDS_STATE_PROTOCOL switches to v2.
+	legacyPrepared := make(map[string]models.OddsQuote)
+	if !r.useCoherentReads && len(verifiedObservations) > 0 {
+		var err error
+		legacyPrepared, err = r.prepareLegacyObservationBridge(
+			ctx,
+			pipe,
+			event,
+			currentItems,
+			verifiedObservations,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	storeObservationShadowMetricsPipeline(
+		ctx,
+		pipe,
+		event.Source,
+		event.ObservedAt,
+		len(verifiedObservations),
+		len(event.Items)-len(verifiedObservations),
+		len(legacyPrepared),
+	)
+
+	if len(prepared) == 0 && len(legacyPrepared) == 0 && len(event.Items) == 0 {
 		return nil
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
@@ -191,7 +223,72 @@ func (r *OddsStateRepository) ObserveFixtureBatches(
 	for logicKey, quote := range prepared {
 		currentItems[logicKey] = quote
 	}
+	legacyItems := r.currentSourceLocked(event.Source)
+	for logicKey, quote := range legacyPrepared {
+		legacyItems[logicKey] = quote
+	}
 	return nil
+}
+
+// prepareLegacyObservationBridge refreshes only v1 quotes which have the same
+// market, outcome, price, and open state in the exact observed v2 batch. This
+// prevents a fixture-level observation from reviving a removed line.
+//
+// The caller must hold r.cacheMu.
+func (r *OddsStateRepository) prepareLegacyObservationBridge(
+	ctx context.Context,
+	pipe redis.Pipeliner,
+	event dto.CollectorStreamFixtureObservedBatch,
+	coherentItems map[string]models.OddsQuote,
+	verifiedObservations map[string]dto.CollectorStreamFixtureObservation,
+) (map[string]models.OddsQuote, error) {
+	v1Items := r.currentSourceLocked(event.Source)
+	v1Prepared := make(map[string]models.OddsQuote)
+	coherentByOutcome := make(map[string]models.OddsQuote)
+
+	for _, current := range coherentItems {
+		observation, ok := verifiedObservations[current.FixtureID]
+		if !ok || current.BatchSessionID != event.SessionID ||
+			current.BatchID != observation.BatchID ||
+			current.BatchFingerprint != observation.Fingerprint ||
+			current.CoherenceStatus != "coherent" || current.Suspended || current.Odds == 0 {
+			continue
+		}
+		coherentByOutcome[legacyBridgeOutcomeKey(current)] = current
+	}
+
+	for logicKey, current := range v1Items {
+		if current.Suspended || current.Odds == 0 {
+			continue
+		}
+		coherent, ok := coherentByOutcome[legacyBridgeOutcomeKey(current)]
+		if !ok || current.Odds != coherent.Odds || current.OutcomeName != coherent.OutcomeName {
+			continue
+		}
+		if !event.ObservedAt.After(quoteObservedAt(current)) {
+			continue
+		}
+
+		next := current
+		next.CollectedAt = event.ObservedAt.UTC()
+		next.LastObservedAt = event.ObservedAt.UTC()
+		encoded, err := json.Marshal(next)
+		if err != nil {
+			return nil, err
+		}
+		pipe.HSet(ctx, currentKey(event.Source), logicKey, encoded)
+		v1Prepared[logicKey] = next
+	}
+
+	return v1Prepared, nil
+}
+
+func legacyBridgeOutcomeKey(quote models.OddsQuote) string {
+	return strings.Join([]string{
+		quote.FixtureID,
+		quote.MarketID,
+		quote.OutcomeID,
+	}, "\x00")
 }
 
 func validateFixtureMarketSnapshot(event dto.CollectorStreamFixtureMarketSnapshot) error {
@@ -425,11 +522,12 @@ func compareCoherentSnapshotWithLegacy(
 ) coherentShadowSample {
 	legacyByOutcome := make(map[string]models.OddsQuote)
 	for _, quote := range legacy {
-		if quote.FixtureID != event.Fixture.FixtureID {
+		if quote.FixtureID != event.Fixture.FixtureID || !isCoherentDetectorMarket(quote.MarketID) {
 			continue
 		}
 		legacyByOutcome[quote.MarketID+"\x00"+quote.OutcomeID] = quote
 	}
+	coherentOutcomes := make(map[string]struct{}, len(incoming))
 	sample := coherentShadowSample{
 		BatchID:      event.BatchID,
 		ObservedAtMS: event.ObservedAt.UTC().UnixMilli(),
@@ -437,14 +535,25 @@ func compareCoherentSnapshotWithLegacy(
 		LatencyMS:    max(now.Sub(event.ObservedAt.UTC()).Milliseconds(), 0),
 	}
 	for _, quote := range incoming {
-		legacyQuote, ok := legacyByOutcome[quote.MarketID+"\x00"+quote.OutcomeID]
+		outcomeKey := quote.MarketID + "\x00" + quote.OutcomeID
+		coherentOutcomes[outcomeKey] = struct{}{}
+		legacyQuote, ok := legacyByOutcome[outcomeKey]
 		if !ok {
 			sample.MissingLegacy++
 			continue
 		}
 		sample.Compared++
-		if legacyQuote.Odds != quote.Odds || legacyQuote.Suspended != quote.Suspended {
+		if legacyQuote.OutcomeName != quote.OutcomeName ||
+			legacyQuote.Odds != quote.Odds || legacyQuote.Suspended != quote.Suspended {
 			sample.Mismatched++
+		}
+	}
+	for outcomeKey, legacyQuote := range legacyByOutcome {
+		if legacyQuote.Suspended || legacyQuote.Odds == 0 {
+			continue
+		}
+		if _, ok := coherentOutcomes[outcomeKey]; !ok {
+			sample.MissingCoherent++
 		}
 	}
 	return sample
@@ -461,21 +570,27 @@ func storeCoherentShadowMetricsPipeline(
 		return err
 	}
 	metricsKey := coherentShadowMetricsKey(source)
+	recordedAt := time.Now().UTC()
+	pipe.HSetNX(ctx, metricsKey, "first_recorded_at_ms", recordedAt.UnixMilli())
+	pipe.HSet(ctx, metricsKey,
+		"last_recorded_at_ms", recordedAt.UnixMilli(),
+		"last_batch_id", sample.BatchID,
+	)
 	pipe.HIncrBy(ctx, metricsKey, "accepted_batches", 1)
 	pipe.HIncrBy(ctx, metricsKey, "complete_batches", 1)
 	pipe.HIncrBy(ctx, metricsKey, "outcomes", int64(sample.Outcomes))
 	pipe.HIncrBy(ctx, metricsKey, "compared_outcomes", int64(sample.Compared))
 	pipe.HIncrBy(ctx, metricsKey, "mismatched_outcomes", int64(sample.Mismatched))
 	pipe.HIncrBy(ctx, metricsKey, "missing_legacy_outcomes", int64(sample.MissingLegacy))
+	pipe.HIncrBy(ctx, metricsKey, "missing_coherent_outcomes", int64(sample.MissingCoherent))
 	pipe.HIncrBy(ctx, metricsKey, "latency_samples", 1)
 	pipe.HIncrBy(ctx, metricsKey, "latency_total_ms", sample.LatencyMS)
 	if sample.LatencyMS > 500 {
 		pipe.HIncrBy(ctx, metricsKey, "latency_over_500ms", 1)
 	}
-	pipe.Expire(ctx, metricsKey, 7*24*time.Hour)
+	pipe.Expire(ctx, metricsKey, 30*24*time.Hour)
 
 	windowKey := coherentShadowWindowKey(source)
-	recordedAt := time.Now().UTC()
 	pipe.ZAdd(ctx, windowKey, redis.Z{
 		Score:  float64(recordedAt.UnixMilli()),
 		Member: string(encoded),
@@ -488,6 +603,26 @@ func storeCoherentShadowMetricsPipeline(
 	)
 	pipe.Expire(ctx, windowKey, 24*time.Hour)
 	return nil
+}
+
+func storeObservationShadowMetricsPipeline(
+	ctx context.Context,
+	pipe redis.Pipeliner,
+	source dto.CollectorSource,
+	observedAt time.Time,
+	accepted, rejected, bridgedQuotes int,
+) {
+	metricsKey := coherentShadowMetricsKey(source)
+	recordedAt := time.Now().UTC()
+	pipe.HSetNX(ctx, metricsKey, "first_recorded_at_ms", recordedAt.UnixMilli())
+	pipe.HSet(ctx, metricsKey,
+		"last_recorded_at_ms", recordedAt.UnixMilli(),
+		"last_observation_at_ms", observedAt.UTC().UnixMilli(),
+	)
+	pipe.HIncrBy(ctx, metricsKey, "accepted_observations", int64(accepted))
+	pipe.HIncrBy(ctx, metricsKey, "rejected_observations", int64(rejected))
+	pipe.HIncrBy(ctx, metricsKey, "legacy_bridge_quotes", int64(bridgedQuotes))
+	pipe.Expire(ctx, metricsKey, 30*24*time.Hour)
 }
 
 func coherentShadowMetricsKey(source dto.CollectorSource) string {
