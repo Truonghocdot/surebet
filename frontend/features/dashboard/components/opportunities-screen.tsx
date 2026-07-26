@@ -256,7 +256,8 @@ function OutcomeOdds({
   outcome: OpportunityBoardOutcome;
 }) {
   const isConfirmedLeg = confirmedActive && outcome.is_surebet_leg;
-  const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${isConfirmedLeg}`;
+  const isStale = Boolean(outcome.is_stale);
+  const signature = `${outcome.odds}\u0000${outcome.collected_at}\u0000${isConfirmedLeg}\u0000${isStale}`;
   const previousSignature = useRef<string | null>(null);
   const [isFlashing, setIsFlashing] = useState(false);
 
@@ -277,7 +278,9 @@ function OutcomeOdds({
   return (
     <div
       className={`flex min-h-9 items-center justify-between gap-3 px-2.5 py-1.5 transition-colors ${
-        isConfirmedLeg
+        isStale
+          ? "bg-slate-100 text-slate-400"
+          : isConfirmedLeg
           ? "border-emerald-600/40 bg-emerald-500/15 text-emerald-950"
           : outcome.is_candidate_leg
             ? "border-amber-500/30 bg-amber-50 text-amber-950"
@@ -285,7 +288,9 @@ function OutcomeOdds({
       } ${isFlashing ? "opportunity-odds-pulse" : ""}`}
     >
       <span className="min-w-0 break-words text-xs font-medium leading-4">{displayOutcome}</span>
-      <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{outcome.odds}</span>
+      <span className="shrink-0 font-mono text-sm font-bold tabular-nums">
+        {isStale ? "—" : outcome.odds}
+      </span>
     </div>
   );
 }

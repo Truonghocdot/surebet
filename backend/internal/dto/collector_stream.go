@@ -2,7 +2,10 @@ package dto
 
 import "time"
 
-const CollectorStreamProtocolVersion = 1
+const (
+	CollectorStreamProtocolVersion    = 2
+	CollectorStreamMinProtocolVersion = 1
+)
 
 type CollectorStreamFrame struct {
 	Type string `json:"type"`
@@ -47,6 +50,66 @@ type CollectorStreamQuote struct {
 	Odds           float64 `json:"odds"`
 	AvailableStake float64 `json:"available_stake"`
 	Suspended      bool    `json:"suspended"`
+}
+
+type CollectorStreamFixture struct {
+	FixtureID    string `json:"fixture_id"`
+	Sport        string `json:"sport"`
+	HomeTeam     string `json:"home_team"`
+	AwayTeam     string `json:"away_team"`
+	LeagueName   string `json:"league_name"`
+	MatchState   string `json:"match_state"`
+	EventStartAt string `json:"event_start_at"`
+}
+
+type CollectorStreamMarketOutcome struct {
+	OutcomeID      string  `json:"outcome_id"`
+	OutcomeName    string  `json:"outcome_name"`
+	Side           string  `json:"side"`
+	Odds           float64 `json:"odds"`
+	RawOdds        float64 `json:"raw_odds,omitempty"`
+	OddsFormat     string  `json:"odds_format,omitempty"`
+	AvailableStake float64 `json:"available_stake"`
+	Suspended      bool    `json:"suspended"`
+}
+
+type CollectorStreamFixtureMarket struct {
+	MarketID       string                         `json:"market_id"`
+	Period         string                         `json:"period"`
+	NormalizedLine string                         `json:"normalized_line"`
+	Status         string                         `json:"status"`
+	Outcomes       []CollectorStreamMarketOutcome `json:"outcomes"`
+}
+
+type CollectorStreamFixtureMarketSnapshot struct {
+	Type            string                         `json:"type"`
+	ProtocolVersion int                            `json:"protocol_version"`
+	SessionID       string                         `json:"session_id"`
+	Seq             int64                          `json:"seq"`
+	BatchID         string                         `json:"batch_id"`
+	Fingerprint     string                         `json:"fingerprint"`
+	SourceEventID   string                         `json:"source_event_id,omitempty"`
+	ObservedAt      time.Time                      `json:"observed_at"`
+	Source          CollectorSource                `json:"source"`
+	Fixture         CollectorStreamFixture         `json:"fixture"`
+	Complete        bool                           `json:"complete"`
+	Markets         []CollectorStreamFixtureMarket `json:"markets"`
+}
+
+type CollectorStreamFixtureObservation struct {
+	FixtureID   string `json:"fixture_id"`
+	BatchID     string `json:"batch_id"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type CollectorStreamFixtureObservedBatch struct {
+	Type            string                              `json:"type"`
+	ProtocolVersion int                                 `json:"protocol_version"`
+	SessionID       string                              `json:"session_id"`
+	Seq             int64                               `json:"seq"`
+	ObservedAt      time.Time                           `json:"observed_at"`
+	Source          CollectorSource                     `json:"source"`
+	Items           []CollectorStreamFixtureObservation `json:"items"`
 }
 
 type CollectorStreamQuoteUpsert struct {

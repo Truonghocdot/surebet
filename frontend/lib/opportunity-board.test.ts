@@ -147,6 +147,58 @@ test("drops a finished fixture from the shared matches board", () => {
   assert.deepEqual(buildCurrentOpportunityBoard([], odds), []);
 });
 
+test("does not build a board from a stale coherent v2 batch", () => {
+  const staleAt = new Date(Date.now() - 3_100).toISOString();
+  const odds = [
+    quote({
+      bookmaker_id: "8xbet",
+      fixture_id: "v2-8xbet",
+      outcome_id: "v2-8xbet:home",
+      side: "home",
+      protocol_version: 2,
+      batch_id: "batch-8xbet",
+      coherence_status: "coherent",
+      market_observed_at: staleAt
+    }),
+    quote({
+      bookmaker_id: "8xbet",
+      fixture_id: "v2-8xbet",
+      outcome_id: "v2-8xbet:away",
+      outcome_name: "Away -0",
+      side: "away",
+      protocol_version: 2,
+      batch_id: "batch-8xbet",
+      coherence_status: "coherent",
+      market_observed_at: staleAt
+    }),
+    quote({
+      bookmaker_id: "jun88",
+      lobby_id: "cmd",
+      fixture_id: "v2-cmd",
+      outcome_id: "v2-cmd:home",
+      side: "home",
+      protocol_version: 2,
+      batch_id: "batch-cmd",
+      coherence_status: "coherent",
+      market_observed_at: staleAt
+    }),
+    quote({
+      bookmaker_id: "jun88",
+      lobby_id: "cmd",
+      fixture_id: "v2-cmd",
+      outcome_id: "v2-cmd:away",
+      outcome_name: "Away -0",
+      side: "away",
+      protocol_version: 2,
+      batch_id: "batch-cmd",
+      coherence_status: "coherent",
+      market_observed_at: staleAt
+    })
+  ];
+
+  assert.deepEqual(buildCurrentOpportunityBoard([], odds), []);
+});
+
 function quote(overrides: Partial<BackendOdds>): BackendOdds {
   return {
     bookmaker_id: "bookmaker",

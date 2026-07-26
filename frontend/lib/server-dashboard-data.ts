@@ -53,6 +53,14 @@ export type BackendOdds = {
   collected_at: string;
   last_observed_at?: string;
   changed_at?: string;
+  protocol_version?: number;
+  batch_id?: string;
+  source_event_id?: string;
+  market_observed_at?: string;
+  price_changed_at?: string;
+  coherence_status?: string;
+  raw_odds?: number;
+  odds_format?: string;
 };
 
 export async function fetchBackendOpportunities() {

@@ -23,29 +23,43 @@ type User struct {
 }
 
 type OddsQuote struct {
-	ID             string     `json:"id"`
-	BookmakerID    string     `json:"bookmaker_id"`
-	LobbyID        string     `json:"lobby_id"`
-	FixtureID      string     `json:"fixture_id" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:1;index:idx_odds_quotes_fixture_market_outcome,priority:1"`
-	FixtureMarker  string     `json:"fixture_marker" gorm:"index:idx_odds_quotes_current_key,priority:1;index:idx_odds_quotes_state_start,priority:3"`
-	HomeTeam       string     `json:"home_team"`
-	AwayTeam       string     `json:"away_team"`
-	LeagueName     string     `json:"league_name" gorm:"index"`
-	Sport          string     `json:"sport"`
-	MarketID       string     `json:"market_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:2"`
-	MarketMarker   string     `json:"market_marker" gorm:"index:idx_odds_quotes_current_key,priority:2"`
-	MarketName     string     `json:"market_name"`
-	OutcomeID      string     `json:"outcome_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:3"`
-	OutcomeMarker  string     `json:"outcome_marker" gorm:"index:idx_odds_quotes_current_key,priority:3"`
-	OutcomeName    string     `json:"outcome_name"`
-	Odds           float64    `json:"odds"`
-	AvailableStake float64    `json:"available_stake"`
-	Suspended      bool       `json:"suspended"`
-	MatchState     string     `json:"match_state" gorm:"index:idx_odds_quotes_state_start,priority:1"`
-	EventStartAt   *time.Time `json:"event_start_at,omitempty" gorm:"index:idx_odds_quotes_state_start,priority:2"`
-	CollectedAt    time.Time  `json:"collected_at" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:2,sort:desc"`
-	LastObservedAt time.Time  `json:"last_observed_at"`
-	ChangedAt      time.Time  `json:"changed_at"`
+	ID               string     `json:"id"`
+	BookmakerID      string     `json:"bookmaker_id"`
+	LobbyID          string     `json:"lobby_id"`
+	FixtureID        string     `json:"fixture_id" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:1;index:idx_odds_quotes_fixture_market_outcome,priority:1"`
+	FixtureMarker    string     `json:"fixture_marker" gorm:"index:idx_odds_quotes_current_key,priority:1;index:idx_odds_quotes_state_start,priority:3"`
+	HomeTeam         string     `json:"home_team"`
+	AwayTeam         string     `json:"away_team"`
+	LeagueName       string     `json:"league_name" gorm:"index"`
+	Sport            string     `json:"sport"`
+	MarketID         string     `json:"market_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:2"`
+	MarketMarker     string     `json:"market_marker" gorm:"index:idx_odds_quotes_current_key,priority:2"`
+	MarketName       string     `json:"market_name"`
+	OutcomeID        string     `json:"outcome_id" gorm:"index:idx_odds_quotes_fixture_market_outcome,priority:3"`
+	OutcomeMarker    string     `json:"outcome_marker" gorm:"index:idx_odds_quotes_current_key,priority:3"`
+	OutcomeName      string     `json:"outcome_name"`
+	Odds             float64    `json:"odds"`
+	AvailableStake   float64    `json:"available_stake"`
+	Suspended        bool       `json:"suspended"`
+	MatchState       string     `json:"match_state" gorm:"index:idx_odds_quotes_state_start,priority:1"`
+	EventStartAt     *time.Time `json:"event_start_at,omitempty" gorm:"index:idx_odds_quotes_state_start,priority:2"`
+	CollectedAt      time.Time  `json:"collected_at" gorm:"index:idx_odds_quotes_fixture_collected_at,priority:2,sort:desc"`
+	LastObservedAt   time.Time  `json:"last_observed_at"`
+	ChangedAt        time.Time  `json:"changed_at"`
+	ProtocolVersion  int        `json:"protocol_version,omitempty"`
+	BatchID          string     `json:"batch_id,omitempty"`
+	BatchFingerprint string     `json:"batch_fingerprint,omitempty"`
+	BatchSeq         int64      `json:"batch_seq,omitempty"`
+	BatchSessionID   string     `json:"batch_session_id,omitempty"`
+	SourceEventID    string     `json:"source_event_id,omitempty"`
+	MarketObservedAt time.Time  `json:"market_observed_at,omitempty"`
+	PriceChangedAt   time.Time  `json:"price_changed_at,omitempty"`
+	CoherenceStatus  string     `json:"coherence_status,omitempty"`
+	MarketPeriod     string     `json:"market_period,omitempty"`
+	MarketLine       string     `json:"market_line,omitempty"`
+	MarketSide       string     `json:"market_side,omitempty"`
+	RawOdds          float64    `json:"raw_odds,omitempty"`
+	OddsFormat       string     `json:"odds_format,omitempty"`
 }
 
 type SurebetLeg struct {

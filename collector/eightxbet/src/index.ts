@@ -27,8 +27,17 @@ export class EightXBetCollector {
       await maybeHeartbeat(snapshot);
     };
 
-    const flushFixtureDeltas = async (deltas: OddsDelta[]) => {
-      if (deltas.length === 0 || !bootstrapSent || !currentSnapshot) {
+    const flushFixtureDeltas = async (
+      deltas: OddsDelta[],
+      fixtureId: string,
+      observedAt: string
+    ) => {
+      if (!bootstrapSent || !currentSnapshot) {
+        return;
+      }
+
+      if (deltas.length === 0) {
+        await sink.observeFixtureMarketBatch?.(fixtureId, observedAt);
         return;
       }
 
@@ -73,8 +82,8 @@ export class EightXBetCollector {
       async (snapshot, mode) => {
         await flushSnapshot(snapshot, mode);
       },
-      async (deltas) => {
-        await flushFixtureDeltas(deltas);
+      async (deltas, fixtureId, observedAt) => {
+        await flushFixtureDeltas(deltas, fixtureId, observedAt);
       }
     );
 

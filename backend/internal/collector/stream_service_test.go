@@ -22,7 +22,6 @@ func TestStreamServiceHelloAck(t *testing.T) {
 		nil,
 		nil,
 	)
-
 	conn := openCollectorStreamConnection(t, service)
 	defer conn.Close()
 
@@ -37,6 +36,76 @@ func TestStreamServiceHelloAck(t *testing.T) {
 	}
 	if ack.Type != "hello_ack" || ack.SessionID != hello.SessionID {
 		t.Fatalf("unexpected hello ack: %+v", ack)
+	}
+}
+
+func TestStreamServiceKeepsProtocolV1DuringRollout(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+	hello := testHello("session-v1")
+	hello.ProtocolVersion = 1
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write v1 hello: %v", err)
+	}
+	var ack dto.CollectorStreamHelloAck
+	if err := conn.ReadJSON(&ack); err != nil {
+		t.Fatalf("read v1 hello ack: %v", err)
+	}
+	if ack.ProtocolVersion != 1 {
+		t.Fatalf("expected negotiated v1 ack, got %+v", ack)
+	}
+}
+
+func TestStreamServicePublishesCommittedFixtureSnapshot(t *testing.T) {
+	publisher := &recordingEventPublisher{}
+	service := NewStreamService(
+		streamStoreStub{fixtureMarketQuotes: []models.OddsQuote{{
+			BookmakerID:     "jun88",
+			LobbyID:         "cmd",
+			FixtureID:       "fixture-v2",
+			MarketID:        "hdp-ah",
+			OutcomeID:       "home",
+			ProtocolVersion: 2,
+			BatchID:         "batch-1",
+		}}},
+		publisher,
+		nil,
+		nil,
+	)
+	service.SetStateProtocol("v2")
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+	hello := testHello("session-v2")
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read hello ack: %v", err)
+	}
+
+	if err := conn.WriteJSON(dto.CollectorStreamFixtureMarketSnapshot{
+		Type:            "fixture_market_snapshot",
+		ProtocolVersion: 2,
+		SessionID:       hello.SessionID,
+		Seq:             1,
+		BatchID:         "batch-1",
+		Fingerprint:     "fingerprint-1",
+		ObservedAt:      time.Now().UTC(),
+		Source:          hello.Source,
+		Fixture:         dto.CollectorStreamFixture{FixtureID: "fixture-v2"},
+		Complete:        true,
+	}); err != nil {
+		t.Fatalf("write fixture snapshot: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for publisher.count() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	event := publisher.latest()
+	if event.Type != eventbus.EventFixtureOddsSnapshot || len(event.Payload.Quotes) != 1 {
+		t.Fatalf("expected full fixture snapshot event, got %+v", event)
 	}
 }
 
@@ -375,9 +444,10 @@ func testHello(sessionID string) dto.CollectorStreamHello {
 }
 
 type streamStoreStub struct {
-	upsertChanged bool
-	upsertQuote   models.OddsQuote
-	commitQuotes  []models.OddsQuote
+	upsertChanged       bool
+	upsertQuote         models.OddsQuote
+	commitQuotes        []models.OddsQuote
+	fixtureMarketQuotes []models.OddsQuote
 }
 
 func (s streamStoreStub) ObserveSource(context.Context, dto.CollectorSource, time.Time) error {
@@ -401,6 +471,14 @@ func (s streamStoreStub) ApplyQuoteUpsertBatch(context.Context, []dto.CollectorS
 
 func (s streamStoreStub) ApplyQuoteRemove(context.Context, dto.CollectorStreamQuoteRemove) (bool, models.OddsQuote, error) {
 	return false, models.OddsQuote{}, nil
+}
+
+func (s streamStoreStub) ApplyFixtureMarketSnapshot(context.Context, dto.CollectorStreamFixtureMarketSnapshot) ([]models.OddsQuote, error) {
+	return append([]models.OddsQuote(nil), s.fixtureMarketQuotes...), nil
+}
+
+func (s streamStoreStub) ObserveFixtureBatches(context.Context, dto.CollectorStreamFixtureObservedBatch) error {
+	return nil
 }
 
 func (s streamStoreStub) CommitSnapshot(context.Context, dto.CollectorSource, string, dto.CollectorStreamSnapshotCommit) ([]models.OddsQuote, error) {

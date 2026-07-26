@@ -13,6 +13,9 @@ export type RealtimeOddsQuote = {
   odds: number;
   suspended?: boolean;
   collected_at: string;
+  batch_id?: string;
+  coherence_status?: string;
+  market_observed_at?: string;
 };
 
 type PatchResult = {
@@ -62,40 +65,56 @@ export function applyRealtimeOddsQuotes(
       let sourceChanged = false;
       let sourceLatest = source.latest_collected_at;
       const patchMarkets = (markets: typeof source.handicap) =>
-        markets
-          .map((market) => {
-            const outcomes = market.outcomes.flatMap((outcome) => {
-              const key = quoteKey({
-                bookmaker_id: source.bookmaker_id,
-                lobby_id: source.lobby_id,
-                fixture_id: outcome.fixture_id,
-                outcome_id: outcome.outcome_id
-              });
-              const update = updates.get(key);
-              if (!update) {
-                return [outcome];
-              }
-
-              consumed.add(key);
-              changed = true;
-              fixtureChanged = true;
-              sourceChanged = true;
-              sourceLatest = latestTimestamp(sourceLatest, update.collected_at);
-              fixtureLatest = latestTimestamp(fixtureLatest, update.collected_at);
-              if (update.suspended) {
-                return [];
-              }
-
-              return [{
-                ...outcome,
-                odds: update.odds,
-                collected_at: update.collected_at,
-                is_surebet_leg: false
-              }];
+        markets.map((market) => {
+          const marketUpdates = market.outcomes.map((outcome) => {
+            const key = quoteKey({
+              bookmaker_id: source.bookmaker_id,
+              lobby_id: source.lobby_id,
+              fixture_id: outcome.fixture_id,
+              outcome_id: outcome.outcome_id
             });
-            return outcomes.length > 0 ? [{ ...market, outcomes }] : [];
-          })
-          .flat();
+            return { key, outcome, update: updates.get(key) };
+          });
+          const received = marketUpdates.filter((item) => item.update);
+          if (received.length === 0) {
+            return market;
+          }
+
+          for (const item of received) {
+            consumed.add(item.key);
+          }
+          changed = true;
+          fixtureChanged = true;
+          sourceChanged = true;
+          for (const item of received) {
+            sourceLatest = latestTimestamp(sourceLatest, item.update!.collected_at);
+            fixtureLatest = latestTimestamp(fixtureLatest, item.update!.collected_at);
+          }
+
+          const batchIDs = new Set(
+            received.map((item) => item.update?.batch_id).filter(Boolean)
+          );
+          const complete = received.length === market.outcomes.length;
+          const usable = complete && batchIDs.size <= 1 && received.every((item) =>
+            !item.update?.suspended &&
+            (!item.update?.coherence_status || item.update.coherence_status === "coherent")
+          );
+          if (!usable) {
+            return lockMarket(market);
+          }
+
+          return {
+            ...market,
+            outcomes: marketUpdates.map(({ outcome, update }) => ({
+              ...outcome,
+              odds: update!.odds,
+              collected_at: update!.market_observed_at || update!.collected_at,
+              is_stale: false,
+              is_surebet_leg: false,
+              is_candidate_leg: false
+            }))
+          };
+        });
 
       const handicap = patchMarkets(source.handicap);
       const overUnder = patchMarkets(source.over_under);
@@ -137,6 +156,21 @@ export function applyRealtimeOddsQuotes(
     board: changed ? { ...board, items } : board,
     changed,
     needsReconcile: consumed.size < updates.size || changed
+  };
+}
+
+function lockMarket(
+  market: OpportunityBoard["items"][number]["sources"][number]["handicap"][number]
+) {
+  return {
+    ...market,
+    outcomes: market.outcomes.map((outcome) => ({
+      ...outcome,
+      odds: 0,
+      is_stale: true,
+      is_surebet_leg: false,
+      is_candidate_leg: false
+    }))
   };
 }
 
@@ -212,7 +246,7 @@ function fixtureContainsActiveOpportunityLegs(
   const activeQuoteKeys = new Set(
     fixture.sources.flatMap((source) =>
       [...source.handicap, ...source.over_under].flatMap((market) =>
-        market.outcomes.map((outcome) =>
+        market.outcomes.filter((outcome) => !outcome.is_stale).map((outcome) =>
           quoteKey({
             bookmaker_id: source.bookmaker_id,
             lobby_id: source.lobby_id,
@@ -290,8 +324,8 @@ function markConfirmedMarkets(
       return {
         ...outcome,
         odds: leg?.odds ?? outcome.odds,
-        is_surebet_leg: Boolean(leg),
-        is_candidate_leg: outcome.is_candidate_leg || Boolean(leg)
+        is_surebet_leg: !outcome.is_stale && Boolean(leg),
+        is_candidate_leg: !outcome.is_stale && (outcome.is_candidate_leg || Boolean(leg))
       };
     })
   }));

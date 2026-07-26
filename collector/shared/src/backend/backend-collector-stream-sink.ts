@@ -3,6 +3,7 @@ import type {
   BookmakerCode,
   CollectorHeartbeat,
   CollectorSink,
+  FixtureMarketSnapshot,
   LobbyCode,
   OddsDelta,
   OddsSelection,
@@ -60,6 +61,9 @@ export class BackendCollectorStreamSink implements CollectorSink {
   private sessionId = "";
   private seq = 0;
   private quoteConfirmationHandler: QuoteConfirmationHandler | null = null;
+  private batchCounter = 0;
+  private readonly latestFixtureMetadata = new Map<string, OddsSelection>();
+  private readonly latestFixtureBatches = new Map<string, { batchId: string; fingerprint: string }>();
 
   constructor(
     backendURL: string,
@@ -74,6 +78,10 @@ export class BackendCollectorStreamSink implements CollectorSink {
       await this.ensureConnected();
       logEventStartAtNormalization(snapshot.source, snapshot.collectedAt, snapshot.selections);
       await this.sendBootstrapSnapshot(snapshot);
+      await this.sendFixtureMarketSnapshots(
+        new Set(snapshot.selections.map((selection) => selection.fixtureId)),
+        snapshot.collectedAt
+      );
       this.pendingResync = false;
     });
   }
@@ -83,6 +91,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
       return;
     }
 
+    const fixtureIds = new Set(deltas.map((delta) => delta.fixtureId));
     this.applyLatestDeltas(deltas);
     await this.enqueue(async () => {
       await this.ensureConnected();
@@ -138,6 +147,44 @@ export class BackendCollectorStreamSink implements CollectorSink {
           items: batch
         });
       }
+      await this.sendFixtureMarketSnapshots(
+        fixtureIds,
+        latestDeltaObservedAt(deltas)
+      );
+    });
+  }
+
+  async pushFixtureMarketSnapshot(snapshot: FixtureMarketSnapshot): Promise<void> {
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.sendFixtureMarketSnapshot(snapshot);
+    });
+  }
+
+  async observeFixtureMarketBatch(fixtureId: string, observedAt: string): Promise<void> {
+    const batch = this.latestFixtureBatches.get(fixtureId);
+    if (!batch) {
+      return;
+    }
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.replayLatestBootstrapIfNeeded();
+      if (this.latestFixtureBatches.get(fixtureId) !== batch) {
+        return;
+      }
+      await this.sendFrame({
+        type: "fixture_observed_batch",
+        protocol_version: 2,
+        session_id: this.sessionId,
+        seq: this.nextSeq(),
+        observed_at: observedAt,
+        source: serializeSource(this.source),
+        items: [{
+          fixture_id: fixtureId,
+          batch_id: batch.batchId,
+          fingerprint: batch.fingerprint
+        }]
+      });
     });
   }
 
@@ -201,7 +248,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
     currentSocket.addEventListener("open", () => {
       void this.sendRawFrame({
         type: "hello",
-        protocol_version: 1,
+        protocol_version: 2,
         session_id: this.sessionId,
         source: {
           collector_id: this.source.collectorId,
@@ -306,6 +353,10 @@ export class BackendCollectorStreamSink implements CollectorSink {
       ...this.latestBootstrap,
       selections: Array.from(this.latestSelections.values())
     });
+    await this.sendFixtureMarketSnapshots(
+      new Set(this.latestFixtureMetadata.keys()),
+      this.latestBootstrap.collectedAt
+    );
     this.pendingResync = false;
   }
 
@@ -315,8 +366,10 @@ export class BackendCollectorStreamSink implements CollectorSink {
       selections: []
     };
     this.latestSelections.clear();
+    this.latestFixtureMetadata.clear();
     for (const selection of snapshot.selections) {
       this.latestSelections.set(selection.outcomeId, selection);
+      this.latestFixtureMetadata.set(selection.fixtureId, selection);
     }
   }
 
@@ -328,6 +381,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
     let collectedAt = this.latestBootstrap.collectedAt;
     let collectedAtMs = Date.parse(collectedAt);
     for (const delta of deltas) {
+      this.latestFixtureMetadata.set(delta.fixtureId, selectionFromDelta(delta));
       if (delta.op === "remove") {
         this.latestSelections.delete(delta.outcomeId);
       } else {
@@ -345,6 +399,76 @@ export class BackendCollectorStreamSink implements CollectorSink {
       ...this.latestBootstrap,
       collectedAt
     };
+  }
+
+  private async sendFixtureMarketSnapshots(
+    fixtureIds: Set<string>,
+    observedAt: string
+  ) {
+    for (const fixtureId of fixtureIds) {
+      const selections = Array.from(this.latestSelections.values()).filter(
+        (selection) => selection.fixtureId === fixtureId && isDetectorMarket(selection.marketId)
+      );
+      const metadata = selections[0] ?? this.latestFixtureMetadata.get(fixtureId);
+      if (!metadata) {
+        continue;
+      }
+      await this.sendFixtureMarketSnapshot(
+        fixtureMarketSnapshotFromSelections(
+          this.source,
+          metadata,
+          selections,
+          observedAt
+        )
+      );
+    }
+  }
+
+  private async sendFixtureMarketSnapshot(snapshot: FixtureMarketSnapshot) {
+    const batchId = `${this.sessionId}:${++this.batchCounter}`;
+    const fingerprint = fixtureMarketFingerprint(snapshot);
+    await this.sendFrame({
+      type: "fixture_market_snapshot",
+      protocol_version: 2,
+      session_id: this.sessionId,
+      seq: this.nextSeq(),
+      batch_id: batchId,
+      fingerprint,
+      source_event_id: snapshot.sourceEventId ?? "",
+      observed_at: snapshot.observedAt,
+      source: serializeSource(snapshot.source),
+      fixture: {
+        fixture_id: snapshot.fixtureId,
+        sport: snapshot.sport ?? "football",
+        home_team: snapshot.homeTeam ?? "",
+        away_team: snapshot.awayTeam ?? "",
+        league_name: snapshot.leagueName ?? "",
+        match_state: snapshot.matchState ?? "unknown",
+        event_start_at: normalizeSourceEventStartAt(
+          snapshot.source,
+          snapshot.eventStartAt,
+          snapshot.observedAt
+        )
+      },
+      complete: snapshot.complete,
+      markets: snapshot.markets.map((market) => ({
+        market_id: market.marketId,
+        period: market.period,
+        normalized_line: market.normalizedLine,
+        status: market.status,
+        outcomes: market.outcomes.map((outcome) => ({
+          outcome_id: outcome.outcomeId,
+          outcome_name: outcome.outcomeName,
+          side: outcome.side,
+          odds: outcome.odds,
+          raw_odds: outcome.rawOdds ?? 0,
+          odds_format: outcome.oddsFormat ?? "",
+          available_stake: outcome.availableStake,
+          suspended: outcome.suspended
+        }))
+      }))
+    });
+    this.latestFixtureBatches.set(snapshot.fixtureId, { batchId, fingerprint });
   }
 
   private async sendBootstrapSnapshot(snapshot: OddsSnapshot) {
@@ -542,8 +666,173 @@ function selectionFromDelta(delta: OddsDelta): OddsSelection {
     outcomeName: delta.outcomeName,
     odds: delta.odds,
     availableStake: delta.availableStake,
-    suspended: delta.suspended
+    suspended: delta.suspended,
+    sourceEventId: delta.sourceEventId,
+    rawOdds: delta.rawOdds,
+    oddsFormat: delta.oddsFormat
   };
+}
+
+function fixtureMarketSnapshotFromSelections(
+  source: CollectorSourceIdentity,
+  metadata: OddsSelection,
+  selections: OddsSelection[],
+  observedAt: string
+): FixtureMarketSnapshot {
+  const markets = new Map<string, FixtureMarketSnapshot["markets"][number]>();
+  for (const selection of selections) {
+    const side = selectionSide(selection, metadata.homeTeam ?? "", metadata.awayTeam ?? "");
+    const rawLine = outcomeLine(selection.outcomeName);
+    if (!side || rawLine === "") {
+      continue;
+    }
+    const normalizedLine = normalizeAsianLine(rawLine);
+    const key = `${selection.marketId}\u0000${normalizedLine}`;
+    const market = markets.get(key) ?? {
+      marketId: selection.marketId,
+      period: isFirstHalfMarket(selection.marketId) ? "1H" : "FT",
+      normalizedLine,
+      status: "suspended" as const,
+      outcomes: []
+    };
+    market.outcomes.push({
+      outcomeId: selection.outcomeId,
+      outcomeName: selection.outcomeName,
+      side,
+      odds: selection.odds,
+      rawOdds: selection.rawOdds,
+      oddsFormat: selection.oddsFormat,
+      availableStake: selection.availableStake,
+      suspended: selection.suspended
+    });
+    markets.set(key, market);
+  }
+
+  for (const [key, market] of markets) {
+    const expected: Array<"home" | "away" | "over" | "under"> = market.marketId.startsWith("o-u-ou")
+      ? ["over", "under"]
+      : ["home", "away"];
+    const actual = new Set(market.outcomes.map((outcome) => outcome.side));
+    if (market.outcomes.length !== 2 || actual.size !== 2 ||
+      !expected.every((side) => actual.has(side)) ||
+      market.outcomes.some((outcome) => !Number.isFinite(outcome.odds) || outcome.odds === 0)) {
+      // Omitting the incomplete market gives the replace snapshot explicit
+      // removal semantics, so the backend suspends both previously active legs.
+      markets.delete(key);
+      continue;
+    }
+    market.status = market.outcomes.every((outcome) => !outcome.suspended && outcome.odds !== 0)
+      ? "open"
+      : "suspended";
+  }
+
+  return {
+    source: {
+      collectorId: source.collectorId,
+      bookmakerId: source.bookmakerId,
+      lobbyId: source.lobbyId
+    },
+    fixtureId: metadata.fixtureId,
+    sport: metadata.sport,
+    homeTeam: metadata.homeTeam,
+    awayTeam: metadata.awayTeam,
+    leagueName: metadata.leagueName,
+    matchState: metadata.matchState,
+    eventStartAt: metadata.eventStartAt,
+    sourceEventId: latestSourceEventID(selections) || metadata.sourceEventId,
+    observedAt,
+    complete: true,
+    markets: Array.from(markets.values())
+  };
+}
+
+function isDetectorMarket(marketId: string) {
+  return /^(?:hdp-ah|hdp-ah-1st|o-u-ou|o-u-ou-1st)$/i.test(marketId.trim());
+}
+
+function isFirstHalfMarket(marketId: string) {
+  return /(?:1st|1h|first)/i.test(marketId);
+}
+
+function selectionSide(
+  selection: OddsSelection,
+  homeTeam: string,
+  awayTeam: string
+): "home" | "away" | "over" | "under" | null {
+  const name = canonicalText(selection.outcomeName);
+  if (selection.marketId.startsWith("o-u-ou")) {
+    if (name.startsWith("over ") || name === "over") return "over";
+    if (name.startsWith("under ") || name === "under") return "under";
+    return null;
+  }
+  const home = canonicalText(homeTeam);
+  const away = canonicalText(awayTeam);
+  const participants: Array<{ name: string; side: "home" | "away" }> = [
+    { name: home, side: "home" },
+    { name: away, side: "away" }
+  ];
+  return participants
+    .filter((participant) => participant.name &&
+      (name === participant.name || name.startsWith(`${participant.name} `)))
+    .sort((left, right) => right.name.length - left.name.length)[0]?.side ?? null;
+}
+
+function outcomeLine(outcomeName: string) {
+  return outcomeName.match(/([+-]?\d+(?:\.\d+)?(?:\/[+-]?\d+(?:\.\d+)?)?)\s*$/)?.[1] ?? "";
+}
+
+function normalizeAsianLine(rawLine: string) {
+  const raw = rawLine.trim();
+  const sign = raw.startsWith("-") ? -1 : raw.startsWith("+") ? 1 : 0;
+  const values = raw.split("/").map((part, index) => {
+    const value = Number(part);
+    if (!Number.isFinite(value)) return Number.NaN;
+    if (index > 0 && sign !== 0 && !/^[+-]/.test(part)) return Math.abs(value) * sign;
+    return value;
+  });
+  if (values.some((value) => !Number.isFinite(value))) return raw.replace(/^[+-]/, "");
+  const average = Math.abs(values.reduce((sum, value) => sum + value, 0) / values.length);
+  if (average < Number.EPSILON) return "0";
+  return average.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function latestSourceEventID(selections: OddsSelection[]) {
+  for (let index = selections.length - 1; index >= 0; index -= 1) {
+    if (selections[index].sourceEventId) return selections[index].sourceEventId;
+  }
+  return "";
+}
+
+function latestDeltaObservedAt(deltas: OddsDelta[]) {
+  return deltas.reduce((latest, delta) =>
+    Date.parse(delta.collectedAt) > Date.parse(latest) ? delta.collectedAt : latest,
+  deltas[0]?.collectedAt ?? new Date().toISOString());
+}
+
+function fixtureMarketFingerprint(snapshot: FixtureMarketSnapshot) {
+  const canonical = snapshot.markets
+    .map((market) => ({
+      marketId: market.marketId,
+      period: market.period,
+      line: market.normalizedLine,
+      status: market.status,
+      outcomes: market.outcomes
+        .map((outcome) => ({
+          outcomeId: outcome.outcomeId,
+          side: outcome.side,
+          odds: outcome.odds,
+          rawOdds: outcome.rawOdds ?? 0,
+          oddsFormat: outcome.oddsFormat ?? "",
+          suspended: outcome.suspended
+        }))
+        .sort((left, right) => left.side.localeCompare(right.side))
+    }))
+    .sort((left, right) =>
+      `${left.marketId}\u0000${left.period}\u0000${left.line}`.localeCompare(
+        `${right.marketId}\u0000${right.period}\u0000${right.line}`
+      )
+    );
+  return crypto.createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
 function logEventStartAtNormalization(

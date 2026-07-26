@@ -22,13 +22,14 @@ import (
 const (
 	// An in-play quote becomes unsafe within seconds once its stream stops.
 	// Keep the board on the same freshness limit as surebet detection.
-	defaultCurrentOddsWindow = 25 * time.Second
-	defaultFinishedRetention = 30 * time.Minute
-	defaultOverallRetention  = 24 * time.Hour
-	defaultHistoryTTL        = 30 * time.Minute
-	defaultSnapshotTTL       = 60 * time.Second
-	defaultHistoryMaxEntries = 512
-	defaultJanitorInterval   = 1 * time.Minute
+	defaultCurrentOddsWindow  = 25 * time.Second
+	defaultCoherentOddsWindow = 3 * time.Second
+	defaultFinishedRetention  = 30 * time.Minute
+	defaultOverallRetention   = 24 * time.Hour
+	defaultHistoryTTL         = 30 * time.Minute
+	defaultSnapshotTTL        = 60 * time.Second
+	defaultHistoryMaxEntries  = 512
+	defaultJanitorInterval    = 1 * time.Minute
 )
 
 type StreamOddsStateStore interface {
@@ -49,6 +50,9 @@ type OddsStateRepository struct {
 	client            *redis.Client
 	cacheMu           sync.RWMutex
 	current           map[string]map[string]models.OddsQuote
+	coherent          map[string]map[string]models.OddsQuote
+	coherentVersions  map[string]fixtureBatchVersion
+	useCoherentReads  bool
 	finishedRetention time.Duration
 	overallRetention  time.Duration
 	historyTTL        time.Duration
@@ -61,6 +65,8 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 	return &OddsStateRepository{
 		client:            client,
 		current:           make(map[string]map[string]models.OddsQuote),
+		coherent:          make(map[string]map[string]models.OddsQuote),
+		coherentVersions:  make(map[string]fixtureBatchVersion),
 		finishedRetention: defaultFinishedRetention,
 		overallRetention:  defaultOverallRetention,
 		historyTTL:        defaultHistoryTTL,
@@ -68,6 +74,12 @@ func NewOddsStateRepository(client *redis.Client) *OddsStateRepository {
 		snapshotTTL:       defaultSnapshotTTL,
 		janitorInterval:   defaultJanitorInterval,
 	}
+}
+
+func (r *OddsStateRepository) SetStateProtocol(protocol string) {
+	r.cacheMu.Lock()
+	r.useCoherentReads = strings.EqualFold(strings.TrimSpace(protocol), "v2")
+	r.cacheMu.Unlock()
 }
 
 func (r *OddsStateRepository) ObserveSource(
@@ -84,43 +96,68 @@ func (r *OddsStateRepository) ObserveSource(
 // in-process mirror so API traffic never has to transfer the full odds hash.
 func (r *OddsStateRepository) WarmCurrentCache(ctx context.Context) error {
 	loaded := make(map[string]map[string]models.OddsQuote)
+	coherent := make(map[string]map[string]models.OddsQuote)
+	versions := make(map[string]fixtureBatchVersion)
 	for _, source := range repository.MigratedOddsSources() {
 		sourceRef := dto.CollectorSource{
 			BookmakerID: source.BookmakerID,
 			LobbyID:     source.LobbyID,
 		}
-		items := make(map[string]models.OddsQuote)
-		var cursor uint64
-		for {
-			values, nextCursor, err := r.client.HScan(
-				ctx,
-				currentKey(sourceRef),
-				cursor,
-				"*",
-				1000,
-			).Result()
-			if err != nil && !errors.Is(err, redis.Nil) {
-				return err
-			}
-			for i := 0; i+1 < len(values); i += 2 {
-				item, err := decodeOddsQuote(values[i+1])
-				if err != nil {
-					return err
-				}
-				items[values[i]] = item
-			}
-			if nextCursor == 0 {
-				break
-			}
-			cursor = nextCursor
+		items, err := r.loadCurrentHash(ctx, currentKey(sourceRef))
+		if err != nil {
+			return err
+		}
+		coherentItems, err := r.loadCurrentHash(ctx, coherentCurrentKey(sourceRef))
+		if err != nil {
+			return err
 		}
 		loaded[currentCacheKey(sourceRef)] = items
+		coherent[currentCacheKey(sourceRef)] = coherentItems
+		for _, item := range coherentItems {
+			versionKey := coherentFixtureVersionKey(sourceRef, item.FixtureID)
+			version := fixtureBatchVersion{
+				SessionID:   item.BatchSessionID,
+				Seq:         item.BatchSeq,
+				BatchID:     item.BatchID,
+				Fingerprint: item.BatchFingerprint,
+			}
+			if current, ok := versions[versionKey]; !ok || version.Seq > current.Seq {
+				versions[versionKey] = version
+			}
+		}
 	}
 
 	r.cacheMu.Lock()
 	r.current = loaded
+	r.coherent = coherent
+	r.coherentVersions = versions
 	r.cacheMu.Unlock()
 	return nil
+}
+
+func (r *OddsStateRepository) loadCurrentHash(
+	ctx context.Context,
+	key string,
+) (map[string]models.OddsQuote, error) {
+	items := make(map[string]models.OddsQuote)
+	var cursor uint64
+	for {
+		values, nextCursor, err := r.client.HScan(ctx, key, cursor, "*", 1000).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return nil, err
+		}
+		for i := 0; i+1 < len(values); i += 2 {
+			item, err := decodeOddsQuote(values[i+1])
+			if err != nil {
+				return nil, err
+			}
+			items[values[i]] = item
+		}
+		if nextCursor == 0 {
+			return items, nil
+		}
+		cursor = nextCursor
+	}
 }
 
 func (r *OddsStateRepository) ListByFixture(
@@ -130,8 +167,17 @@ func (r *OddsStateRepository) ListByFixture(
 	if strings.TrimSpace(fixtureID) == "" {
 		return nil, nil
 	}
+	r.cacheMu.RLock()
+	useCoherentReads := r.useCoherentReads
+	r.cacheMu.RUnlock()
+	if useCoherentReads {
+		return r.listCurrent(ctx, "", "", fixtureID, currentQueryOptions{
+			OnlyActiveMatches: true,
+		})
+	}
 
-	values, err := r.client.LRange(ctx, historyFixtureKey(fixtureID), 0, -1).Result()
+	historyKey := historyFixtureKey(fixtureID)
+	values, err := r.client.LRange(ctx, historyKey, 0, -1).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return nil, err
 	}
@@ -428,13 +474,17 @@ func (r *OddsStateRepository) listCurrent(
 	now := time.Now().UTC()
 	items := make([]models.OddsQuote, 0)
 	r.cacheMu.RLock()
+	state := r.current
+	if r.useCoherentReads {
+		state = r.coherent
+	}
 	for _, source := range sources {
 		sourceRef := dto.CollectorSource{
 			BookmakerID: source.BookmakerID,
 			LobbyID:     source.LobbyID,
 		}
 		sourceKey := currentCacheKey(sourceRef)
-		for _, item := range r.current[sourceKey] {
+		for _, item := range state[sourceKey] {
 			if fixtureID != "" && item.FixtureID != fixtureID {
 				continue
 			}
@@ -463,30 +513,62 @@ func (r *OddsStateRepository) pruneExpired(
 		}
 
 		items := r.currentSourceLocked(sourceRef)
-		if len(items) == 0 {
-			continue
+		if len(items) > 0 {
+			pipe := r.client.TxPipeline()
+			pruned := make([]string, 0)
+			for logicKey, item := range items {
+				if !shouldPruneQuote(item, now, r.finishedRetention, r.overallRetention) {
+					continue
+				}
+				pipe.HDel(ctx, currentKey(sourceRef), logicKey)
+				pipe.ZRem(ctx, tsKey(sourceRef), logicKey)
+				pruned = append(pruned, logicKey)
+			}
+
+			if _, err := pipe.Exec(ctx); err != nil {
+				return err
+			}
+			for _, logicKey := range pruned {
+				delete(items, logicKey)
+			}
 		}
 
-		pipe := r.client.TxPipeline()
-		pruned := make([]string, 0)
-		for logicKey, item := range items {
+		coherentItems := r.coherentSourceLocked(sourceRef)
+		if len(coherentItems) == 0 {
+			continue
+		}
+		coherentPipe := r.client.TxPipeline()
+		coherentPruned := make([]string, 0)
+		for logicKey, item := range coherentItems {
 			if !shouldPruneQuote(item, now, r.finishedRetention, r.overallRetention) {
 				continue
 			}
-			pipe.HDel(ctx, currentKey(sourceRef), logicKey)
-			pipe.ZRem(ctx, tsKey(sourceRef), logicKey)
-			pruned = append(pruned, logicKey)
+			coherentPipe.HDel(ctx, coherentCurrentKey(sourceRef), logicKey)
+			coherentPruned = append(coherentPruned, logicKey)
 		}
-
-		if _, err := pipe.Exec(ctx); err != nil {
+		if _, err := coherentPipe.Exec(ctx); err != nil {
 			return err
 		}
-		for _, logicKey := range pruned {
-			delete(items, logicKey)
+		for _, logicKey := range coherentPruned {
+			fixtureID := coherentItems[logicKey].FixtureID
+			delete(coherentItems, logicKey)
+			if !coherentFixtureExists(coherentItems, fixtureID) {
+				delete(r.coherentVersions, coherentFixtureVersionKey(sourceRef, fixtureID))
+			}
 		}
 	}
 
 	return nil
+}
+
+func (r *OddsStateRepository) coherentSourceLocked(source dto.CollectorSource) map[string]models.OddsQuote {
+	key := currentCacheKey(source)
+	items := r.coherent[key]
+	if items == nil {
+		items = make(map[string]models.OddsQuote)
+		r.coherent[key] = items
+	}
+	return items
 }
 
 func (r *OddsStateRepository) currentSourceLocked(source dto.CollectorSource) map[string]models.OddsQuote {
@@ -560,29 +642,32 @@ func storeQuotePipeline(
 func buildStreamOddsQuoteFromUpsert(event dto.CollectorStreamQuoteUpsert) models.OddsQuote {
 	collectedAt := event.OccurredAt.UTC()
 	return models.OddsQuote{
-		ID:             quoteID(event.Source.BookmakerID, event.Source.LobbyID, event.RawIDs.FixtureID, event.RawIDs.MarketID, event.RawIDs.OutcomeID),
-		BookmakerID:    event.Source.BookmakerID,
-		LobbyID:        event.Source.LobbyID,
-		FixtureID:      event.RawIDs.FixtureID,
-		FixtureMarker:  firstNonEmpty(event.Markers.FixtureMarker, buildFixtureMarker(event.Quote.HomeTeam, event.Quote.AwayTeam, event.RawIDs.FixtureID)),
-		HomeTeam:       strings.TrimSpace(event.Quote.HomeTeam),
-		AwayTeam:       strings.TrimSpace(event.Quote.AwayTeam),
-		LeagueName:     strings.TrimSpace(event.Quote.LeagueName),
-		Sport:          normalizeCollectorSport(event.Source, event.Quote.Sport),
-		MarketID:       event.RawIDs.MarketID,
-		MarketMarker:   firstNonEmpty(event.Markers.MarketMarker, slugText(event.RawIDs.MarketID)),
-		MarketName:     event.RawIDs.MarketID,
-		OutcomeID:      event.RawIDs.OutcomeID,
-		OutcomeMarker:  firstNonEmpty(event.Markers.OutcomeMarker, slugText(event.Quote.OutcomeName)),
-		OutcomeName:    event.Quote.OutcomeName,
-		Odds:           event.Quote.Odds,
-		AvailableStake: event.Quote.AvailableStake,
-		Suspended:      event.Quote.Suspended,
-		MatchState:     normalizeMatchState(event.Quote.MatchState),
-		EventStartAt:   parseCollectorEventStartAt(event.Quote.EventStartAt, collectedAt),
-		CollectedAt:    collectedAt,
-		LastObservedAt: collectedAt,
-		ChangedAt:      collectedAt,
+		ID:              quoteID(event.Source.BookmakerID, event.Source.LobbyID, event.RawIDs.FixtureID, event.RawIDs.MarketID, event.RawIDs.OutcomeID),
+		BookmakerID:     event.Source.BookmakerID,
+		LobbyID:         event.Source.LobbyID,
+		FixtureID:       event.RawIDs.FixtureID,
+		FixtureMarker:   firstNonEmpty(event.Markers.FixtureMarker, buildFixtureMarker(event.Quote.HomeTeam, event.Quote.AwayTeam, event.RawIDs.FixtureID)),
+		HomeTeam:        strings.TrimSpace(event.Quote.HomeTeam),
+		AwayTeam:        strings.TrimSpace(event.Quote.AwayTeam),
+		LeagueName:      strings.TrimSpace(event.Quote.LeagueName),
+		Sport:           normalizeCollectorSport(event.Source, event.Quote.Sport),
+		MarketID:        event.RawIDs.MarketID,
+		MarketMarker:    firstNonEmpty(event.Markers.MarketMarker, slugText(event.RawIDs.MarketID)),
+		MarketName:      event.RawIDs.MarketID,
+		OutcomeID:       event.RawIDs.OutcomeID,
+		OutcomeMarker:   firstNonEmpty(event.Markers.OutcomeMarker, slugText(event.Quote.OutcomeName)),
+		OutcomeName:     event.Quote.OutcomeName,
+		Odds:            event.Quote.Odds,
+		AvailableStake:  event.Quote.AvailableStake,
+		Suspended:       event.Quote.Suspended,
+		MatchState:      normalizeMatchState(event.Quote.MatchState),
+		EventStartAt:    parseCollectorEventStartAt(event.Quote.EventStartAt, collectedAt),
+		CollectedAt:     collectedAt,
+		LastObservedAt:  collectedAt,
+		ChangedAt:       collectedAt,
+		ProtocolVersion: 1,
+		PriceChangedAt:  collectedAt,
+		CoherenceStatus: "legacy",
 	}
 }
 
@@ -714,6 +799,9 @@ func matchesCurrentOptions(
 	if options.LiveOnly && (item.Suspended || item.Odds == 0) {
 		return false
 	}
+	if item.ProtocolVersion >= 2 && item.CoherenceStatus != "coherent" {
+		return false
+	}
 	if options.OnlyActiveMatches &&
 		item.MatchState != "upcoming" &&
 		item.MatchState != "live" &&
@@ -727,6 +815,12 @@ func matchesCurrentOptions(
 	minCollectedAt := options.MinCollectedAt.UTC()
 	if minCollectedAt.IsZero() && options.OnlyActiveMatches {
 		minCollectedAt = now.Add(-defaultCurrentOddsWindow)
+	}
+	if item.ProtocolVersion >= 2 {
+		coherentMinimum := now.Add(-defaultCoherentOddsWindow)
+		if minCollectedAt.IsZero() || minCollectedAt.Before(coherentMinimum) {
+			minCollectedAt = coherentMinimum
+		}
 	}
 	if !minCollectedAt.IsZero() && quoteObservedAt(item).Before(minCollectedAt) {
 		return false
@@ -768,6 +862,15 @@ func decodeOddsQuote(value string) (models.OddsQuote, error) {
 	}
 	if item.ChangedAt.IsZero() {
 		item.ChangedAt = item.CollectedAt.UTC()
+	}
+	if item.ProtocolVersion == 0 {
+		item.ProtocolVersion = 1
+	}
+	if item.PriceChangedAt.IsZero() {
+		item.PriceChangedAt = item.ChangedAt.UTC()
+	}
+	if item.CoherenceStatus == "" {
+		item.CoherenceStatus = "legacy"
 	}
 	return item, nil
 }

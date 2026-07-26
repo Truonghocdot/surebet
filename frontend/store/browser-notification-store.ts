@@ -12,6 +12,7 @@ type BrowserNotificationState = {
   permission: BrowserNotificationPermission;
   requesting: boolean;
   initialize: () => void;
+  requestOnDashboardEntry: () => Promise<void>;
   refreshPermission: () => void;
   toggle: () => Promise<void>;
 };
@@ -33,10 +34,44 @@ export const useBrowserNotificationStore = create<BrowserNotificationState>(
 
       const permission = window.Notification.permission;
       set({
-        enabled: readStoredPreference() && permission === "granted",
+        enabled: readStoredPreference() === "enabled" && permission === "granted",
         initialized: true,
         permission
       });
+    },
+    requestOnDashboardEntry: async () => {
+      if (!supportsBrowserNotifications() || get().requesting) {
+        return;
+      }
+
+      const storedPreference = readStoredPreference();
+      const permission = window.Notification.permission;
+      if (storedPreference === "disabled" || permission === "denied") {
+        set({ enabled: false, initialized: true, permission });
+        return;
+      }
+      if (permission === "granted") {
+        writeStoredPreference(true);
+        set({ enabled: true, initialized: true, permission });
+        return;
+      }
+      if (dashboardPermissionRequestAttempted()) {
+        set({ enabled: false, initialized: true, permission });
+        return;
+      }
+
+      markDashboardPermissionRequestAttempted();
+      set({ requesting: true, initialized: true, permission });
+      try {
+        const nextPermission = await window.Notification.requestPermission();
+        const enabled = nextPermission === "granted";
+        if (nextPermission !== "default") {
+          writeStoredPreference(enabled);
+        }
+        set({ enabled, initialized: true, permission: nextPermission });
+      } finally {
+        set({ requesting: false });
+      }
     },
     refreshPermission: () => {
       if (!supportsBrowserNotifications()) {
@@ -46,7 +81,7 @@ export const useBrowserNotificationStore = create<BrowserNotificationState>(
 
       const permission = window.Notification.permission;
       set({
-        enabled: readStoredPreference() && permission === "granted",
+        enabled: readStoredPreference() === "enabled" && permission === "granted",
         initialized: true,
         permission
       });
@@ -82,9 +117,26 @@ function supportsBrowserNotifications() {
 
 function readStoredPreference() {
   try {
-    return window.localStorage.getItem(browserNotificationPreferenceKey) === "enabled";
+    const value = window.localStorage.getItem(browserNotificationPreferenceKey);
+    return value === "enabled" || value === "disabled" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function dashboardPermissionRequestAttempted() {
+  try {
+    return window.sessionStorage.getItem("surebet:dashboard-notification-requested") === "yes";
   } catch {
     return false;
+  }
+}
+
+function markDashboardPermissionRequestAttempted() {
+  try {
+    window.sessionStorage.setItem("surebet:dashboard-notification-requested", "yes");
+  } catch {
+    // The browser permission prompt still works without session storage.
   }
 }
 

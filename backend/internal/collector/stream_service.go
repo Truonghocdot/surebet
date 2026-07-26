@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,8 @@ type StreamOddsStateStore interface {
 	ApplyQuoteUpsert(ctx context.Context, event dto.CollectorStreamQuoteUpsert) (bool, models.OddsQuote, error)
 	ApplyQuoteUpsertBatch(ctx context.Context, events []dto.CollectorStreamQuoteUpsert) ([]models.OddsQuote, error)
 	ApplyQuoteRemove(ctx context.Context, event dto.CollectorStreamQuoteRemove) (bool, models.OddsQuote, error)
+	ApplyFixtureMarketSnapshot(ctx context.Context, event dto.CollectorStreamFixtureMarketSnapshot) ([]models.OddsQuote, error)
+	ObserveFixtureBatches(ctx context.Context, event dto.CollectorStreamFixtureObservedBatch) error
 	CommitSnapshot(
 		ctx context.Context,
 		source dto.CollectorSource,
@@ -52,19 +55,20 @@ func (n multiSurebetNotifier) Trigger(quotes []models.OddsQuote) {
 }
 
 type StreamService struct {
-	store         StreamOddsStateStore
-	publisher     EventPublisher
-	notifier      SurebetNotifier
-	log           logger.Logger
-	upgrader      websocket.Upgrader
-	sessions      collectorSessionRegistry
-	connections   collectorConnectionRegistry
-	writeMu       sync.Mutex
-	confirmMu     sync.Mutex
-	confirmations map[string]chan dto.CollectorConfirmQuoteResponse
-	batchMu       sync.Mutex
-	batches       map[string]*pendingSourcePublish
-	debounce      time.Duration
+	store          StreamOddsStateStore
+	publisher      EventPublisher
+	notifier       SurebetNotifier
+	log            logger.Logger
+	upgrader       websocket.Upgrader
+	sessions       collectorSessionRegistry
+	connections    collectorConnectionRegistry
+	writeMu        sync.Mutex
+	confirmMu      sync.Mutex
+	confirmations  map[string]chan dto.CollectorConfirmQuoteResponse
+	batchMu        sync.Mutex
+	batches        map[string]*pendingSourcePublish
+	debounce       time.Duration
+	coherentActive bool
 }
 
 func NewStreamService(
@@ -97,6 +101,10 @@ func NewStreamService(
 
 func (s *StreamService) SetNotifier(notifier SurebetNotifier) {
 	s.notifier = notifier
+}
+
+func (s *StreamService) SetStateProtocol(protocol string) {
+	s.coherentActive = strings.EqualFold(strings.TrimSpace(protocol), "v2")
 }
 
 func (s *StreamService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -260,6 +268,70 @@ func (s *StreamService) handleMessage(
 			s.bufferOrPublish(ctx, state, event.SnapshotID, event.Source, quote)
 		}
 		return nil
+	case "fixture_market_snapshot":
+		var event dto.CollectorStreamFixtureMarketSnapshot
+		if err := json.Unmarshal(payload, &event); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_fixture_market_snapshot",
+				Message:   "fixture_market_snapshot frame is invalid",
+			})
+		}
+		if state.hello == nil || state.hello.ProtocolVersion < 2 || event.ProtocolVersion != 2 {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "protocol_mismatch",
+				Message:   "fixture_market_snapshot requires protocol v2",
+			})
+		}
+		if err := s.requireEventSource(conn, state, event.SessionID, event.Source); err != nil {
+			return err
+		}
+		quotes, err := s.store.ApplyFixtureMarketSnapshot(ctx, event)
+		if err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: event.SessionID,
+				Code:      "fixture_market_snapshot_rejected",
+				Message:   err.Error(),
+			})
+		}
+		if !s.coherentActive {
+			return nil
+		}
+		return s.publishFixtureQuotes(ctx, event.Source, quotes)
+	case "fixture_observed_batch":
+		var event dto.CollectorStreamFixtureObservedBatch
+		if err := json.Unmarshal(payload, &event); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_fixture_observed_batch",
+				Message:   "fixture_observed_batch frame is invalid",
+			})
+		}
+		if state.hello == nil || state.hello.ProtocolVersion < 2 || event.ProtocolVersion != 2 {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "protocol_mismatch",
+				Message:   "fixture_observed_batch requires protocol v2",
+			})
+		}
+		if err := s.requireEventSource(conn, state, event.SessionID, event.Source); err != nil {
+			return err
+		}
+		if err := s.store.ObserveFixtureBatches(ctx, event); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: event.SessionID,
+				Code:      "fixture_observed_batch_rejected",
+				Message:   err.Error(),
+			})
+		}
+		return nil
 	case "snapshot_commit":
 		var event dto.CollectorStreamSnapshotCommit
 		if err := json.Unmarshal(payload, &event); err != nil {
@@ -333,7 +405,8 @@ func (s *StreamService) handleHello(
 			Message:   "collector stream already received hello for this connection",
 		})
 	}
-	if hello.ProtocolVersion != dto.CollectorStreamProtocolVersion ||
+	if hello.ProtocolVersion < dto.CollectorStreamMinProtocolVersion ||
+		hello.ProtocolVersion > dto.CollectorStreamProtocolVersion ||
 		hello.SessionID == "" ||
 		hello.Source.CollectorID == "" ||
 		hello.Source.BookmakerID == "" ||
@@ -352,11 +425,36 @@ func (s *StreamService) handleHello(
 
 	return s.writeFrame(conn, dto.CollectorStreamHelloAck{
 		Type:            "hello_ack",
-		ProtocolVersion: dto.CollectorStreamProtocolVersion,
+		ProtocolVersion: hello.ProtocolVersion,
 		SessionID:       hello.SessionID,
 		Source:          hello.Source,
 		ServerTime:      time.Now().UTC(),
 	})
+}
+
+func (s *StreamService) publishFixtureQuotes(
+	ctx context.Context,
+	source dto.CollectorSource,
+	quotes []models.OddsQuote,
+) error {
+	if len(quotes) == 0 {
+		return nil
+	}
+	if s.notifier != nil {
+		s.notifier.Trigger(quotes)
+	}
+	if s.publisher == nil {
+		return nil
+	}
+	return s.publisher.PublishOddsUpdated(
+		ctx,
+		BuildFixtureOddsSnapshotEvent(
+			source.CollectorID,
+			source.BookmakerID,
+			source.LobbyID,
+			quotes,
+		),
+	)
 }
 
 func (s *StreamService) requireActiveSession(
@@ -412,6 +510,9 @@ func (s *StreamService) bufferOrPublish(
 	source dto.CollectorSource,
 	quote models.OddsQuote,
 ) {
+	if s.coherentActive {
+		return
+	}
 	if snapshotID != "" {
 		state.pendingSnapshots[snapshotID] = append(state.pendingSnapshots[snapshotID], quote)
 		return
@@ -425,6 +526,9 @@ func (s *StreamService) publishQuotes(
 	source dto.CollectorSource,
 	quotes []models.OddsQuote,
 ) error {
+	if s.coherentActive {
+		return nil
+	}
 	if len(quotes) == 0 {
 		return nil
 	}

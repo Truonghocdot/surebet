@@ -19,6 +19,7 @@ type Config struct {
 	Redis     RedisConfig
 	Postgres  PostgresConfig
 	Runtime   RuntimeConfig
+	Odds      OddsConfig
 }
 
 type AppConfig struct {
@@ -81,6 +82,10 @@ type PostgresConfig struct {
 type RuntimeConfig struct {
 	ShutdownGrace   time.Duration
 	FeatureDefaults map[string]bool
+}
+
+type OddsConfig struct {
+	StateProtocol string
 }
 
 var loadDotEnvOnce sync.Once
@@ -151,6 +156,9 @@ func LoadFromEnv() Config {
 				"LIQUIDITY_CHECK":     envBool("LIQUIDITY_CHECK", true),
 				"BOOKMAKER_ENABLE":    envBool("BOOKMAKER_ENABLE", true),
 			},
+		},
+		Odds: OddsConfig{
+			StateProtocol: envString("ODDS_STATE_PROTOCOL", "v1"),
 		},
 	}
 }

@@ -242,9 +242,14 @@ async function testMarketDeltaDelivery() {
   const page = new FakeEmitter();
   const socket = new FakeSocket();
   const delivered: OddsDelta[][] = [];
+  let unchangedObservations = 0;
   feed.attach(page as any);
   feed.activate(snapshot, async (deltas) => {
-    delivered.push(deltas);
+    if (deltas.length === 0) {
+      unchangedObservations += 1;
+    } else {
+      delivered.push(deltas);
+    }
   });
   page.emit("websocket", socket);
 
@@ -261,6 +266,7 @@ async function testMarketDeltaDelivery() {
   await feed.flush();
   assert.ok(feed.lastOddsMessageAt() > 0, "valid odds frames must update stream liveness");
   assert.equal(delivered.length, 0, "an unchanged INIT must not emit deltas");
+  assert.equal(unchangedObservations, 1, "an unchanged provider event must refresh its exact batch");
   assert.deepEqual(feed.oddsFormatDiagnostics(), {
     destination: "/topic/odds-diff/match/4824992/pd1/MOBILE",
     priceDisplay: "pd1",
@@ -277,11 +283,18 @@ async function testMarketDeltaDelivery() {
       }
     })
   });
+  socket.emit("framereceived", {
+    payload: stompFrame("UPDATE", {
+      market: {
+        ah: [{ k: "-0.5", h: "0.91", a: "1.20" }]
+      }
+    })
+  });
   await feed.flush();
   assert.equal(delivered.length, 1);
-  assert.equal(delivered[0].length, 1);
-  assert.equal(delivered[0][0].marketId, "hdp-ah");
-  assert.equal(delivered[0][0].op, "upsert");
+  assert.equal(delivered[0].length, 2, "two frames inside 50ms must produce one final fixture delivery");
+  assert.ok(delivered[0].every((delta) => delta.marketId === "hdp-ah"));
+  assert.ok(delivered[0].every((delta) => delta.op === "upsert"));
 
   socket.emit("framereceived", {
     payload: stompFrame("UPDATE", {

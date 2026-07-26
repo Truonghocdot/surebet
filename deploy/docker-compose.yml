@@ -41,6 +41,7 @@ services:
       APP_ENV: development
       HTTP_ADDRESS: :8080
       REDIS_ADDRESS: redis:6379
+      ODDS_STATE_PROTOCOL: ${ODDS_STATE_PROTOCOL:-v1}
       POSTGRES_DSN: postgres://surebet:surebet@postgres:5432/surebet?sslmode=disable
     depends_on:
       postgres:

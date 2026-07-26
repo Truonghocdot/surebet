@@ -47,6 +47,7 @@ func main() {
 
 	userRepository := gormstore.NewUserRepository(db)
 	oddsStateRepository := redisstore.NewOddsStateRepository(redisClient)
+	oddsStateRepository.SetStateProtocol(cfg.Odds.StateProtocol)
 	verifiedSurebetRepository := redisstore.NewVerifiedSurebetRepository(redisClient)
 	warmCtx, warmCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	if err := oddsStateRepository.WarmCurrentCache(warmCtx); err != nil {
@@ -92,6 +93,7 @@ func main() {
 		nil,
 		log,
 	)
+	collectorStream.SetStateProtocol(cfg.Odds.StateProtocol)
 	confirmationService := surebet.NewConfirmationServiceWithConfig(
 		surebetQuery,
 		collectorStream,

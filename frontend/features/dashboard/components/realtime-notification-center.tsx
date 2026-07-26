@@ -8,6 +8,10 @@ import {
 } from "@/store/realtime-notification-store";
 import { useDashboardSpaStore } from "@/store/dashboard-spa-store";
 import { useBrowserNotificationStore } from "@/store/browser-notification-store";
+import {
+  browserNotificationBody,
+  formatNotificationOdds
+} from "@/lib/opportunity-notification";
 
 const notificationLifetimeMS = 10_000;
 
@@ -105,7 +109,7 @@ function showBrowserNotification(
     const browserNotification = new Notification(
       confirmed ? "Kèo đã xác nhận" : "Phát hiện kèo mới",
       {
-        body: `${notification.fixtureID} - ${notification.marketName} - +${notification.profitPercentage.toFixed(2)}%`,
+        body: browserNotificationBody(notification),
         tag: notification.id
       }
     );
@@ -152,13 +156,24 @@ function OpportunityNotificationToast({
         <p className="text-sm font-semibold text-[var(--ink)]">
           {confirmed ? "Kèo đã xác nhận" : "Phát hiện kèo mới"}
         </p>
-        <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-          {notification.fixtureID} · {notification.marketName}
+        <p className="mt-0.5 line-clamp-2 text-xs font-medium text-[var(--ink)]">
+          {notification.matchName}
         </p>
-        <p className={`mt-1 text-sm font-semibold ${
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          {notification.marketLabel}
+        </p>
+        <div className="mt-1 grid gap-0.5 text-xs text-[var(--muted)]">
+          {notification.legs.map((leg, index) => (
+            <p className="truncate" key={`${leg.sourceLabel}:${leg.selectionLabel}:${index}`}>
+              <span className="font-medium text-[var(--ink)]">{leg.selectionLabel}</span>
+              {` · ${leg.sourceLabel} · ${formatNotificationOdds(leg.odds)}`}
+            </p>
+          ))}
+        </div>
+        <p className={`mt-1.5 text-sm font-semibold ${
           confirmed ? "text-emerald-700" : "text-amber-800"
         }`}>
-          +{notification.profitPercentage.toFixed(2)}%
+          Lợi nhuận +{notification.profitPercentage.toFixed(2)}%
         </p>
       </button>
       <button

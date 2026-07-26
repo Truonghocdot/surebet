@@ -70,6 +70,39 @@ async function main() {
     console.log(`CMD observer fallback emitted odds ${changedOdds}`);
 
     batches.length = 0;
+    const settledOdds = await page.evaluate(async () => {
+      const nodes = Array.from(document.querySelectorAll(
+        ".match.default-match .w-hdp .tableDiv-match-odds__detail > a"
+      )).slice(0, 2);
+      if (nodes.length !== 2) {
+        throw new Error("CMD fixture has no complete handicap pair");
+      }
+      const values = nodes.map((node, index) =>
+        Number((Number.parseFloat(node.textContent?.trim() || "0") + 0.02 + index * 0.01).toFixed(2))
+      );
+      nodes[0].textContent = String(values[0]);
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+      nodes[1].textContent = String(values[1]);
+      return values;
+    });
+    await assertEventually(() => batches.some((batch) => {
+      const odds = batch
+        .filter((item) => (item as { op?: string }).op === "upsert")
+        .map((item) => (item as { odds?: number }).odds);
+      return settledOdds.every((value) => odds.includes(value));
+    }));
+    assert.equal(
+      batches.some((batch) => {
+        const odds = batch.map((item) => (item as { odds?: number }).odds);
+        return settledOdds.some((value) => odds.includes(value)) &&
+          !settledOdds.every((value) => odds.includes(value));
+      }),
+      false,
+      "CMD must not emit an intermediate one-sided market state"
+    );
+    console.log("CMD observer emitted one settled two-sided market batch");
+
+    batches.length = 0;
     await page.evaluate(() => {
       const market = document.querySelector(
         ".match.default-match .w-ou .tableDiv-match-odds"

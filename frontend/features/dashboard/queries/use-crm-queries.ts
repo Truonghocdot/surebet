@@ -23,6 +23,7 @@ import {
   type RealtimeVerificationEvent,
   type RealtimeOddsQuote
 } from "@/lib/realtime-opportunity-board";
+import { buildOpportunityNotificationDetails } from "@/lib/opportunity-notification";
 
 export const crmQueryKeys = {
   dashboard: ["crm", "dashboard"] as const,
@@ -45,7 +46,8 @@ export function useOpportunityBoardQuery() {
     queryKey: crmQueryKeys.opportunityBoard(role),
     queryFn: fetchOpportunityBoard,
     select: (board) => filterOpportunityBoardForRole(board, role),
-    refetchInterval: 15_000,
+    // Keep the REST safety net aligned with the v2 market freshness window.
+    refetchInterval: 3_000,
     refetchIntervalInBackground: false
   });
 }
@@ -128,7 +130,7 @@ export function useRealtimeWebSocket() {
             setStatus("live");
             return;
           }
-          if (message.type === "odds_updated") {
+          if (message.type === "odds_updated" || message.type === "fixture_odds_snapshot") {
             const quotes = extractRealtimeOddsQuotes(message);
             const hasBoardQuote = quotes.some(isRealtimeBoardQuote);
             if (hasBoardQuote) {
@@ -258,12 +260,14 @@ function opportunityNotification(
   kind: "candidate" | "confirmed",
   opportunity: ReturnType<typeof opportunitySchema.parse>
 ) {
+  const details = buildOpportunityNotificationDetails(opportunity);
   return {
     kind,
     opportunityID: opportunity.id,
     fixtureID: opportunity.fixture_id,
     marketName: opportunity.market_name,
-    profitPercentage: opportunity.profit_percentage
+    profitPercentage: opportunity.profit_percentage,
+    ...details
   };
 }
 

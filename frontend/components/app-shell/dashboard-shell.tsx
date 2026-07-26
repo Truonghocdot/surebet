@@ -20,6 +20,7 @@ import {
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { useAppShellStore } from "@/store/app-shell-store";
+import { useBrowserNotificationStore } from "@/store/browser-notification-store";
 import { useDashboardSpaStore } from "@/store/dashboard-spa-store";
 import { Button } from "@/components/ui/button";
 
@@ -43,9 +44,18 @@ export function DashboardShell({ user, logout }: DashboardShellProps) {
   const closeMobileNav = useAppShellStore((state) => state.closeMobileNav);
   const activeHref = useDashboardSpaStore((state) => state.activeHref);
   const setActiveHref = useDashboardSpaStore((state) => state.setActiveHref);
+  const requestBrowserNotifications = useBrowserNotificationStore(
+    (state) => state.requestOnDashboardEntry
+  );
   const displayUser = sessionUser ?? user;
   const currentHref = activeHref ?? resolveDashboardHref(pathname);
   const navItems = navigationItems(displayUser);
+
+  useEffect(() => {
+    if (currentHref === "/dashboard") {
+      void requestBrowserNotifications();
+    }
+  }, [currentHref, requestBrowserNotifications]);
 
   useEffect(() => {
     const syncFromLocation = () => {

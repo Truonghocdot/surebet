@@ -24,6 +24,8 @@ export function parseJun88CmdSnapshot(
   const document = dom.window.document;
   const matchGroups = groupJun88MatchRows(document);
   const selections = matchGroups.flatMap((rows) => parseMatchGroup(rows));
+  const collectedAt = new Date().toISOString();
+  const sourceEventId = `cmd:${collectedAt}`;
 
   return {
     source: {
@@ -31,11 +33,14 @@ export function parseJun88CmdSnapshot(
       bookmakerId: "jun88",
       lobbyId: "cmd"
     },
-    collectedAt: new Date().toISOString(),
+    collectedAt,
     selections:
       selections.length > 0 || matchGroups.length > 0
-        ? selections
-        : parseFallbackMatches(document, pageUrl)
+        ? selections.map((selection) => ({ ...selection, sourceEventId }))
+        : parseFallbackMatches(document, pageUrl).map((selection) => ({
+            ...selection,
+            sourceEventId
+          }))
   };
 }
 
@@ -289,6 +294,8 @@ function createSelection(
     )}`,
     outcomeName: context.outcomeName,
     odds: hasOdds ? oddsValue : 0,
+    rawOdds: hasOdds ? oddsValue : 0,
+    oddsFormat: "malay",
     availableStake: 0,
     suspended: !hasOdds || isCmdOutcomeUnavailable(node),
   };

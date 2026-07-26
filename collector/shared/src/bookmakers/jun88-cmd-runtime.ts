@@ -25,6 +25,7 @@ import {
 
 const CMD_READY_SELECTOR = ".match.default-match, .league.tableDiv-league-header";
 const CMD_DELTA_BINDING = "__surebet_cmd_emit__";
+const CMD_OBSERVATION_BINDING = "__surebet_cmd_observe__";
 
 export class Jun88CmdRuntime {
   constructor(private readonly collectorId: string) {}
@@ -36,8 +37,10 @@ export class Jun88CmdRuntime {
         let target = await resolveCmdContentTarget(page);
 
         // Phase B: extract only match table HTML instead of full page dump
-        const initialHtml = await extractCmdMatchHtml(target);
-        const initialSnapshot = parseJun88CmdSnapshot(initialHtml, target.url(), this.collectorId);
+        const initialSnapshot = await readStableCmdSnapshot(target, this.collectorId);
+        if (!initialSnapshot) {
+          throw new Error("Jun88 CMD initial market snapshot did not settle within 500ms");
+        }
         assertSnapshotHasSelections(initialSnapshot, this.collectorId);
         let activeSnapshot: OddsSnapshot = {
           ...initialSnapshot,
@@ -79,6 +82,9 @@ export class Jun88CmdRuntime {
             throw streamFailure;
           }
         });
+        await installCmdObservationBinding(page, async (fixtureId, observedAt) => {
+          await sink.observeFixtureMarketBatch?.(fixtureId, observedAt);
+        });
         await installCmdObserver(target, initialSnapshot);
         await sink.pushBootstrap(initialSnapshot);
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
@@ -92,12 +98,11 @@ export class Jun88CmdRuntime {
           }
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
-            const reconciledHtml = await extractCmdMatchHtml(target);
-            const reconciledSnapshot = parseJun88CmdSnapshot(
-              reconciledHtml,
-              target.url(),
-              this.collectorId
-            );
+            const reconciledSnapshot = await readStableCmdSnapshot(target, this.collectorId);
+            if (!reconciledSnapshot) {
+              lastReconcileAt = Date.now();
+              continue;
+            }
             assertSnapshotHasSelections(reconciledSnapshot, this.collectorId);
             const reconciledSnapshotMap = selectionMap(reconciledSnapshot);
             const removed = buildDeltas(
@@ -253,16 +258,21 @@ export async function installCmdObserver(
   );
 
   const script = `
-    ((seededFingerprints, bindingName, scanIntervalMs) => {
+    ((seededFingerprints, bindingName, observationBindingName, scanIntervalMs) => {
       const win = window;
       if (!win.__surebet_cmd_stream__) {
-        win.__surebet_cmd_stream__ = { queue: [], seen: {}, byRow: {}, rowFingerprints: {} };
+        win.__surebet_cmd_stream__ = { queue: [], seen: {}, byRow: {}, rowFingerprints: {}, settleTimers: {} };
       }
       const state = win.__surebet_cmd_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
       state.rowFingerprints = {};
+      state.lastObservedAt = {};
       if (state.observer) state.observer.disconnect();
       if (state.scanTimer) clearInterval(state.scanTimer);
+      for (const pending of Object.values(state.settleTimers || {})) {
+        if (pending && pending.timer) clearTimeout(pending.timer);
+      }
+      state.settleTimers = {};
 
       const text = (node) => (node && node.textContent ? node.textContent.replace(/\\s+/g, " ").trim() : "");
       const normalizeToken = (value) =>
@@ -357,6 +367,8 @@ export async function installCmdObserver(
           outcomeId: quoteId(fixtureId, marketId, outcomeName),
           outcomeName,
           odds: hasOdds ? odds : 0,
+          rawOdds: hasOdds ? odds : 0,
+          oddsFormat: "malay",
           availableStake: 0,
           suspended: !hasOdds || isUnavailable(node)
         };
@@ -460,13 +472,15 @@ export async function installCmdObserver(
         const currentMap = Object.fromEntries(current.map((item) => [item.outcomeId, item]));
 
         if (emit) {
+          const observedAt = new Date().toISOString();
+          const sourceEventId = "cmd:" + observedAt;
           for (const item of current) {
             const fingerprint = item.odds + "|" + item.outcomeName + "|" + item.suspended;
             if (state.seen[item.outcomeId] !== fingerprint) {
               state.seen[item.outcomeId] = fingerprint;
               state.queue.push({
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
-                collectedAt: new Date().toISOString(),
+                collectedAt: observedAt,
                 fixtureId: item.fixtureId,
                 sport: item.sport,
                 homeTeam: item.homeTeam,
@@ -479,6 +493,9 @@ export async function installCmdObserver(
                 odds: item.odds,
                 availableStake: item.availableStake,
                 suspended: item.suspended,
+                sourceEventId,
+                rawOdds: item.rawOdds,
+                oddsFormat: item.oddsFormat,
                 op: "upsert"
               });
             }
@@ -489,7 +506,7 @@ export async function installCmdObserver(
               delete state.seen[item.outcomeId];
               state.queue.push({
                 source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
-                collectedAt: new Date().toISOString(),
+                collectedAt: observedAt,
                 fixtureId: item.fixtureId,
                 sport: item.sport,
                 homeTeam: item.homeTeam,
@@ -502,6 +519,9 @@ export async function installCmdObserver(
                 odds: item.odds,
                 availableStake: item.availableStake,
                 suspended: true,
+                sourceEventId,
+                rawOdds: item.rawOdds,
+                oddsFormat: item.oddsFormat,
                 op: "remove"
               });
             }
@@ -536,36 +556,69 @@ export async function installCmdObserver(
         return text(row) + "|" + attributes;
       }).join("\\u0001");
 
-      const removeRow = (rowNode) => {
-        const rowKey = rowNode.getAttribute("groupid") || rowNode.id || "";
-        if (!rowKey || !state.byRow[rowKey]) return;
-        const remainingRows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))
-          .filter((node) => (node.getAttribute("groupid") || node.id || "") === rowKey);
-        if (remainingRows.length > 0) {
-          syncRow(remainingRows[0], true);
-          return;
-        }
-        for (const item of state.byRow[rowKey]) {
-          delete state.seen[item.outcomeId];
-          state.queue.push({
-            source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
-            collectedAt: new Date().toISOString(),
-            fixtureId: item.fixtureId,
-            sport: item.sport,
-            homeTeam: item.homeTeam,
-            awayTeam: item.awayTeam,
-            leagueName: item.leagueName,
-            matchState: item.matchState,
-            marketId: item.marketId,
-            outcomeId: item.outcomeId,
-            outcomeName: item.outcomeName,
-            odds: item.odds,
-            availableStake: item.availableStake,
-            suspended: true,
-            op: "remove"
-          });
-        }
-        delete state.byRow[rowKey];
+      const emitQueue = () => {
+        if (state.queue.length === 0 || typeof win[bindingName] !== "function") return;
+        const batch = state.queue.splice(0, state.queue.length);
+        Promise.resolve(win[bindingName](batch)).catch(() => {
+          state.queue.unshift(...batch);
+        });
+      };
+
+      const scheduleStableRow = (rowKey) => {
+        if (!rowKey || state.settleTimers[rowKey]) return;
+        const pending = { startedAt: Date.now(), timer: null };
+        state.settleTimers[rowKey] = pending;
+        const attempt = () => {
+          const firstRows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))
+            .filter((node) => (node.getAttribute("groupid") || node.id || "") === rowKey);
+          const firstFingerprint = fingerprintRows(firstRows);
+          pending.timer = setTimeout(() => {
+            const secondRows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))
+              .filter((node) => (node.getAttribute("groupid") || node.id || "") === rowKey);
+            const secondFingerprint = fingerprintRows(secondRows);
+            if (firstFingerprint === secondFingerprint) {
+              delete state.settleTimers[rowKey];
+              if (secondRows.length > 0) {
+                syncRow(secondRows[0], true);
+              } else {
+                const previous = state.byRow[rowKey] || [];
+                for (const item of previous) {
+                  delete state.seen[item.outcomeId];
+                  state.queue.push({
+                    source: { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" },
+                    collectedAt: new Date().toISOString(),
+                    fixtureId: item.fixtureId,
+                    sport: item.sport,
+                    homeTeam: item.homeTeam,
+                    awayTeam: item.awayTeam,
+                    leagueName: item.leagueName,
+                    matchState: item.matchState,
+                    marketId: item.marketId,
+                    outcomeId: item.outcomeId,
+                    outcomeName: item.outcomeName,
+                    odds: item.odds,
+                    availableStake: item.availableStake,
+                    suspended: true,
+                    sourceEventId: "cmd:" + new Date().toISOString(),
+                    rawOdds: item.rawOdds,
+                    oddsFormat: item.oddsFormat,
+                    op: "remove"
+                  });
+                }
+                delete state.byRow[rowKey];
+                delete state.rowFingerprints[rowKey];
+              }
+              emitQueue();
+              return;
+            }
+            if (Date.now() - pending.startedAt >= 500) {
+              delete state.settleTimers[rowKey];
+              return;
+            }
+            pending.timer = setTimeout(attempt, 0);
+          }, 50);
+        };
+        pending.timer = setTimeout(attempt, 100);
       };
 
       for (const rowNode of Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))) {
@@ -592,14 +645,8 @@ export async function installCmdObserver(
             }
           }
         }
-        for (const row of removedRows) removeRow(row);
-        for (const row of rows) syncRow(row, true);
-        if (state.queue.length > 0 && typeof win[bindingName] === "function") {
-          const batch = state.queue.splice(0, state.queue.length);
-          Promise.resolve(win[bindingName](batch)).catch(() => {
-            state.queue.unshift(...batch);
-          });
-        }
+        for (const row of removedRows) scheduleStableRow(row.getAttribute("groupid") || row.id || "");
+        for (const row of rows) scheduleStableRow(row.getAttribute("groupid") || row.id || "");
       });
 
       observer.observe(document.body, {
@@ -627,21 +674,33 @@ export async function installCmdObserver(
         }
         for (const [rowKey, groupRows] of groupedRows) {
           const fingerprint = fingerprintRows(groupRows);
-          if (state.rowFingerprints[rowKey] !== fingerprint) syncRow(groupRows[0], true);
+          if (state.rowFingerprints[rowKey] !== fingerprint) {
+            scheduleStableRow(rowKey);
+            continue;
+          }
+          const now = Date.now();
+          if (!state.settleTimers[rowKey] &&
+            now - (state.lastObservedAt[rowKey] || 0) >= 1_000 &&
+            typeof win[observationBindingName] === "function") {
+            state.lastObservedAt[rowKey] = now;
+            Promise.resolve(win[observationBindingName]({
+              fixtureId: state.byRow[rowKey]?.[0]?.fixtureId || rowKey,
+              observedAt: new Date(now).toISOString()
+            })).catch(() => {
+              state.lastObservedAt[rowKey] = 0;
+            });
+          }
         }
 
-        if (state.queue.length > 0 && typeof win[bindingName] === "function") {
-          const batch = state.queue.splice(0, state.queue.length);
-          Promise.resolve(win[bindingName](batch)).catch(() => {
-            state.queue.unshift(...batch);
-          });
+        for (const rowKey of Object.keys(state.byRow)) {
+          if (!groupedRows.has(rowKey)) scheduleStableRow(rowKey);
         }
       }, scanIntervalMs);
     })
   `;
 
   await target.evaluate(
-    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)}, ${cmdDomScanIntervalMs()})`
+    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)}, ${JSON.stringify(CMD_OBSERVATION_BINDING)}, ${cmdDomScanIntervalMs()})`
   );
 }
 
@@ -662,6 +721,43 @@ async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
   return partial;
 }
 
+async function readStableCmdSnapshot(
+  target: Page | Frame,
+  collectorId: string
+): Promise<OddsSnapshot | null> {
+  const startedAt = Date.now();
+  let previous = parseJun88CmdSnapshot(
+    await extractCmdMatchHtml(target),
+    target.url(),
+    collectorId
+  );
+  while (Date.now() - startedAt < 500) {
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    const current = parseJun88CmdSnapshot(
+      await extractCmdMatchHtml(target),
+      target.url(),
+      collectorId
+    );
+    if (cmdSnapshotFingerprint(previous) === cmdSnapshotFingerprint(current)) {
+      return current;
+    }
+    previous = current;
+  }
+  return null;
+}
+
+function cmdSnapshotFingerprint(snapshot: OddsSnapshot) {
+  return snapshot.selections
+    .map((selection) => [
+      selection.outcomeId,
+      selection.outcomeName,
+      selection.odds,
+      selection.suspended
+    ].join("\u0000"))
+    .sort()
+    .join("\u0001");
+}
+
 async function installCmdDeltaBinding(
   page: Page,
   onDeltas: (deltas: OddsDelta[]) => Promise<void>
@@ -671,6 +767,23 @@ async function installCmdDeltaBinding(
       return;
     }
     await onDeltas(value as OddsDelta[]);
+  });
+}
+
+async function installCmdObservationBinding(
+  page: Page,
+  onObservation: (fixtureId: string, observedAt: string) => Promise<void>
+) {
+  await page.exposeBinding(CMD_OBSERVATION_BINDING, async (_source, value: unknown) => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    const observation = value as { fixtureId?: unknown; observedAt?: unknown };
+    if (typeof observation.fixtureId !== "string" ||
+      typeof observation.observedAt !== "string") {
+      return;
+    }
+    await onObservation(observation.fixtureId, observation.observedAt);
   });
 }
 
@@ -695,6 +808,9 @@ function applyDeltasToSelectionMap(
       outcomeId: delta.outcomeId,
       outcomeName: delta.outcomeName,
       odds: delta.odds,
+      rawOdds: delta.rawOdds,
+      oddsFormat: delta.oddsFormat,
+      sourceEventId: delta.sourceEventId,
       availableStake: delta.availableStake,
       suspended: delta.suspended
     });

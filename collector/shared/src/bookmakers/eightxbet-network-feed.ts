@@ -37,7 +37,11 @@ type FeedFixtureState = {
   retired: boolean;
 };
 
-type FeedDeltaListener = (deltas: OddsDelta[], fixtureId: string) => Promise<void>;
+type FeedDeltaListener = (
+  deltas: OddsDelta[],
+  fixtureId: string,
+  observedAt: string
+) => Promise<void>;
 type ActiveFixtureListener = (fixtureIds: string[]) => Promise<void> | void;
 
 const supportedMarketCodes = new Set<SupportedMarketCode>(["ah", "ah_1st", "ou", "ou_1st"]);
@@ -63,6 +67,7 @@ export class EightXBetNetworkFeed {
   private formatUnhealthyReason = "";
   private lastOddsMessageAtMs = 0;
   private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly deliveryCoalesceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly collectorId: string) {}
 
@@ -138,6 +143,10 @@ export class EightXBetNetworkFeed {
       clearTimeout(timer);
     }
     this.deliveryRetryTimers.clear();
+    for (const timer of this.deliveryCoalesceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.deliveryCoalesceTimers.clear();
   }
 
   overlaySnapshot(domSnapshot: OddsSnapshot) {
@@ -220,6 +229,10 @@ export class EightXBetNetworkFeed {
       clearTimeout(timer);
     }
     this.deliveryRetryTimers.clear();
+    for (const timer of this.deliveryCoalesceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.deliveryCoalesceTimers.clear();
   }
 
   hardConfirmationURL(fixtureId: string) {
@@ -277,6 +290,9 @@ export class EightXBetNetworkFeed {
   }
 
   async flush() {
+    while (this.deliveryCoalesceTimers.size > 0) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 55));
+    }
     await this.deliveryQueue;
   }
 
@@ -482,6 +498,21 @@ export class EightXBetNetworkFeed {
     }
 
     this.pendingFixtureIds.add(fixtureId);
+    if (this.deliveryCoalesceTimers.has(fixtureId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.deliveryCoalesceTimers.delete(fixtureId);
+      this.startFixtureDelivery();
+    }, 50);
+    timer.unref();
+    this.deliveryCoalesceTimers.set(fixtureId, timer);
+  }
+
+  private startFixtureDelivery() {
+    if (!this.listener) {
+      return;
+    }
     if (this.deliveryRunning) {
       return;
     }
@@ -496,7 +527,7 @@ export class EightXBetNetworkFeed {
         this.deliveryRunning = false;
         const nextFixtureId = this.pendingFixtureIds.values().next().value;
         if (typeof nextFixtureId === "string" && this.listener) {
-          this.emitFixture(nextFixtureId);
+          this.startFixtureDelivery();
         }
       });
   }
@@ -522,9 +553,7 @@ export class EightXBetNetworkFeed {
         this.logTelemetry(fixtureId, state);
 
         try {
-          if (deltas.length > 0) {
-            await listener(deltas, fixtureId);
-          }
+          await listener(deltas, fixtureId, state.occurredAt);
           replaceDeliveredMarkets(state, touchedMarkets, selections);
           const retryTimer = this.deliveryRetryTimers.get(fixtureId);
           if (retryTimer) {

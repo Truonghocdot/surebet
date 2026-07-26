@@ -21,6 +21,7 @@ type BoardOutcome = {
   side: string;
   odds: number;
   collected_at: string;
+  is_stale: boolean;
   is_surebet_leg: boolean;
   is_candidate_leg: boolean;
   quote_key?: string;
@@ -263,6 +264,7 @@ function groupMatchedFixtures(
       side: quote.side || inferSide(marketType, quote.outcome_name),
       odds: quote.odds,
       collected_at: quote.collected_at,
+      is_stale: false,
       is_surebet_leg: false,
       is_candidate_leg: false,
       quote_key: currentQuoteKey(quote)
@@ -347,21 +349,32 @@ function serializeMarkets(
   candidateQuoteKeys: Set<string>,
   confirmedQuoteKeys: Set<string>
 ) {
-  return Array.from(markets.values()).map((market) => ({
-    ...market,
-    outcomes: [...market.outcomes]
-      .map(({ quote_key: quoteKeyValue, ...outcome }) => ({
-        ...outcome,
-        is_surebet_leg: Boolean(quoteKeyValue && confirmedQuoteKeys.has(quoteKeyValue)),
-        is_candidate_leg: Boolean(quoteKeyValue && candidateQuoteKeys.has(quoteKeyValue))
-      }))
-      .sort((left, right) => {
-        const sideOrder = outcomeSideOrder(left.side) - outcomeSideOrder(right.side);
-        return sideOrder !== 0
-          ? sideOrder
-          : left.outcome_name.localeCompare(right.outcome_name);
-      })
-  }));
+  return Array.from(markets.values())
+    .filter(isCompleteBoardMarket)
+    .map((market) => ({
+      ...market,
+      outcomes: [...market.outcomes]
+        .map(({ quote_key: quoteKeyValue, ...outcome }) => ({
+          ...outcome,
+          is_surebet_leg: Boolean(quoteKeyValue && confirmedQuoteKeys.has(quoteKeyValue)),
+          is_candidate_leg: Boolean(quoteKeyValue && candidateQuoteKeys.has(quoteKeyValue))
+        }))
+        .sort((left, right) => {
+          const sideOrder = outcomeSideOrder(left.side) - outcomeSideOrder(right.side);
+          return sideOrder !== 0
+            ? sideOrder
+            : left.outcome_name.localeCompare(right.outcome_name);
+        })
+    }));
+}
+
+function isCompleteBoardMarket(market: BoardMarket) {
+  if (market.outcomes.length !== 2) {
+    return false;
+  }
+  const sides = new Set(market.outcomes.map((outcome) => outcome.side.trim().toLowerCase()));
+  return (sides.has("home") && sides.has("away")) ||
+    (sides.has("over") && sides.has("under"));
 }
 
 function outcomeSideOrder(side: string) {
@@ -463,6 +476,15 @@ function isStandardBoardQuote(quote: BackendOdds) {
 }
 
 function isCurrentBoardQuote(quote: BackendOdds, now: number) {
+  if (quote.protocol_version && quote.protocol_version >= 2) {
+    if (quote.coherence_status !== "coherent") {
+      return false;
+    }
+    const observedAt = Date.parse(quote.market_observed_at || quote.collected_at);
+    if (!Number.isFinite(observedAt) || Math.abs(now - observedAt) > 3_000) {
+      return false;
+    }
+  }
   if (!quote.event_start_at) {
     return true;
   }

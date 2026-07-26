@@ -75,7 +75,8 @@ export class EightXBetRuntime {
     onSnapshot: (snapshot: OddsSnapshot, mode: "bootstrap" | "delta") => Promise<void>,
     onFixtureDeltas?: (
       deltas: OddsDelta[],
-      fixtureId: string
+      fixtureId: string,
+      observedAt: string
     ) => Promise<void>
   ) {
     this.shutdownRequested = false;
@@ -89,8 +90,8 @@ export class EightXBetRuntime {
 
       this.networkFeed.activate(
         snapshot,
-        async (deltas, fixtureId) => {
-          await onFixtureDeltas?.(deltas, fixtureId);
+        async (deltas, fixtureId, observedAt) => {
+          await onFixtureDeltas?.(deltas, fixtureId, observedAt);
         },
         async (fixtureIds) => {
           await this.syncNetworkSubscriptions(page, fixtureIds);

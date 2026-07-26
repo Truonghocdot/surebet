@@ -76,8 +76,12 @@ func (p RealtimeEventPublisher) PublishOddsUpdated(ctx context.Context, event ev
 		return nil
 	}
 
+	eventType := "odds_updated"
+	if event.Type == eventbus.EventFixtureOddsSnapshot {
+		eventType = "fixture_odds_snapshot"
+	}
 	p.broadcaster.Broadcast(realtime.Event{
-		Type:    "odds_updated",
+		Type:    eventType,
 		SentAt:  time.Now().UTC(),
 		Payload: event,
 	})
@@ -85,32 +89,56 @@ func (p RealtimeEventPublisher) PublishOddsUpdated(ctx context.Context, event ev
 }
 
 func BuildOddsUpdatedEvent(sourceID, bookmakerID, lobbyID string, quotes []models.OddsQuote) eventbus.OddsUpdatedEvent {
+	return buildOddsEvent(eventbus.EventOddsUpdated, sourceID, bookmakerID, lobbyID, quotes)
+}
+
+func BuildFixtureOddsSnapshotEvent(sourceID, bookmakerID, lobbyID string, quotes []models.OddsQuote) eventbus.OddsUpdatedEvent {
+	return buildOddsEvent(eventbus.EventFixtureOddsSnapshot, sourceID, bookmakerID, lobbyID, quotes)
+}
+
+func buildOddsEvent(eventType eventbus.EventType, sourceID, bookmakerID, lobbyID string, quotes []models.OddsQuote) eventbus.OddsUpdatedEvent {
 	payloadQuotes := make([]eventbus.OddsQuotePayload, 0, len(quotes))
 	for _, quote := range quotes {
 		payloadQuotes = append(payloadQuotes, eventbus.OddsQuotePayload{
-			BookmakerID:    quote.BookmakerID,
-			LobbyID:        quote.LobbyID,
-			FixtureID:      quote.FixtureID,
-			HomeTeam:       quote.HomeTeam,
-			AwayTeam:       quote.AwayTeam,
-			MarketID:       quote.MarketID,
-			OutcomeID:      quote.OutcomeID,
-			Odds:           quote.Odds,
-			AvailableStake: quote.AvailableStake,
-			Suspended:      quote.Suspended,
-			CollectedAt:    quote.CollectedAt,
+			BookmakerID:      quote.BookmakerID,
+			LobbyID:          quote.LobbyID,
+			FixtureID:        quote.FixtureID,
+			HomeTeam:         quote.HomeTeam,
+			AwayTeam:         quote.AwayTeam,
+			MarketID:         quote.MarketID,
+			OutcomeID:        quote.OutcomeID,
+			OutcomeName:      quote.OutcomeName,
+			Odds:             quote.Odds,
+			AvailableStake:   quote.AvailableStake,
+			Suspended:        quote.Suspended,
+			CollectedAt:      quote.CollectedAt,
+			ProtocolVersion:  quote.ProtocolVersion,
+			BatchID:          quote.BatchID,
+			SourceEventID:    quote.SourceEventID,
+			MarketObservedAt: quote.MarketObservedAt,
+			PriceChangedAt:   quote.PriceChangedAt,
+			CoherenceStatus:  quote.CoherenceStatus,
+			Period:           quote.MarketPeriod,
+			Line:             quote.MarketLine,
+			Side:             quote.MarketSide,
+			RawOdds:          quote.RawOdds,
+			OddsFormat:       quote.OddsFormat,
 		})
 	}
 
 	now := time.Now().UTC()
+	version := 1
+	if eventType == eventbus.EventFixtureOddsSnapshot {
+		version = 2
+	}
 	return eventbus.OddsUpdatedEvent{
-		Type: eventbus.EventOddsUpdated,
+		Type: eventType,
 		Metadata: eventbus.Metadata{
 			EventID:       uuid.NewString(),
 			TraceID:       uuid.NewString(),
 			CorrelationID: uuid.NewString(),
 			Producer:      "collector.ingest",
-			Version:       1,
+			Version:       version,
 			OccurredAt:    now,
 		},
 		Payload: eventbus.OddsUpdatedPayload{

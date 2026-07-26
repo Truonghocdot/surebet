@@ -25,13 +25,61 @@ test("patches a known quote immediately and clears stale surebet state", () => {
   );
 });
 
-test("removes a suspended outcome without waiting for REST", () => {
+test("locks a suspended market without dropping the fixture shell", () => {
   const result = applyRealtimeOddsQuotes(createBoard(), [
     realtimeQuote({ suspended: true })
   ]);
 
   assert.equal(result.changed, true);
-  assert.equal(result.board.items[0].sources[0].handicap.length, 0);
+  assert.equal(result.board.items[0].sources[0].handicap.length, 1);
+  assert.equal(result.board.items[0].sources[0].handicap[0].outcomes[0].odds, 0);
+  assert.equal(result.board.items[0].sources[0].handicap[0].outcomes[0].is_stale, true);
+});
+
+test("locks both legs when realtime updates only one side of a two-sided market", () => {
+  const board = createBoard();
+  board.items[0].sources[0].handicap[0].outcomes.push({
+    fixture_id: "fixture-8x",
+    outcome_id: "fixture-8x:hdp-ah:away-0-5",
+    outcome_name: "Away -0.5",
+    side: "away",
+    odds: 0.8,
+    collected_at: "2026-07-18T08:00:00Z",
+    is_surebet_leg: false,
+    is_candidate_leg: false
+  });
+
+  const result = applyRealtimeOddsQuotes(board, [realtimeQuote({ odds: -0.72 })]);
+  const outcomes = result.board.items[0].sources[0].handicap[0].outcomes;
+  assert.equal(result.needsReconcile, true);
+  assert.ok(outcomes.every((outcome) => outcome.odds === 0 && outcome.is_stale));
+});
+
+test("applies a complete coherent fixture market batch", () => {
+  const board = createBoard();
+  board.items[0].sources[0].handicap[0].outcomes.push({
+    fixture_id: "fixture-8x",
+    outcome_id: "fixture-8x:hdp-ah:away-0-5",
+    outcome_name: "Away -0.5",
+    side: "away",
+    odds: 0.8,
+    collected_at: "2026-07-18T08:00:00Z",
+    is_surebet_leg: false,
+    is_candidate_leg: false
+  });
+
+  const result = applyRealtimeOddsQuotes(board, [
+    realtimeQuote({ odds: -0.72, batch_id: "batch-2", coherence_status: "coherent" }),
+    realtimeQuote({
+      outcome_id: "fixture-8x:hdp-ah:away-0-5",
+      odds: 0.76,
+      batch_id: "batch-2",
+      coherence_status: "coherent"
+    })
+  ]);
+  const outcomes = result.board.items[0].sources[0].handicap[0].outcomes;
+  assert.deepEqual(outcomes.map((outcome) => outcome.odds), [-0.72, 0.76]);
+  assert.ok(outcomes.every((outcome) => !outcome.is_stale));
 });
 
 test("requests reconciliation when a new standard outcome is not on the board", () => {

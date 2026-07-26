@@ -89,6 +89,8 @@ function clearMarkets(
     ...market,
     outcomes: market.outcomes.map((outcome) => ({
       ...outcome,
+      odds: 0,
+      is_stale: true,
       is_surebet_leg: false,
       is_candidate_leg: false
     }))

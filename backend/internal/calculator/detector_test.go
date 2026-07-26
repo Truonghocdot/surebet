@@ -675,6 +675,62 @@ func TestDetectRejectsStaleQuotesAndAllowsFreshTimestampSkew(t *testing.T) {
 	}
 }
 
+func TestDetectRequiresFreshCoherentV2Observations(t *testing.T) {
+	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
+	coherentQuote := func(
+		id, bookmaker, lobby, outcome string,
+		observedAt time.Time,
+	) models.OddsQuote {
+		quote := testQuote(now, id, bookmaker, lobby, "Arsenal", "Milan", "", outcome, -0.5)
+		quote.ProtocolVersion = 2
+		quote.BatchID = "batch-" + id
+		quote.CoherenceStatus = "coherent"
+		quote.MarketObservedAt = observedAt
+		return quote
+	}
+
+	tests := []struct {
+		name       string
+		overAt     time.Time
+		underAt    time.Time
+		underV1    bool
+		coherence  string
+		want       int
+		wantExpiry time.Time
+	}{
+		{
+			name: "fresh coherent pair", overAt: now.Add(-time.Second), underAt: now,
+			want: 1, wantExpiry: now.Add(2 * time.Second),
+		},
+		{name: "observation skew over two seconds", overAt: now.Add(-2100 * time.Millisecond), underAt: now, want: 0},
+		{name: "observation older than three seconds", overAt: now.Add(-3100 * time.Millisecond), underAt: now, want: 0},
+		{name: "incomplete coherence status", overAt: now, underAt: now, coherence: "incomplete", want: 0},
+		{name: "legacy and v2 are not mixed", overAt: now, underAt: now, underV1: true, want: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			detector := newDetector(func() time.Time { return now })
+			over := coherentQuote("over", "8xbet", "default", "Over 2.5", test.overAt)
+			under := coherentQuote("under", "jun88", "cmd", "Under 2.5", test.underAt)
+			if test.coherence != "" {
+				over.CoherenceStatus = test.coherence
+			}
+			if test.underV1 {
+				under.ProtocolVersion = 1
+				under.CoherenceStatus = "legacy"
+			}
+			items := detect(t, detector, []models.OddsQuote{over, under})
+			if len(items) != test.want {
+				t.Fatalf("expected %d opportunities, got %+v", test.want, items)
+			}
+			if test.want == 1 && !items[0].ExpiresAt.Equal(test.wantExpiry) {
+				t.Fatalf("expected v2 expiry %s, got %s", test.wantExpiry, items[0].ExpiresAt)
+			}
+		})
+	}
+}
+
 func TestDetectRejectsExpiredEventWithFreshlyRecollectedQuotes(t *testing.T) {
 	now := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })

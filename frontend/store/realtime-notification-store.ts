@@ -9,7 +9,14 @@ export type OpportunityNotification = {
   opportunityID: string;
   fixtureID: string;
   marketName: string;
+  matchName: string;
+  marketLabel: string;
   profitPercentage: number;
+  legs: Array<{
+    selectionLabel: string;
+    sourceLabel: string;
+    odds: number;
+  }>;
 };
 
 type RealtimeNotificationState = {

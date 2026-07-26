@@ -49,7 +49,44 @@ export type OddsDelta = {
   odds: number;
   availableStake: number;
   suspended: boolean;
+  sourceEventId?: string;
+  rawOdds?: number;
+  oddsFormat?: "indonesian" | "malay";
   op: "upsert" | "remove";
+};
+
+export type FixtureMarketOutcome = {
+  outcomeId: string;
+  outcomeName: string;
+  side: "home" | "away" | "over" | "under";
+  odds: number;
+  rawOdds?: number;
+  oddsFormat?: "indonesian" | "malay";
+  availableStake: number;
+  suspended: boolean;
+};
+
+export type FixtureMarket = {
+  marketId: string;
+  period: "FT" | "1H";
+  normalizedLine: string;
+  status: "open" | "suspended";
+  outcomes: FixtureMarketOutcome[];
+};
+
+export type FixtureMarketSnapshot = {
+  source: CollectorSource;
+  fixtureId: string;
+  sport?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  leagueName?: string;
+  matchState?: "upcoming" | "live" | "finished" | "unknown";
+  eventStartAt?: string;
+  sourceEventId?: string;
+  observedAt: string;
+  complete: boolean;
+  markets: FixtureMarket[];
 };
 
 export type Jun88LobbyAccess = {
@@ -90,5 +127,7 @@ export interface CollectorSink {
   pushBootstrap(snapshot: OddsSnapshot): Promise<void>;
   pushDelta(deltas: OddsDelta[]): Promise<void>;
   heartbeat(payload: CollectorHeartbeat): Promise<void>;
+  pushFixtureMarketSnapshot?(snapshot: FixtureMarketSnapshot): Promise<void>;
+  observeFixtureMarketBatch?(fixtureId: string, observedAt: string): Promise<void>;
   setQuoteConfirmationHandler?(handler: QuoteConfirmationHandler | null): void;
 }

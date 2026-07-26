@@ -59,6 +59,7 @@ export const opportunityBoardOutcomeSchema = z.object({
   side: z.string(),
   odds: z.number(),
   collected_at: z.string(),
+  is_stale: z.boolean().optional(),
   is_surebet_leg: z.boolean(),
   is_candidate_leg: z.boolean()
 });

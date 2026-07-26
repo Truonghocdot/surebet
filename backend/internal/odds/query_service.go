@@ -55,31 +55,51 @@ func (s QueryService) ListCurrentOdds(ctx context.Context, filter dto.OddsFilter
 		}
 
 		normalized := normalizeQuoteView(item)
+		period := normalized.Period
+		if item.MarketPeriod != "" {
+			period = item.MarketPeriod
+		}
+		line := normalized.Line
+		if item.MarketLine != "" {
+			line = item.MarketLine
+		}
+		side := normalized.Side
+		if item.MarketSide != "" {
+			side = item.MarketSide
+		}
 		result = append(result, dto.OddsView{
-			BookmakerID:    item.BookmakerID,
-			LobbyID:        item.LobbyID,
-			FixtureID:      item.FixtureID,
-			FixtureMarker:  item.FixtureMarker,
-			LeagueName:     item.LeagueName,
-			HomeTeam:       item.HomeTeam,
-			AwayTeam:       item.AwayTeam,
-			MatchState:     item.MatchState,
-			EventStartAt:   item.EventStartAt,
-			MatchName:      normalized.MatchName,
-			Period:         normalized.Period,
-			MarketType:     normalized.MarketType,
-			Line:           normalized.Line,
-			Side:           normalized.Side,
-			MarketID:       item.MarketID,
-			OutcomeID:      item.OutcomeID,
-			OutcomeName:    item.OutcomeName,
-			Odds:           item.Odds,
-			DecimalOdds:    normalized.DecimalOdds,
-			AvailableStake: item.AvailableStake,
-			Suspended:      item.Suspended,
-			CollectedAt:    item.CollectedAt,
-			LastObservedAt: item.LastObservedAt,
-			ChangedAt:      item.ChangedAt,
+			BookmakerID:      item.BookmakerID,
+			LobbyID:          item.LobbyID,
+			FixtureID:        item.FixtureID,
+			FixtureMarker:    item.FixtureMarker,
+			LeagueName:       item.LeagueName,
+			HomeTeam:         item.HomeTeam,
+			AwayTeam:         item.AwayTeam,
+			MatchState:       item.MatchState,
+			EventStartAt:     item.EventStartAt,
+			MatchName:        normalized.MatchName,
+			Period:           period,
+			MarketType:       normalized.MarketType,
+			Line:             line,
+			Side:             side,
+			MarketID:         item.MarketID,
+			OutcomeID:        item.OutcomeID,
+			OutcomeName:      item.OutcomeName,
+			Odds:             item.Odds,
+			DecimalOdds:      normalized.DecimalOdds,
+			AvailableStake:   item.AvailableStake,
+			Suspended:        item.Suspended,
+			CollectedAt:      item.CollectedAt,
+			LastObservedAt:   item.LastObservedAt,
+			ChangedAt:        item.ChangedAt,
+			ProtocolVersion:  item.ProtocolVersion,
+			BatchID:          item.BatchID,
+			SourceEventID:    item.SourceEventID,
+			MarketObservedAt: item.MarketObservedAt,
+			PriceChangedAt:   item.PriceChangedAt,
+			CoherenceStatus:  item.CoherenceStatus,
+			RawOdds:          item.RawOdds,
+			OddsFormat:       item.OddsFormat,
 		})
 	}
 

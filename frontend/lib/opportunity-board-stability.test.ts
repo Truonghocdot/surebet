@@ -14,6 +14,13 @@ test("carries the last complete board through a brief bootstrap collapse", () =>
   const transient = stabilize([], 2_000);
   assert.equal(transient.length, 10);
   assert.ok(transient.every((item) => !item.has_surebet));
+  assert.ok(transient.every((item) =>
+    item.sources.every((source) =>
+      source.handicap.every((market) =>
+        market.outcomes.every((outcome) => outcome.is_stale && outcome.odds === 0)
+      )
+    )
+  ));
   assert.equal(stabilize([], 11_999).length, 10);
   assert.deepEqual(stabilize([], 12_000), []);
 });
@@ -51,6 +58,38 @@ function fixture(index: number, hasSurebet = false): CurrentOpportunityBoardItem
     valid_until: "",
     match_confidence: hasSurebet ? 1 : 0,
     match_ambiguous: false,
-    sources: []
+    sources: [{
+      id: `8xbet-default-${index}`,
+      bookmaker_id: "8xbet",
+      lobby_id: "default",
+      latest_collected_at: "2026-07-25T15:00:00Z",
+      handicap: [{
+        id: `market-${index}`,
+        period: "FT",
+        line: "0.5",
+        outcomes: [{
+          fixture_id: `fixture-${index}`,
+          outcome_id: `home-${index}`,
+          outcome_name: `Home ${index} -0.5`,
+          side: "home",
+          odds: -0.8,
+          collected_at: "2026-07-25T15:00:00Z",
+          is_stale: false,
+          is_surebet_leg: hasSurebet,
+          is_candidate_leg: hasSurebet
+        }, {
+          fixture_id: `fixture-${index}`,
+          outcome_id: `away-${index}`,
+          outcome_name: `Away ${index} +0.5`,
+          side: "away",
+          odds: 0.75,
+          collected_at: "2026-07-25T15:00:00Z",
+          is_stale: false,
+          is_surebet_leg: false,
+          is_candidate_leg: false
+        }]
+      }],
+      over_under: []
+    }]
   };
 }

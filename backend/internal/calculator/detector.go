@@ -20,6 +20,8 @@ import (
 const (
 	detectorMaxQuoteAge        = 300 * time.Second
 	detectorMaxQuoteSkew       = 5 * time.Minute
+	detectorCoherentMaxAge     = 3 * time.Second
+	detectorCoherentMaxSkew    = 2 * time.Second
 	detectorMaxEventAge        = 6 * time.Hour
 	fixtureSimilarityThreshold = 0.40
 	wordSimilarityThreshold    = 0.40
@@ -324,7 +326,10 @@ func normalizeQuotes(
 	result := make([]normalizedQuote, 0, len(quotes))
 	for _, quote := range quotes {
 		sourceKey := quoteSourceKey(quote)
-		if quote.Suspended || !isFreshQuote(now, quote.CollectedAt) || !isCurrentEvent(now, quote.EventStartAt) {
+		if quote.Suspended || !isFreshDetectorQuote(now, quote) || !isCurrentEvent(now, quote.EventStartAt) {
+			continue
+		}
+		if quote.ProtocolVersion >= 2 && quote.CoherenceStatus != "coherent" {
 			continue
 		}
 
@@ -374,6 +379,15 @@ func isFreshQuote(now, collectedAt time.Time) bool {
 
 	age := now.Sub(collectedAt.UTC())
 	return age >= -detectorMaxQuoteAge && age <= detectorMaxQuoteAge
+}
+
+func isFreshDetectorQuote(now time.Time, quote models.OddsQuote) bool {
+	if quote.ProtocolVersion < 2 {
+		return isFreshQuote(now, quote.CollectedAt)
+	}
+	observedAt := coherentQuoteObservedAt(quote)
+	age := now.Sub(observedAt)
+	return age >= -detectorCoherentMaxAge && age <= detectorCoherentMaxAge
 }
 
 func isCurrentEvent(now time.Time, eventStartAt *time.Time) bool {
@@ -1054,7 +1068,12 @@ func buildOpportunity(
 	left, right normalizedQuote,
 	now time.Time,
 ) (models.SurebetOpportunity, bool) {
-	if !hasCompatibleQuoteTimes(left.quote.CollectedAt, right.quote.CollectedAt) {
+	if (left.quote.ProtocolVersion >= 2) != (right.quote.ProtocolVersion >= 2) {
+		return models.SurebetOpportunity{}, false
+	}
+	leftObservedAt := detectorQuoteObservedAt(left.quote)
+	rightObservedAt := detectorQuoteObservedAt(right.quote)
+	if !hasCompatibleDetectorQuoteTimes(left.quote, right.quote, leftObservedAt, rightObservedAt) {
 		return models.SurebetOpportunity{}, false
 	}
 
@@ -1063,9 +1082,13 @@ func buildOpportunity(
 		return models.SurebetOpportunity{}, false
 	}
 
+	maxAge := detectorMaxQuoteAge
+	if left.quote.ProtocolVersion >= 2 {
+		maxAge = detectorCoherentMaxAge
+	}
 	expiresAt := minTime(
-		left.quote.CollectedAt.UTC().Add(detectorMaxQuoteAge),
-		right.quote.CollectedAt.UTC().Add(detectorMaxQuoteAge),
+		leftObservedAt.Add(maxAge),
+		rightObservedAt.Add(maxAge),
 	)
 	if !expiresAt.After(now) {
 		return models.SurebetOpportunity{}, false
@@ -1446,6 +1469,33 @@ func minTime(left, right time.Time) time.Time {
 
 func hasCompatibleQuoteTimes(left, right time.Time) bool {
 	return absoluteDuration(left.Sub(right)) <= detectorMaxQuoteSkew
+}
+
+func hasCompatibleDetectorQuoteTimes(
+	leftQuote, rightQuote models.OddsQuote,
+	leftObservedAt, rightObservedAt time.Time,
+) bool {
+	if leftQuote.ProtocolVersion >= 2 && rightQuote.ProtocolVersion >= 2 {
+		return absoluteDuration(leftObservedAt.Sub(rightObservedAt)) <= detectorCoherentMaxSkew
+	}
+	return hasCompatibleQuoteTimes(leftObservedAt, rightObservedAt)
+}
+
+func detectorQuoteObservedAt(quote models.OddsQuote) time.Time {
+	if quote.ProtocolVersion >= 2 {
+		return coherentQuoteObservedAt(quote)
+	}
+	return quote.CollectedAt.UTC()
+}
+
+func coherentQuoteObservedAt(quote models.OddsQuote) time.Time {
+	if !quote.MarketObservedAt.IsZero() {
+		return quote.MarketObservedAt.UTC()
+	}
+	if !quote.LastObservedAt.IsZero() {
+		return quote.LastObservedAt.UTC()
+	}
+	return quote.CollectedAt.UTC()
 }
 
 func absoluteDuration(value time.Duration) time.Duration {
