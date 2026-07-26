@@ -1,168 +1,187 @@
-# Deploy manual bang supervisor + nginx
+# Deploy manual bằng root + supervisor + nginx
 
-Tai lieu nay dung cho kieu cai tay tung phan, khong dung Docker, khong chay script deploy tong.
-Muc tieu la:
+Tài liệu hướng dẫn triển khai ứng dụng trực tiếp bằng tài khoản `root` trên VPS Ubuntu (khuyến nghị Ubuntu 22.04 / 24.04 LTS).
 
-- `tykfk.site` -> frontend Next.js
-- `api.tykfk.site` -> backend Go API + websocket
-- `admin.tykfk.site` -> Laravel admin
-- `telegram-worker` -> worker Go doc queue va gui Telegram
-- `collector-8xbet` va `collector-jun88-cmd` -> 2 worker rieng, chay qua supervisor
-- reverse proxy bang `nginx`
+---
 
-Huong dan ben duoi target Ubuntu 24.04. Neu VPS cua ban khac ban Ubuntu nay thi ten package co the khac.
+## Giả định hệ thống
 
-## 1. Cai tung package he thong
+- Đăng nhập SSH trực tiếp bằng tài khoản `root`.
+- Không tạo thêm user phụ (`deploy`, ...).
+- Không dùng Docker / Containerization.
+- Mỗi service tự quản lý file cấu hình môi trường `.env` tại thư mục của nó.
+- Code dự án được đặt tại: `/var/www/html/surebet`
 
-Cap nhat danh sach package:
+### Cấu hình Domain & Port (Stack Production)
+
+- **Frontend (Next.js)**: `tykfk.site` -> `127.0.0.1:3000`
+- **Backend API & WebSocket (Go)**: `api.tykfk.site` -> `127.0.0.1:8080`
+- **Admin Panel (Laravel)**: `admin.tykfk.site` -> `127.0.0.1:9500`
+- **Worker Telegram (Go)**: Chạy ngầm qua Supervisor
+- **Worker Collector (Node.js/Playwright)**: Chạy 8xbet & jun88-cmd ngầm qua Supervisor
+- **Reverse Proxy**: Nginx
+- **Process Manager**: Supervisor
+
+---
+
+## 1. Chuẩn bị môi trường & Cài đặt Package cơ bản
+
+Để tránh lỗi tương tác khi chạy bằng `root` (như hỏi Timezone hoặc cấu hình package), thiết lập môi trường không tương tác:
 
 ```bash
-sudo apt update
+export DEBIAN_FRONTEND=noninteractive
+apt update -y && apt upgrade -y
 ```
 
-Cai tung package nen:
+Cài đặt các gói công cụ nền tảng:
 
 ```bash
-sudo apt install -y curl
-sudo apt install -y git
-sudo apt install -y unzip
-sudo apt install -y ca-certificates
-sudo apt install -y supervisor
-sudo apt install -y nginx
-sudo apt install -y redis-server
-sudo apt install -y postgresql
-sudo apt install -y postgresql-contrib
-sudo apt install -y build-essential
-sudo apt install -y pkg-config
-sudo apt install -y php8.3-cli
-sudo apt install -y php8.3-pgsql
-sudo apt install -y php8.3-xml
-sudo apt install -y php8.3-mbstring
-sudo apt install -y php8.3-curl
-sudo apt install -y php8.3-zip
-sudo apt install -y php8.3-intl
-sudo apt install -y php8.3-bcmath
-sudo apt install -y php8.3-redis
-sudo apt install -y composer
+apt install -y \
+  software-properties-common \
+  ca-certificates \
+  curl \
+  gnupg \
+  lsb-release \
+  git \
+  unzip \
+  build-essential \
+  pkg-config \
+  supervisor \
+  nginx \
+  redis-server \
+  postgresql \
+  postgresql-contrib
 ```
 
-Bat va cho chay cung he thong:
+---
+
+## 2. Cài đặt PHP 8.3 & Composer
+
+### Bước 2.1: Thêm Repository PHP (Ondřej Surý PPA)
 
 ```bash
-sudo systemctl enable --now postgresql
-sudo systemctl enable --now redis-server
-sudo systemctl enable --now supervisor
-sudo systemctl enable --now nginx
+add-apt-repository -y ppa:ondrej/php
+apt update -y
 ```
 
-## 2. Cai Node.js 22
-
-`frontend` va `collector` nen chay Node 22.
+### Bước 2.2: Cài đặt PHP 8.3 & các Extension cần thiết
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
+apt install -y \
+  php8.3-cli \
+  php8.3-pgsql \
+  php8.3-xml \
+  php8.3-mbstring \
+  php8.3-curl \
+  php8.3-zip \
+  php8.3-intl \
+  php8.3-bcmath \
+  php8.3-redis
+```
+
+Chuyển phiên bản PHP mặc định sang 8.3:
+
+```bash
+update-alternatives --set php /usr/bin/php8.3
+php -v
+```
+
+### Bước 2.3: Cài đặt Composer trực tiếp từ Trang chủ
+
+```bash
+curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+composer --version
+```
+
+---
+
+## 3. Cài đặt Node.js 22 LTS
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs
+
+# Kiểm tra phiên bản
 node -v
 npm -v
 ```
 
-## 3. Cai Go
+---
 
-Backend hien tai pin `go 1.26.0` trong [backend/go.mod](/home/truonghocdot/study/surebet/backend/go.mod:1).
+## 4. Cài đặt Go (1.26.0)
 
-Kiem tra repo apt cua server co du version hay khong:
-
-```bash
-apt-cache policy golang-go
-```
-
-Neu repo apt cua server da co `1.26.x` thi cai bang apt:
+Dự án yêu cầu Go 1.26+. Cài đặt Go bản chính thức vào `/usr/local/go`:
 
 ```bash
-sudo apt install -y golang-go
-go version
-```
-
-Neu repo apt cua server chi co ban cu hon `1.26.x` thi cai Go chinh chu:
-
-```bash
+cd /root
 curl -LO https://go.dev/dl/go1.26.0.linux-amd64.tar.gz
-sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
-echo 'export PATH=/usr/local/go/bin:$PATH' | sudo tee /etc/profile.d/go.sh >/dev/null
-source /etc/profile.d/go.sh
-go version
+rm -rf /usr/local/go
+tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
 rm -f go1.26.0.linux-amd64.tar.gz
+
+# Thêm Go vào PATH hệ thống cho tất cả session
+printf 'export PATH=/usr/local/go/bin:$PATH\n' > /etc/profile.d/go.sh
+source /etc/profile.d/go.sh
+
+# Kiểm tra phiên bản Go
+go version
 ```
 
-## 4. Clone code va tao thu muc runtime
+---
 
-Vi du repo o:
+## 5. Bật các Service Hệ thống
 
 ```bash
-sudo mkdir -p /var/www/html
-sudo chown -R "$USER":"$USER" /var/www/html
+systemctl enable --now postgresql
+systemctl enable --now redis-server
+systemctl enable --now supervisor
+systemctl enable --now nginx
+```
+
+---
+
+## 6. Clone Mã nguồn & Tạo thư mục Runtime
+
+```bash
+mkdir -p /var/www/html
 cd /var/www/html
-git clone <repo-url> surebet
+# Nếu chưa clone thì clone, nếu đã clone rồi thì bỏ qua bước git clone
+git clone https://github.com/Truonghocdot/surebet.git surebet || true
 cd /var/www/html/surebet
+
+# Tạo thư mục log và lưu trữ dữ liệu Playwright
+mkdir -p /var/log/surebet
+mkdir -p /var/lib/surebet/playwright
 ```
 
-Tao thu muc runtime:
+---
+
+## 7. Cấu hình Môi trường (.env) cho từng Service
+
+Mỗi service sử dụng file `.env` độc lập nằm trong thư mục của service đó.
+
+### 7.1. Cấu hình Backend (`backend/.env`)
 
 ```bash
-sudo mkdir -p /etc/surebet
-sudo mkdir -p /var/log/surebet
-sudo mkdir -p /var/lib/surebet/playwright
-sudo chown -R "$USER":"$USER" /var/lib/surebet
-sudo chown -R "$USER":"$USER" /var/www/html/surebet
-sudo chown -R "$USER":"$USER" /var/log/surebet
+nano /var/www/html/surebet/backend/.env
 ```
 
-## 5. Tao file env goc
-
-Dung file nay lam nguon tham chieu:
-
-```bash
-cp deploy/production/.env.example deploy/production/.env
-nano deploy/production/.env
-```
-
-Can sua toi thieu:
-
-- `POSTGRES_PASSWORD`
-- `AUTH_TOKEN_SECRET`
-- `LARAVEL_APP_KEY`
-- `SEED_FRONTEND_USER_PASSWORD`
-- `SEED_SUPER_ADMIN_PASSWORD`
-- `TELEGRAM_BOT_TOKEN` neu ban dung Telegram
-- `NEXT_PUBLIC_BACKEND_API_URL`
-- `NEXT_PUBLIC_BACKEND_WS_URL`
-- `DOMAIN_FRONTEND`
-- `DOMAIN_API`
-- `DOMAIN_ADMIN`
-
-## 6. Tao env rieng cho backend
-
-Tao file:
-
-```bash
-sudo nano /etc/surebet/backend.env
-```
-
-Noi dung mau:
+Nội dung mẫu:
 
 ```dotenv
 APP_NAME=surebet-platform
 APP_ENV=production
-AUTH_TOKEN_SECRET=thay-secret-that
+AUTH_TOKEN_SECRET=thay-secret-that-o-day
 AUTH_TOKEN_TTL=12h
 HTTP_ADDRESS=127.0.0.1:8080
 HTTP_READ_TIMEOUT=15s
 HTTP_WRITE_TIMEOUT=15s
-POSTGRES_DSN=postgres://surebet:thay-mat-khau@127.0.0.1:5432/surebet?sslmode=disable
+
+POSTGRES_DSN=postgres://surebet:Vz0Rw1tkN85r@127.0.0.1:5432/surebet?sslmode=disable
 REDIS_ADDRESS=127.0.0.1:6379
 REDIS_DB=0
 REDIS_PASSWORD=
+
 ODDS_STATE_PROTOCOL=v1
 
 EIGHTXBET_BASE_URL=https://8x4455.com
@@ -184,6 +203,7 @@ TELEGRAM_SUREBET_DEDUP_WINDOW=30m
 TELEGRAM_QUEUE_POLL_INTERVAL=250ms
 TELEGRAM_QUEUE_BATCH_SIZE=25
 TELEGRAM_VERIFICATION_MODE=auto
+
 SUREBET_CONFIRM_TIMEOUT=2s
 SUREBET_CONFIRM_VALIDITY=2s
 SUREBET_CONFIRM_MAX_SKEW=1s
@@ -202,84 +222,27 @@ LIQUIDITY_CHECK=true
 BOOKMAKER_ENABLE=true
 ```
 
-## 7. Tao env rieng cho frontend
-
-Tao file:
+### 7.2. Cấu hình Frontend (`frontend/.env.production`)
 
 ```bash
-sudo nano /etc/surebet/frontend.env
+nano /var/www/html/surebet/frontend/.env.production
 ```
 
-Noi dung mau:
+Nội dung mẫu:
 
 ```dotenv
-NODE_ENV=production
 BACKEND_API_URL=http://127.0.0.1:8080
 NEXT_PUBLIC_BACKEND_API_URL=https://api.tykfk.site
 NEXT_PUBLIC_BACKEND_WS_URL=wss://api.tykfk.site/v1/ws
 ```
 
-## 8. Tao env rieng cho Laravel admin
-
-Tao file:
+### 7.3. Cấu hình Collector (`collector/.env`)
 
 ```bash
-sudo nano /etc/surebet/laravel.env
+nano /var/www/html/surebet/collector/.env
 ```
 
-Noi dung mau:
-
-```dotenv
-APP_NAME="Surebet Data Tools"
-APP_ENV=production
-APP_KEY=base64:thay-key-that
-APP_DEBUG=false
-APP_URL=https://admin.tykfk.site
-APP_TIMEZONE=Asia/Ho_Chi_Minh
-APP_LOCALE=vi
-APP_FALLBACK_LOCALE=en
-SESSION_DRIVER=file
-CACHE_STORE=file
-
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_DATABASE=surebet
-DB_USERNAME=surebet
-DB_PASSWORD=thay-mat-khau
-DB_SSLMODE=disable
-
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-REDIS_PASSWORD=
-
-TELEGRAM_WEBHOOK_SECRET=
-
-SEED_FRONTEND_USER_ID=surebet-operator
-SEED_FRONTEND_USER_EMAIL=operator@tykfk.site
-SEED_FRONTEND_USER_PASSWORD=thay-password-that
-SEED_FRONTEND_USER_FULL_NAME="Surebet Operator"
-SEED_FRONTEND_USER_ROLE=operator
-
-SEED_SUPER_ADMIN_ID=surebet-super-admin
-SEED_SUPER_ADMIN_EMAIL=superadmin@tykfk.site
-SEED_SUPER_ADMIN_PASSWORD=thay-password-that
-SEED_SUPER_ADMIN_FULL_NAME="Surebet Super Admin"
-SEED_SUPER_ADMIN_ROLE=super_admin
-
-ODDS_RETENTION_ACTIVE_HOURS=24
-ODDS_RETENTION_FINISHED_MINUTES=30
-```
-
-## 9. Tao env rieng cho collector
-
-Tao file:
-
-```bash
-sudo nano /etc/surebet/collector.env
-```
-
-Noi dung mau:
+Nội dung mẫu:
 
 ```dotenv
 NODE_ENV=production
@@ -336,91 +299,145 @@ COLLECTOR_PROXYXOAY_TINHTHANH=0
 COLLECTOR_PROXYXOAY_WHITELIST=
 ```
 
-## 10. Tao PostgreSQL user va database
-
-Dung password giong `POSTGRES_DSN` va `laravel.env`:
+### 7.4. Cấu hình Laravel Admin (`laravel/.env`)
 
 ```bash
-sudo -u postgres psql -c "CREATE USER surebet WITH PASSWORD 'thay-mat-khau';"
-sudo -u postgres psql -c "CREATE DATABASE surebet OWNER surebet;"
-sudo -u postgres psql -c "ALTER ROLE surebet SET client_encoding TO 'UTF8';"
-sudo -u postgres psql -c "ALTER ROLE surebet SET default_transaction_isolation TO 'read committed';"
-sudo -u postgres psql -c "ALTER ROLE surebet SET timezone TO 'Asia/Ho_Chi_Minh';"
+nano /var/www/html/surebet/laravel/.env
 ```
 
-Thu ket noi:
+Nội dung mẫu:
+
+```dotenv
+APP_NAME="Surebet Data Tools"
+APP_ENV=production
+APP_KEY=base64:thay-key-laravel-o-day
+APP_DEBUG=false
+APP_URL=https://admin.tykfk.site
+APP_TIMEZONE=Asia/Ho_Chi_Minh
+APP_LOCALE=vi
+APP_FALLBACK_LOCALE=en
+
+SESSION_DRIVER=file
+CACHE_STORE=file
+
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=surebet
+DB_USERNAME=surebet
+DB_PASSWORD=Vz0Rw1tkN85r
+DB_SSLMODE=disable
+
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+TELEGRAM_WEBHOOK_SECRET=
+
+SEED_FRONTEND_USER_ID=surebet-operator
+SEED_FRONTEND_USER_EMAIL=operator@tykfk.site
+SEED_FRONTEND_USER_PASSWORD=thay-password-that
+SEED_FRONTEND_USER_FULL_NAME="Surebet Operator"
+SEED_FRONTEND_USER_ROLE=operator
+
+SEED_SUPER_ADMIN_ID=surebet-super-admin
+SEED_SUPER_ADMIN_EMAIL=superadmin@tykfk.site
+SEED_SUPER_ADMIN_PASSWORD=thay-password-that
+SEED_SUPER_ADMIN_FULL_NAME="Surebet Super Admin"
+SEED_SUPER_ADMIN_ROLE=super_admin
+
+ODDS_RETENTION_ACTIVE_HOURS=24
+ODDS_RETENTION_FINISHED_MINUTES=30
+```
+
+---
+
+## 8. Cấu hình Cơ sở dữ liệu PostgreSQL & Redis
+
+### 8.1. Tạo Database & User PostgreSQL (Nếu chưa tạo)
 
 ```bash
-psql "postgres://surebet:thay-mat-khau@127.0.0.1:5432/surebet?sslmode=disable" -c '\dt'
+su - postgres -c "psql -c \"CREATE USER surebet WITH PASSWORD 'Vz0Rw1tkN85r';\"" || true
+su - postgres -c "psql -c \"CREATE DATABASE surebet OWNER surebet;\"" || true
+su - postgres -c "psql -c \"ALTER ROLE surebet SET client_encoding TO 'UTF8';\""
+su - postgres -c "psql -c \"ALTER ROLE surebet SET default_transaction_isolation TO 'read committed';\""
+su - postgres -c "psql -c \"ALTER ROLE surebet SET timezone TO 'Asia/Ho_Chi_Minh';\""
 ```
 
-## 11. Thu Redis
+Kiểm tra kết nối DB:
+
+```bash
+psql "postgres://surebet:Vz0Rw1tkN85r@127.0.0.1:5432/surebet?sslmode=disable" -c '\dt'
+```
+
+### 8.2. Kiểm tra Redis Server
 
 ```bash
 redis-cli ping
+# Kết quả trả về: PONG
 ```
 
-Ket qua mong doi:
+---
 
-```text
-PONG
-```
+## 9. Build & Cài đặt Dependencies cho các Service (BẮT BUỘC ĐỂ TRÁNH LỖI SPAWN ERROR)
 
-## 12. Build backend Go
+> ⚠️ **LƯU Ý QUAN TRỌNG:** Nếu không chạy `npm ci` và `npm run build` cho `frontend` cũng như `collector`, Supervisor sẽ bị lỗi `spawn error` khi nạp service!
+
+### 9.1. Build Backend Go
 
 ```bash
+export PATH=/usr/local/go/bin:$PATH
 cd /var/www/html/surebet/backend
 mkdir -p bin
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/api ./cmd/api
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o bin/telegram-worker ./cmd/telegram-worker
 ```
 
-## 13. Build frontend Next.js
+### 9.2. Build Frontend Next.js
 
 ```bash
 cd /var/www/html/surebet/frontend
 npm ci
-set -a
-. /etc/surebet/frontend.env
-set +a
 npm run build
 ```
 
-## 14. Cai collector dependencies va Chromium
+### 9.3. Cài đặt Collector Dependencies & Playwright Browser
 
 ```bash
 cd /var/www/html/surebet/collector
 npm ci
-set -a
-. /etc/surebet/collector.env
-set +a
 npx playwright install --with-deps chromium
 ```
 
-## 15. Cai Laravel dependencies, migrate va seed
+### 9.4. Cài đặt Laravel Admin Dependencies, Migration & Seed
 
 ```bash
 cd /var/www/html/surebet/laravel
-set -a
-. /etc/surebet/laravel.env
-set +a
-composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+php artisan key:generate --force
 php artisan migrate --force
 php artisan db:seed --force
 ```
 
-## 16. Tao supervisor config
+---
 
-Tao file:
+## 10. Cấu hình Supervisor Process Manager
+
+Tạo file cấu hình Supervisor cho tất cả các service:
 
 ```bash
-sudo tee /etc/supervisor/conf.d/surebet.conf >/dev/null <<'EOF'
+nano /etc/supervisor/conf.d/surebet.conf
+```
+
+Nội dung cấu hình:
+
+```ini
 [group:surebet]
 programs=surebet-backend-api,surebet-telegram-worker,surebet-frontend,surebet-laravel-admin,surebet-collector-8xbet,surebet-collector-jun88-cmd
 
 [program:surebet-backend-api]
 directory=/var/www/html/surebet/backend
-command=/bin/bash -lc 'set -a; . /etc/surebet/backend.env; set +a; exec /var/www/html/surebet/backend/bin/api'
+command=/var/www/html/surebet/backend/bin/api
 autostart=true
 autorestart=true
 startsecs=5
@@ -433,7 +450,7 @@ redirect_stderr=true
 
 [program:surebet-telegram-worker]
 directory=/var/www/html/surebet/backend
-command=/bin/bash -lc 'set -a; . /etc/surebet/backend.env; set +a; exec /var/www/html/surebet/backend/bin/telegram-worker'
+command=/var/www/html/surebet/backend/bin/telegram-worker
 autostart=true
 autorestart=true
 startsecs=5
@@ -446,7 +463,8 @@ redirect_stderr=true
 
 [program:surebet-frontend]
 directory=/var/www/html/surebet/frontend
-command=/bin/bash -lc 'set -a; . /etc/surebet/frontend.env; set +a; exec /usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000'
+command=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
+environment=PATH="/usr/local/bin:/usr/bin:/bin",NODE_ENV="production"
 autostart=true
 autorestart=true
 startsecs=5
@@ -459,7 +477,7 @@ redirect_stderr=true
 
 [program:surebet-laravel-admin]
 directory=/var/www/html/surebet/laravel
-command=/bin/bash -lc 'set -a; . /etc/surebet/laravel.env; set +a; exec /usr/bin/php artisan serve --host=127.0.0.1 --port=9500'
+command=/usr/bin/php artisan serve --host=127.0.0.1 --port=9500
 autostart=true
 autorestart=true
 startsecs=5
@@ -472,7 +490,8 @@ redirect_stderr=true
 
 [program:surebet-collector-8xbet]
 directory=/var/www/html/surebet/collector
-command=/bin/bash -lc 'set -a; . /etc/surebet/collector.env; set +a; exec /usr/bin/npm run run:8xbet-worker'
+command=/usr/bin/npm run run:8xbet-worker
+environment=PATH="/usr/local/bin:/usr/bin:/bin",NODE_ENV="production"
 autostart=true
 autorestart=true
 startsecs=5
@@ -485,7 +504,8 @@ redirect_stderr=true
 
 [program:surebet-collector-jun88-cmd]
 directory=/var/www/html/surebet/collector
-command=/bin/bash -lc 'set -a; . /etc/surebet/collector.env; set +a; exec /usr/bin/npm run run:jun88-cmd-worker'
+command=/usr/bin/npm run run:jun88-cmd-worker
+environment=PATH="/usr/local/bin:/usr/bin:/bin",NODE_ENV="production"
 autostart=true
 autorestart=true
 startsecs=5
@@ -495,22 +515,30 @@ stopsignal=TERM
 stopwaitsecs=30
 stdout_logfile=/var/log/surebet/collector-jun88-cmd.log
 redirect_stderr=true
-EOF
 ```
 
-Nap lai supervisor:
+Cập nhật và nạp file cấu hình vào Supervisor:
 
 ```bash
-sudo supervisorctl reread
-sudo supervisorctl update
+supervisorctl reread
+supervisorctl update
 ```
 
-## 17. Tao nginx config
+---
 
-Neu ban da co cert SSL cho 3 domain, tao file:
+## 11. Cấu hình Nginx & Certbot SSL
+
+> ⚠️ **LƯU Ý QUAN TRỌNG:** Phải cài cấu hình HTTP (Port 80) trước để Nginx nạp thành công, sau đó mới dùng Certbot tạo SSL 443 tự động.
+
+### Bước 11.1: Tạo cấu hình Nginx ban đầu (HTTP Port 80)
 
 ```bash
-sudo tee /etc/nginx/sites-available/surebet.conf >/dev/null <<'EOF'
+nano /etc/nginx/sites-available/surebet.conf
+```
+
+Nội dung cấu hình ban đầu:
+
+```nginx
 map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
@@ -520,30 +548,6 @@ server {
     listen 80;
     listen [::]:80;
     server_name tykfk.site;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name api.tykfk.site;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 80;
-    listen [::]:80;
-    server_name admin.tykfk.site;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name tykfk.site;
-
-    ssl_certificate /etc/letsencrypt/live/tykfk.site/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/tykfk.site/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -551,18 +555,17 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
+        proxy_redirect http://127.0.0.1:3000/ https://$host/;
+        proxy_redirect http://localhost:3000/ https://$host/;
     }
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 80;
+    listen [::]:80;
     server_name api.tykfk.site;
-
-    ssl_certificate /etc/letsencrypt/live/api.tykfk.site/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.tykfk.site/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -570,7 +573,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -580,12 +583,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 80;
+    listen [::]:80;
     server_name admin.tykfk.site;
-
-    ssl_certificate /etc/letsencrypt/live/admin.tykfk.site/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/admin.tykfk.site/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:9500;
@@ -593,115 +593,82 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
     }
 }
-EOF
 ```
 
-Enable site:
+### Bước 11.2: Kích hoạt Site Nginx & Reload Service
 
 ```bash
-sudo ln -sfn /etc/nginx/sites-available/surebet.conf /etc/nginx/sites-enabled/surebet.conf
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl reload nginx
+ln -sfn /etc/nginx/sites-available/surebet.conf /etc/nginx/sites-enabled/surebet.conf
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
 ```
 
-Neu chua co cert, co the cap bang Certbot sau khi da tro DNS:
+### Bước 11.3: Cài đặt SSL Certbot tự động cấp chứng chỉ HTTPS
 
 ```bash
-sudo apt install -y certbot
-sudo apt install -y python3-certbot-nginx
-sudo certbot --nginx -d tykfk.site -d api.tykfk.site -d admin.tykfk.site
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d tykfk.site -d api.tykfk.site -d admin.tykfk.site
 ```
 
-## 18. Start tung service
+*(Certbot sẽ tự tạo chứng chỉ SSL và tự động cập nhật file `/etc/nginx/sites-available/surebet.conf` để chuyển hướng HTTP -> HTTPS 443).*
 
-Start tat ca:
+---
+
+## 12. Khởi động & Kiểm tra Trạng thái Service
+
+Khởi chạy toàn bộ các process trong nhóm `surebet`:
 
 ```bash
-sudo supervisorctl start surebet-backend-api
-sudo supervisorctl start surebet-telegram-worker
-sudo supervisorctl start surebet-frontend
-sudo supervisorctl start surebet-laravel-admin
-sudo supervisorctl start surebet-collector-8xbet
-sudo supervisorctl start surebet-collector-jun88-cmd
+supervisorctl start surebet:*
 ```
 
-Kiem tra trang thai:
+Kiểm tra trạng thái hoạt động:
 
 ```bash
-sudo supervisorctl status
+supervisorctl status
 ```
 
-## 19. Lenh debug hay dung
+---
 
-Xem log backend:
+## 13. Các Lệnh Debug / Theo dõi Log
 
 ```bash
-sudo tail -f /var/log/surebet/backend-api.log
+# Xem log Backend API
+tail -f /var/log/surebet/backend-api.log
+
+# Xem log Frontend Next.js
+tail -f /var/log/surebet/frontend.log
+
+# Xem log Laravel Admin
+tail -f /var/log/surebet/laravel-admin.log
+
+# Xem log 8xbet Collector
+tail -f /var/log/surebet/collector-8xbet.log
+
+# Xem log Jun88 CMD Collector
+tail -f /var/log/surebet/collector-jun88-cmd.log
+
+# Restart riêng một service
+supervisorctl restart surebet:surebet-backend-api
+supervisorctl restart surebet:surebet-collector-8xbet
 ```
 
-Xem log frontend:
+---
+
+## 14. Kiểm tra Nhanh sau khi Deploy
 
 ```bash
-sudo tail -f /var/log/surebet/frontend.log
-```
+# Kiểm tra API Health
+curl -I http://127.0.0.1:8080/healthz
 
-Xem log 8xbet:
-
-```bash
-sudo tail -f /var/log/surebet/collector-8xbet.log
-```
-
-Xem log jun88:
-
-```bash
-sudo tail -f /var/log/surebet/collector-jun88-cmd.log
-```
-
-Restart rieng collector:
-
-```bash
-sudo supervisorctl restart surebet-collector-8xbet
-sudo supervisorctl restart surebet-collector-jun88-cmd
-```
-
-Restart rieng backend:
-
-```bash
-sudo supervisorctl restart surebet-backend-api
-sudo supervisorctl restart surebet-telegram-worker
-```
-
-## 20. Thu nhanh sau khi deploy
-
-Thu health API:
-
-```bash
-curl -I http://127.0.0.1:8080/health
-curl -I https://api.tykfk.site/health
-```
-
-Thu frontend:
-
-```bash
+# Kiểm tra Frontend Next.js
 curl -I http://127.0.0.1:3000
-curl -I https://tykfk.site
-```
 
-Thu admin:
-
-```bash
+# Kiểm tra Laravel Admin
 curl -I http://127.0.0.1:9500
-curl -I https://admin.tykfk.site
 ```
-
-Neu ban muon, buoc tiep theo toi co the tach tiep tai lieu nay thanh:
-
-- mot file rieng chi cho `postgres + redis`
-- mot file rieng chi cho `backend + frontend`
-- mot file rieng chi cho `collector + supervisor + nginx`
-

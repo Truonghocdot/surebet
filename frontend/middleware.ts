@@ -11,18 +11,53 @@ export function middleware(request: NextRequest) {
 
   if (pathname === "/") {
     const destination = hasSession ? "/dashboard" : "/login";
-    return NextResponse.redirect(new URL(destination, request.url));
+    return NextResponse.redirect(buildPublicURL(request, destination));
   }
 
   if (publicPaths.has(pathname) && hasSession) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(buildPublicURL(request, "/dashboard"));
   }
 
   if (!publicPaths.has(pathname) && !hasSession) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(buildPublicURL(request, "/login"));
   }
 
   return NextResponse.next();
+}
+
+function buildPublicURL(request: NextRequest, pathname: string) {
+  const url = request.nextUrl.clone();
+  const host =
+    firstHeaderValue(request.headers.get("x-forwarded-host")) ||
+    firstHeaderValue(request.headers.get("host"));
+  const protocol = firstHeaderValue(request.headers.get("x-forwarded-proto"));
+  const port = firstHeaderValue(request.headers.get("x-forwarded-port"));
+
+  url.pathname = pathname;
+  url.search = "";
+
+  if (host) {
+    url.host = host;
+  }
+
+  if (protocol) {
+    url.protocol = `${protocol}:`;
+  }
+
+  if (port && host && !host.includes(":")) {
+    url.port = port;
+  }
+
+  return url;
+}
+
+function firstHeaderValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const [first] = value.split(",", 1);
+  return first.trim();
 }
 
 export const config = {
