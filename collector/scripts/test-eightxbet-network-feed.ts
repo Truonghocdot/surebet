@@ -3,6 +3,8 @@ import { deliverEightXBetSnapshot } from "../eightxbet/src/index.js";
 import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
+  collectorProxyRetryDelayMs,
+  isCollectorProxyNetworkError,
   normalizeIndonesianToMalayOdds,
   observeStableSignature,
   parseEightXBetOddsDiffFrame,
@@ -14,6 +16,17 @@ import {
 import type { OddsDelta } from "@surebet/collector-shared";
 
 const occurredAt = "2026-07-16T21:39:09.520Z";
+
+assert.equal(
+  isCollectorProxyNetworkError(new Error("page.goto: net::ERR_CONNECTION_RESET")),
+  true
+);
+assert.equal(isCollectorProxyNetworkError(new Error("incomplete fixture coverage")), false);
+assert.equal(
+  collectorProxyRetryDelayMs(new Error("Con 24s moi co the doi proxy"), 2_000),
+  26_000
+);
+assert.equal(collectorProxyRetryDelayMs(new Error("other failure"), 8_000), 8_000);
 
 let signatureState: { signature: string | null; since: number } = {
   signature: null,

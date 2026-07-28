@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { envBool, envInt, envString } from "./env.js";
 
@@ -63,6 +63,32 @@ export async function resolveCollectorProxy(): Promise<CollectorProxySettings | 
   }
 
   throw new Error(`Unsupported collector proxy mode: ${mode}`);
+}
+
+export function isCollectorProxyNetworkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(?:ERR_(?:CONNECTION_(?:RESET|CLOSED|REFUSED)|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED|SOCKS_CONNECTION_FAILED|TIMED_OUT)|ECONNRESET|ETIMEDOUT)/i.test(
+    message
+  );
+}
+
+export function collectorProxyRetryDelayMs(error: unknown, fallbackMs: number) {
+  const message = error instanceof Error ? error.message : String(error);
+  const cooldown = message.match(/con\s+(\d+)s\s+moi\s+co\s+the\s+doi\s+proxy/i);
+  if (!cooldown) {
+    return fallbackMs;
+  }
+  return (Number.parseInt(cooldown[1] || "0", 10) + 2) * 1_000;
+}
+
+export async function discardFailedCollectorProxy(error: unknown) {
+  if (resolveProxyMode() !== "proxyxoay" || !isCollectorProxyNetworkError(error)) {
+    return false;
+  }
+
+  await unlink(resolveProxyCachePath()).catch(() => undefined);
+  console.warn("[collector-proxy] discarded cached proxy after a network failure");
+  return true;
 }
 
 export function collectorProxyDebugInfo(): CollectorProxyDebugInfo {

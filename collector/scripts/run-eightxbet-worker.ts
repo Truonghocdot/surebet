@@ -2,6 +2,8 @@ import {
   BackendCollectorStreamSink,
   envString,
   applyCollectorProxyProfile,
+  collectorProxyRetryDelayMs,
+  discardFailedCollectorProxy,
   logCollectorProxyDebug,
   syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
@@ -35,12 +37,25 @@ async function runWorker(sink: BackendCollectorStreamSink) {
 }
 
 async function runWorkerSafely(sink: BackendCollectorStreamSink) {
+  let consecutiveFailures = 0;
   while (true) {
+    const startedAt = Date.now();
     try {
       await runWorker(sink);
     } catch (error) {
       console.error("[8xbet-worker] fatal loop error:", error);
-      await sleep(2_000);
+      if (Date.now() - startedAt >= 60_000) {
+        consecutiveFailures = 0;
+      }
+      consecutiveFailures += 1;
+      const discardedProxy = await discardFailedCollectorProxy(error);
+      const backoffMs = Math.min(2_000 * 2 ** (consecutiveFailures - 1), 60_000);
+      const retryMs = collectorProxyRetryDelayMs(error, discardedProxy ? 2_000 : backoffMs);
+      console.warn(
+        `[8xbet-worker] retrying in ${retryMs}ms` +
+          `${discardedProxy ? " after discarding failed proxy" : ""}`
+      );
+      await sleep(retryMs);
     }
   }
 }
