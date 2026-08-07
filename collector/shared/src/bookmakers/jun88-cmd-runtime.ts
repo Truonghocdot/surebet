@@ -37,6 +37,7 @@ export class Jun88CmdRuntime {
         await configureCmdUpstreamRefresh(target);
         console.log(
           `[jun88-cmd] timing reconcile_ms=${cmdReconcileIntervalMs()} ` +
+          `reconcile_settle_ms=${cmdSnapshotSettleMs("reconcile")} ` +
           `bootstrap_settle_ms=${cmdSnapshotSettleMs("bootstrap")} ` +
           `live_poll_ms=${cmdLivePollIntervalMs()} ` +
           `today_poll_ms=${cmdTodayPollIntervalMs()} ` +
@@ -129,12 +130,18 @@ export class Jun88CmdRuntime {
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
             await configureCmdUpstreamRefresh(target);
+            const fallbackSnapshot: OddsSnapshot = {
+              ...activeSnapshot,
+              selections: Array.from(activeSnapshotMap.values())
+            };
             const reconciledRead = await readStableCmdSnapshot(
               target,
               this.collectorId,
-              "reconcile"
+              "reconcile",
+              fallbackSnapshot
             );
-            if (!reconciledRead || reconciledRead.snapshot.selections.length === 0) {
+            if (!reconciledRead || reconciledRead.status === "fallback" ||
+              reconciledRead.snapshot.selections.length === 0) {
               lastReconcileAt = Date.now();
               continue;
             }
@@ -153,8 +160,7 @@ export class Jun88CmdRuntime {
             );
             activeSnapshot = {
               ...activeSnapshot,
-              collectedAt: reconciledSnapshot.collectedAt,
-              selections: []
+              collectedAt: reconciledSnapshot.collectedAt
             };
             if (deltas.length > 0) {
               await sink.pushDelta(deltas);
@@ -712,29 +718,56 @@ export async function installCmdObserver(
         state.byRow[rowKey] = current;
       };
 
+      const marketSelector = [
+        ".w-hdp .tableDiv-match-odds",
+        ".w-ou .tableDiv-match-odds",
+        ".col-45 .tableDiv-match-odds__X12detail"
+      ].join(", ");
+      const semanticUnavailable = (node) => {
+        let current = node;
+        while (current) {
+          if (
+            current.hasAttribute("disabled") ||
+            current.hasAttribute("hidden") ||
+            current.getAttribute("aria-disabled") === "true" ||
+            current.getAttribute("aria-hidden") === "true" ||
+            current.getAttribute("data-active") === "false" ||
+            current.getAttribute("data-enabled") === "false" ||
+            /\\b(?:disabled|locked|suspend(?:ed)?|closed|unavailable|inactive|is-hidden|hidden|hide|d-none|cursor-default)\\b/i.test(String(current.className || "")) ||
+            /(?:display\\s*:\\s*none|visibility\\s*:\\s*hidden)/i.test(current.getAttribute("style") || "") ||
+            /^(?:disabled|locked|suspend(?:ed)?|closed|hidden|unavailable|inactive|off)$/i.test(current.getAttribute("data-status") || "") ||
+            /^(?:disabled|locked|suspend(?:ed)?|closed|hidden|unavailable|inactive|off)$/i.test(current.getAttribute("data-state") || "")
+          ) return true;
+          if (current.matches(".match.default-match, .match.copy-match")) break;
+          current = current.parentElement;
+        }
+        return false;
+      };
+      const controlFingerprint = (node) => [
+        text(node),
+        node.getAttribute("href") || "",
+        node.getAttribute("data-odds") || "",
+        node.getAttribute("data-value") || "",
+        node.getAttribute("value") || "",
+        semanticUnavailable(node)
+      ].join("|");
       const fingerprintRows = (rows) => rows.map((row) => {
-        const trackedNodes = [
-          row,
-          ...Array.from(row.querySelectorAll(
-            ".w-hdp, .w-ou, .tableDiv-match-odds, .tableDiv-match-odds__detail, a, button, input"
-          ))
+        const matchID = (row.id || "").replace(/^R_/, "");
+        const identity = [
+          row.getAttribute("groupid") || "",
+          row.id || "",
+          text(row.querySelector("#ht_" + matchID)),
+          text(row.querySelector("#at_" + matchID)),
+          text(row.querySelector(".drawcss"))
         ];
-        const attributes = trackedNodes.map((node) => [
-          node.className || "",
-          node.getAttribute("aria-disabled") || "",
-          node.getAttribute("aria-hidden") || "",
-          node.getAttribute("disabled") || "",
-          node.getAttribute("hidden") || "",
-          node.getAttribute("style") || "",
-          node.getAttribute("data-status") || "",
-          node.getAttribute("data-state") || "",
-          node.getAttribute("data-active") || "",
-          node.getAttribute("data-enabled") || "",
-          node.getAttribute("data-odds") || "",
-          node.getAttribute("data-value") || "",
-          node.getAttribute("value") || ""
-        ].join("|")).join(";");
-        return text(row) + "|" + attributes;
+        const markets = Array.from(row.querySelectorAll(marketSelector)).map((node) => [
+          node.closest(".w-hdp") ? "handicap" :
+            node.closest(".w-ou") ? "over_under" : "one_x_two",
+          text(node.querySelector("b")),
+          semanticUnavailable(node),
+          ...Array.from(node.querySelectorAll("a, button, input")).map(controlFingerprint)
+        ].join("|"));
+        return [...identity, ...markets].join("|");
       }).join("\\u0001");
 
       const emitQueue = () => {
@@ -840,13 +873,25 @@ export async function installCmdObserver(
         scheduleStableRow(rowKey);
       }
 
+      const marketBoundarySelector = ".w-hdp, .w-ou, .col-45";
+      const touchesMarket = (node) => {
+        const current = node instanceof Element ? node : node?.parentElement;
+        return Boolean(
+          current &&
+          (current.matches(marketSelector) || current.closest(marketBoundarySelector))
+        );
+      };
       const observer = new MutationObserver((mutations) => {
         const rows = new Set();
         const removedRows = [];
         for (const mutation of mutations) {
           const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
           const row = target && target.closest ? target.closest(".match.default-match, .match.copy-match") : null;
-          if (row) rows.add(row);
+          const marketAdded = Array.from(mutation.addedNodes || []).some(touchesMarket);
+          const marketRemoved = Array.from(mutation.removedNodes || []).some(touchesMarket);
+          if (row && (touchesMarket(mutation.target) || marketAdded || marketRemoved)) {
+            rows.add(row);
+          }
           for (const added of Array.from(mutation.addedNodes || [])) {
             if (added instanceof Element) {
               if (added.matches(".match.default-match, .match.copy-match")) rows.add(added);
@@ -954,7 +999,10 @@ export async function installCmdObserver(
  */
 async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
   const partial = await target.evaluate(() => {
-    const containers = Array.from(document.querySelectorAll(".tableDiv"));
+    const containers = Array.from(document.querySelectorAll(".tableDiv"))
+      .filter((container) => container.querySelector(
+        ".match.default-match, .match.copy-match"
+      ));
     if (containers.length > 0) {
       return `<div class="surebet-partial">${containers.map((el) => el.outerHTML).join("")}</div>`;
     }
@@ -977,9 +1025,28 @@ async function readCmdDomFingerprint(target: Page | Frame): Promise<CmdDomFinger
       const text = (node) => node && node.textContent
         ? node.textContent.replace(/\\s+/g, " ").trim()
         : "";
+      const semanticUnavailable = (node) => {
+        let current = node;
+        while (current) {
+          if (
+            current.hasAttribute("disabled") ||
+            current.hasAttribute("hidden") ||
+            current.getAttribute("aria-disabled") === "true" ||
+            current.getAttribute("aria-hidden") === "true" ||
+            current.getAttribute("data-active") === "false" ||
+            current.getAttribute("data-enabled") === "false" ||
+            /\\b(?:disabled|locked|suspend(?:ed)?|closed|unavailable|inactive|is-hidden|hidden|hide|d-none|cursor-default)\\b/i.test(String(current.className || "")) ||
+            /(?:display\\s*:\\s*none|visibility\\s*:\\s*hidden)/i.test(current.getAttribute("style") || "") ||
+            /^(?:disabled|locked|suspend(?:ed)?|closed|hidden|unavailable|inactive|off)$/i.test(current.getAttribute("data-status") || "") ||
+            /^(?:disabled|locked|suspend(?:ed)?|closed|hidden|unavailable|inactive|off)$/i.test(current.getAttribute("data-state") || "")
+          ) return true;
+          if (current.matches(".match.default-match, .match.copy-match")) break;
+          current = current.parentElement;
+        }
+        return false;
+      };
       const attributes = (node) => [
         node.id || "",
-        node.className || "",
         node.getAttribute("href") || "",
         node.getAttribute("title") || "",
         node.getAttribute("name") || "",
@@ -987,14 +1054,14 @@ async function readCmdDomFingerprint(target: Page | Frame): Promise<CmdDomFinger
         node.getAttribute("aria-hidden") || "",
         node.getAttribute("disabled") || "",
         node.getAttribute("hidden") || "",
-        node.getAttribute("style") || "",
         node.getAttribute("data-status") || "",
         node.getAttribute("data-state") || "",
         node.getAttribute("data-active") || "",
         node.getAttribute("data-enabled") || "",
         node.getAttribute("data-odds") || "",
         node.getAttribute("data-value") || "",
-        node.getAttribute("value") || ""
+        node.getAttribute("value") || "",
+        semanticUnavailable(node)
       ].join("|");
       const marketSelector = [
         ".w-hdp .tableDiv-match-odds",
@@ -1013,12 +1080,13 @@ async function readCmdDomFingerprint(target: Page | Frame): Promise<CmdDomFinger
           rowKey,
           row.id || "",
           row.getAttribute("leagueid") || "",
-          attributes(row),
           text(row.querySelector("#ht_" + matchId)),
           text(row.querySelector("#at_" + matchId)),
           text(row.querySelector(".drawcss"))
         ].join("|");
         const marketValues = Array.from(row.querySelectorAll(marketSelector)).map((node) => {
+          const marketKind = node.closest(".w-hdp") ? "handicap" :
+            node.closest(".w-ou") ? "over_under" : "one_x_two";
           const controls = Array.from(node.querySelectorAll("a, button, input")).map((control) => [
             text(control),
             attributes(control)
@@ -1027,7 +1095,7 @@ async function readCmdDomFingerprint(target: Page | Frame): Promise<CmdDomFinger
             .filter(Boolean)
             .map((ancestor) => attributes(ancestor))
             .join(";");
-          return [text(node), attributes(node), ancestors, controls].join("|");
+          return [marketKind, text(node), attributes(node), ancestors, controls].join("|");
         });
         const rowFingerprint = [teamAndIdentity, ...marketValues].join("\\u0002");
         const current = grouped.get(rowKey) || [];
@@ -1050,54 +1118,120 @@ async function readCmdDomFingerprint(target: Page | Frame): Promise<CmdDomFinger
   return await target.evaluate(script) as CmdDomFingerprint;
 }
 
+export type StableCmdSnapshotStatus = "complete" | "partial" | "fallback";
+
 export type StableCmdSnapshotRead = {
   snapshot: OddsSnapshot;
   observedFixtures: number;
   observedSelections: number;
   stableFixtures: number;
   attempts: number;
+  status: StableCmdSnapshotStatus;
+  fingerprintMs: number;
+  parseMs: number;
+  settleMs: number;
+  sourceLagMs: number | null;
 };
 
 export async function readStableCmdSnapshot(
   target: Page | Frame,
   collectorId: string,
-  mode: "bootstrap" | "reconcile"
+  mode: "bootstrap" | "reconcile",
+  fallbackSnapshot?: OddsSnapshot
 ): Promise<StableCmdSnapshotRead | null> {
   const readStartedAt = Date.now();
   let attempts = 0;
-  let previousFingerprint = await readCmdDomFingerprint(target);
-  let previous = parseJun88CmdSnapshot(
-    await extractCmdMatchHtml(target),
-    target.url(),
-    collectorId
-  );
-  const settleStartedAt = Date.now();
-  do {
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
-    attempts += 1;
-    const currentFingerprint = await readCmdDomFingerprint(target);
-    if (equalCmdDomFingerprints(previousFingerprint, currentFingerprint)) {
-      if (previous.selections.length === 0) {
-        continue;
-      }
-      const result = stableCmdSnapshotRead(previous, previous, attempts);
-      logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
-      return result;
-    }
-    const current = parseJun88CmdSnapshot(
+  let fingerprintMs = 0;
+  let parseMs = 0;
+  const readFingerprint = async () => {
+    const startedAt = Date.now();
+    const result = await readCmdDomFingerprint(target);
+    fingerprintMs += Date.now() - startedAt;
+    return result;
+  };
+  const readSnapshot = async () => {
+    const startedAt = Date.now();
+    const result = parseJun88CmdSnapshot(
       await extractCmdMatchHtml(target),
       target.url(),
       collectorId
     );
-    const stable = selectStableCmdSnapshotFixtures(previous, current);
-    if (mode === "bootstrap" && stable.selections.length > 0) {
-      const result = stableCmdSnapshotRead(stable, current, attempts);
+    parseMs += Date.now() - startedAt;
+    return result;
+  };
+
+  let previousFingerprint = await readFingerprint();
+  let previous = await readSnapshot();
+  let bestStable: { snapshot: OddsSnapshot; observed: OddsSnapshot } | null = null;
+  const settleStartedAt = Date.now();
+  const finish = (
+    snapshot: OddsSnapshot,
+    observed: OddsSnapshot,
+    status: StableCmdSnapshotStatus,
+    stableFixturesOverride?: number
+  ) => {
+    const settledStatus = status === "complete" && mode === "reconcile" && fallbackSnapshot &&
+      !coversFallbackFixtures(snapshot, fallbackSnapshot)
+      ? "partial"
+      : status;
+    return readCmdSourceLag(target).then((sourceLagMs) => {
+      const result = stableCmdSnapshotRead(
+        snapshot,
+        observed,
+        attempts,
+        settledStatus,
+        stableFixturesOverride,
+        {
+          fingerprintMs,
+          parseMs,
+          settleMs: Date.now() - settleStartedAt,
+          sourceLagMs
+        }
+      );
       logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
       return result;
+    });
+  };
+
+  do {
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    attempts += 1;
+    const currentFingerprint = await readFingerprint();
+    if (equalCmdDomFingerprints(previousFingerprint, currentFingerprint)) {
+      if (previous.selections.length === 0) {
+        continue;
+      }
+      return finish(previous, previous, "complete");
+    }
+    const current = await readSnapshot();
+    const stable = selectStableCmdSnapshotFixtures(previous, current);
+    if (stable.selections.length > 0) {
+      bestStable = { snapshot: stable, observed: current };
+      if (mode === "bootstrap") {
+        return finish(
+          stable,
+          current,
+          stable.selections.length === current.selections.length ? "complete" : "partial"
+        );
+      }
     }
     previous = current;
     previousFingerprint = currentFingerprint;
   } while (Date.now() - settleStartedAt < cmdSnapshotSettleMs(mode));
+
+  if (bestStable) {
+    return finish(
+      bestStable.snapshot,
+      bestStable.observed,
+      bestStable.snapshot.selections.length === bestStable.observed.selections.length
+        ? "complete"
+        : "partial"
+    );
+  }
+
+  if (mode === "reconcile" && fallbackSnapshot) {
+    return finish(fallbackSnapshot, previous, "fallback", 0);
+  }
 
   if (previous.selections.length === 0) {
     console.warn(
@@ -1111,14 +1245,9 @@ export async function readStableCmdSnapshot(
       `[jun88-cmd] bootstrap snapshot remained active during ` +
       `${cmdSnapshotSettleMs(mode)}ms; using the latest parsed state`
     );
-    const result = stableCmdSnapshotRead(previous, previous, attempts);
-    logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
-    return result;
+    return finish(previous, previous, "partial");
   }
-  const emptySnapshot = { ...previous, selections: [] };
-  const result = stableCmdSnapshotRead(emptySnapshot, previous, attempts);
-  logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
-  return result;
+  return null;
 }
 
 function equalCmdDomFingerprints(
@@ -1192,6 +1321,15 @@ function selectionsByFixture(selections: OddsSelection[]) {
   return result;
 }
 
+function coversFallbackFixtures(snapshot: OddsSnapshot, fallback: OddsSnapshot) {
+  const expectedFixtures = selectionsByFixture(fallback.selections).keys();
+  const observedFixtures = new Set(selectionsByFixture(snapshot.selections).keys());
+  for (const fixtureId of expectedFixtures) {
+    if (!observedFixtures.has(fixtureId)) return false;
+  }
+  return true;
+}
+
 function cmdFixtureFingerprint(selections: OddsSelection[]) {
   return selections
     .map((selection) => [
@@ -1207,15 +1345,40 @@ function cmdFixtureFingerprint(selections: OddsSelection[]) {
 function stableCmdSnapshotRead(
   snapshot: OddsSnapshot,
   observed: OddsSnapshot,
-  attempts: number
+  attempts: number,
+  status: StableCmdSnapshotStatus,
+  stableFixturesOverride: number | undefined,
+  timings: {
+    fingerprintMs: number;
+    parseMs: number;
+    settleMs: number;
+    sourceLagMs: number | null;
+  }
 ): StableCmdSnapshotRead {
   return {
     snapshot,
     observedFixtures: selectionsByFixture(observed.selections).size,
     observedSelections: observed.selections.length,
-    stableFixtures: selectionsByFixture(snapshot.selections).size,
-    attempts
+    stableFixtures: stableFixturesOverride ?? selectionsByFixture(snapshot.selections).size,
+    attempts,
+    status,
+    fingerprintMs: timings.fingerprintMs,
+    parseMs: timings.parseMs,
+    settleMs: timings.settleMs,
+    sourceLagMs: timings.sourceLagMs
   };
+}
+
+async function readCmdSourceLag(target: Page | Frame) {
+  try {
+    const upstreamTickAt = await target.evaluate(() => {
+      const win = window as typeof window & { __surebet_cmd_upstream_tick_at__?: number };
+      return Number(win.__surebet_cmd_upstream_tick_at__ || 0);
+    });
+    return upstreamTickAt > 0 ? Math.max(Date.now() - upstreamTickAt, 0) : null;
+  } catch {
+    return null;
+  }
 }
 
 function logStableCmdSnapshot(
@@ -1224,10 +1387,15 @@ function logStableCmdSnapshot(
   elapsedMs: number
 ) {
   console.log(
-    `[jun88-cmd] snapshot mode=${mode} ` +
+    `[jun88-cmd] snapshot mode=${mode} status=${result.status} ` +
     `fixtures=${result.stableFixtures}/${result.observedFixtures} ` +
     `selections=${result.snapshot.selections.length}/${result.observedSelections} ` +
-    `attempts=${result.attempts} elapsed_ms=${elapsedMs}`
+    `attempts=${result.attempts} elapsed_ms=${elapsedMs}` +
+    ` fingerprint_ms=${result.fingerprintMs}` +
+    ` parse_ms=${result.parseMs}` +
+    ` settle_ms=${result.settleMs}` +
+    ` source_lag_ms=${result.sourceLagMs ?? "unknown"}` +
+    (result.status === "fallback" ? " reason=no_stable_fixture" : "")
   );
 }
 
@@ -1313,7 +1481,7 @@ function cmdSnapshotSettleMs(mode: "bootstrap" | "reconcile") {
   if (mode === "bootstrap") {
     return Math.min(Math.max(envInt("CMD_BOOTSTRAP_SETTLE_MS", 8_000), 1_000), 20_000);
   }
-  return 500;
+  return Math.min(Math.max(envInt("CMD_RECONCILE_SETTLE_MS", 1_500), 500), 5_000);
 }
 
 function cmdDomScanIntervalMs() {

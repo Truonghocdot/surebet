@@ -38,6 +38,7 @@ Can doi toi thieu:
 - `TELEGRAM_BOT_TOKEN` neu giu webhook dong bo metadata Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
 - `JUN88_CMD_PROXY_MODE` de trong de ke thua proxy profile; dat `off` neu CMD chay nhanh hon khi truy cap truc tiep
+- `CMD_RECONCILE_SETTLE_MS=1500` de reconcile cho DOM render on dinh truoc khi doc lai
 
 Mac dinh production dang de:
 
@@ -85,6 +86,20 @@ Restart rieng collector:
 ```bash
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-8xbet collector-jun88-cmd
 ```
+
+## A/B Jun88 CMD
+
+Mac dinh de trong `JUN88_CMD_PROXY_MODE` de CMD dung cung ProxyXoay voi backend. Khi can do rieng do tre mang, co the chay A/B thu cong voi `JUN88_CMD_PROXY_MODE=off`; khong co co che tu dong chuyen sang direct khi proxy loi.
+
+Sau moi lan doi, chi restart collector CMD va theo doi cung mot khoang thoi gian:
+
+```bash
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-jun88-cmd
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs --since=10m collector-jun88-cmd \
+  | grep -E 'proxy debug|snapshot mode=|timing reconcile_ms'
+```
+
+So sanh `status`, ty le `fixtures=stable/observed`, `elapsed_ms`, `fingerprint_ms`, `parse_ms`, `settle_ms` va `source_lag_ms`. Chi doi gia tri production sau khi A/B cho thay source lag va so fixture on dinh tot hon; dat lai `JUN88_CMD_PROXY_MODE=` de quay ve proxy ke thua.
 
 ## Rollout odds state v2
 

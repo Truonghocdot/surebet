@@ -61,6 +61,7 @@ async function main() {
   );
 
   await testAsyncUpstreamRenderOrdering(html, snapshot);
+  await testReconcileFallbackPreservesSnapshot(html, snapshot);
 
   process.env.CMD_DOM_SCAN_MS = "100";
   process.env.CMD_LIVE_POLL_MS = "2000";
@@ -116,8 +117,13 @@ async function main() {
     await configureCmdUpstreamRefresh(page);
     await installCmdObserver(page, snapshot);
 
+    await page.evaluate(() => {
+      const row = document.querySelector(".match.default-match");
+      row?.appendChild(document.createTextNode(" 99:99 "));
+    });
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 350));
-    assert.equal(observations.length, 0, "An unchanged DOM must not fake an upstream observation");
+    assert.equal(batches.length, 0, "A score/clock mutation must not emit an odds delta");
+    assert.equal(observations.length, 0, "A score/clock mutation must not fake an upstream observation");
     await page.evaluate(() => {
       const callback = (window as typeof window & Record<string, unknown>)
         .onLoadedIncRunningData;
@@ -330,6 +336,95 @@ async function testAsyncUpstreamRenderOrdering(html: string, snapshot: ReturnTyp
     assert.ok(deltaAt > 0 && observeAt > 0 && deltaAt <= observeAt,
       `upstream observation must follow DOM delta (events=${JSON.stringify(events)})`);
   } finally {
+    await browser.close();
+  }
+}
+
+async function testReconcileFallbackPreservesSnapshot(
+  html: string,
+  snapshot: ReturnType<typeof parseJun88CmdSnapshot>
+) {
+  const previousSettleMs = process.env.CMD_RECONCILE_SETTLE_MS;
+  process.env.CMD_RECONCILE_SETTLE_MS = "500";
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => {
+      const firstRow = document.querySelector(".match.default-match");
+      if (!firstRow) throw new Error("CMD fixture has no row for fallback test");
+      const groupID = firstRow.getAttribute("groupid") || firstRow.id || "";
+      for (const row of Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"))) {
+        const rowID = row.getAttribute("groupid") || row.id || "";
+        if (rowID !== groupID) row.remove();
+      }
+    });
+
+    const partialRead = await readStableCmdSnapshot(
+      page,
+      "jun88-cmd",
+      "reconcile",
+      snapshot
+    );
+    assert.equal(partialRead?.status, "partial");
+    assert.equal(partialRead?.stableFixtures, 1);
+    assert.ok(
+      (partialRead?.snapshot.selections.length ?? 0) > 0,
+      "a stable DOM subset must remain available for partial reconcile"
+    );
+    const partialFixtureIds = new Set(
+      partialRead?.snapshot.selections.map((selection) => selection.fixtureId)
+    );
+    const partialDeltas = buildCmdReconcileDeltas(
+      partialRead!.snapshot,
+      new Map(
+        snapshot.selections
+          .filter((selection) => partialFixtureIds.has(selection.fixtureId))
+          .map((selection) => [selection.outcomeId, selection])
+      )
+    );
+    assert.equal(
+      partialDeltas.some((delta) => delta.op === "remove"),
+      false,
+      "a partial reconcile must not remove fixtures omitted by a transient DOM render"
+    );
+
+    await page.evaluate(() => {
+      const firstRow = document.querySelector(".match.default-match");
+      if (!firstRow) throw new Error("CMD fixture has no row for fallback test");
+      const oddsNode = firstRow.querySelector(
+        ".w-hdp .tableDiv-match-odds__detail > a"
+      );
+      if (!oddsNode) throw new Error("CMD fixture has no odds node for fallback test");
+      let counter = 0;
+      (window as typeof window & { __surebetFallbackTimer?: number }).__surebetFallbackTimer =
+        window.setInterval(() => {
+          counter += 1;
+          oddsNode.textContent = String((counter / 1000).toFixed(3));
+        }, 5);
+    });
+
+    const fallbackRead = await readStableCmdSnapshot(
+      page,
+      "jun88-cmd",
+      "reconcile",
+      snapshot
+    );
+    await page.evaluate(() => {
+      const win = window as typeof window & { __surebetFallbackTimer?: number };
+      if (win.__surebetFallbackTimer) window.clearInterval(win.__surebetFallbackTimer);
+    });
+
+    assert.equal(fallbackRead?.status, "fallback");
+    assert.equal(fallbackRead?.stableFixtures, 0);
+    assert.equal(
+      fallbackRead?.snapshot.selections.length,
+      snapshot.selections.length,
+      "an unstable reconcile must preserve the last complete snapshot"
+    );
+  } finally {
+    if (previousSettleMs === undefined) delete process.env.CMD_RECONCILE_SETTLE_MS;
+    else process.env.CMD_RECONCILE_SETTLE_MS = previousSettleMs;
     await browser.close();
   }
 }
