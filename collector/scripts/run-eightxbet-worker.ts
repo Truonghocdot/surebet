@@ -2,6 +2,7 @@ import {
   BackendCollectorStreamSink,
   envString,
   applyCollectorProxyProfile,
+  collectorProxyFailureKind,
   collectorProxyRetryDelayMs,
   discardFailedCollectorProxy,
   logCollectorProxyDebug,
@@ -43,7 +44,8 @@ async function runWorkerSafely(sink: BackendCollectorStreamSink) {
     try {
       await runWorker(sink);
     } catch (error) {
-      console.error("[8xbet-worker] fatal loop error:", error);
+      const failureKind = collectorProxyFailureKind(error);
+      console.error(`[8xbet-worker] fatal loop error kind=${failureKind}:`, error);
       if (Date.now() - startedAt >= 60_000) {
         consecutiveFailures = 0;
       }
@@ -53,6 +55,7 @@ async function runWorkerSafely(sink: BackendCollectorStreamSink) {
       const retryMs = collectorProxyRetryDelayMs(error, discardedProxy ? 2_000 : backoffMs);
       console.warn(
         `[8xbet-worker] retrying in ${retryMs}ms` +
+          ` failure_kind=${failureKind}` +
           `${discardedProxy ? " after discarding failed proxy" : ""}`
       );
       await sleep(retryMs);

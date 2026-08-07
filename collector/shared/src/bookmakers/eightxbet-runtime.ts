@@ -54,6 +54,30 @@ export function observeStableSignature(
   };
 }
 
+export type EightXBetBootstrapCoverage = {
+  metadataFixtures: number;
+  decodedFixtures: number;
+  fixturesWithQuotes: number;
+  pendingFixtures: number;
+};
+
+export function isEightXBetBootstrapReady(
+  snapshot: Pick<OddsSnapshot, "selections">,
+  coverage: EightXBetBootstrapCoverage
+) {
+  if (
+    coverage.metadataFixtures <= 0 ||
+    coverage.decodedFixtures !== coverage.metadataFixtures ||
+    coverage.pendingFixtures !== 0
+  ) {
+    return false;
+  }
+
+  const snapshotHasQuotes = snapshot.selections.length > 0;
+  const coverageHasQuotes = coverage.fixturesWithQuotes > 0;
+  return snapshotHasQuotes === coverageHasQuotes;
+}
+
 export class EightXBetRuntime {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
@@ -376,10 +400,12 @@ export class EightXBetRuntime {
     let stability: StableSignatureState = { signature: null, since: Date.now() };
 
     while (!page.isClosed() && Date.now() < deadline) {
+      await page.waitForTimeout(Math.min(streamPollIntervalMs(), 250));
+      await this.networkFeed.flush();
+      snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
       const coverage = this.networkFeed.coverageStats();
-      const viable =
-        snapshot.selections.length > 0 && !coverageIsIncomplete(coverage);
-      const signature = viable ? snapshotSelectionSignature(snapshot) : "";
+      const viable = isEightXBetBootstrapReady(snapshot, coverage);
+      const signature = viable ? snapshotSelectionSignature(snapshot) : null;
       const observation = observeStableSignature(
         stability,
         viable ? signature : null,
@@ -388,19 +414,26 @@ export class EightXBetRuntime {
       );
       stability = observation.state;
       if (observation.stable) {
+        console.log(
+          `[8xbet-runtime] bootstrap settled ${snapshot.selections.length > 0 ? "with_quotes" : "empty"}` +
+            ` selections=${snapshot.selections.length}` +
+            ` metadata=${coverage.metadataFixtures}` +
+            ` decoded=${coverage.decodedFixtures}` +
+            ` with_quotes=${coverage.fixturesWithQuotes}` +
+            ` pending=${coverage.pendingFixtures}`
+        );
         return snapshot;
       }
-
-      await page.waitForTimeout(Math.min(streamPollIntervalMs(), 250));
-      await this.networkFeed.flush();
-      snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
     }
 
+    await this.networkFeed.flush();
+    snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
     const coverage = this.networkFeed.coverageStats();
     throw new Error(
       `8xbet bootstrap did not stabilize ` +
         `(selections=${snapshot.selections.length} metadata=${coverage.metadataFixtures} ` +
-        `decoded=${coverage.decodedFixtures} pending=${coverage.pendingFixtures})`
+        `decoded=${coverage.decodedFixtures} with_quotes=${coverage.fixturesWithQuotes} ` +
+        `pending=${coverage.pendingFixtures})`
     );
   }
 }

@@ -48,6 +48,8 @@ export type CollectorProxyDebugInfo = {
   proxyXoayKeyConfigured?: boolean;
 };
 
+export type CollectorProxyFailureKind = "network" | "cooldown" | "other";
+
 export async function resolveCollectorProxy(): Promise<CollectorProxySettings | undefined> {
   const mode = resolveProxyMode();
   if (mode === "off") {
@@ -72,9 +74,20 @@ export function isCollectorProxyNetworkError(error: unknown) {
   );
 }
 
+export function collectorProxyFailureKind(error: unknown): CollectorProxyFailureKind {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/con\s+\d+\s*(?:s|giay)\s+moi\s+co\s+the\s+doi\s+proxy/i.test(message)) {
+    return "cooldown";
+  }
+  if (isCollectorProxyNetworkError(error)) {
+    return "network";
+  }
+  return "other";
+}
+
 export function collectorProxyRetryDelayMs(error: unknown, fallbackMs: number) {
   const message = error instanceof Error ? error.message : String(error);
-  const cooldown = message.match(/con\s+(\d+)s\s+moi\s+co\s+the\s+doi\s+proxy/i);
+  const cooldown = message.match(/con\s+(\d+)\s*(?:s|giay)\s+moi\s+co\s+the\s+doi\s+proxy/i);
   if (!cooldown) {
     return fallbackMs;
   }
@@ -82,7 +95,7 @@ export function collectorProxyRetryDelayMs(error: unknown, fallbackMs: number) {
 }
 
 export async function discardFailedCollectorProxy(error: unknown) {
-  if (resolveProxyMode() !== "proxyxoay" || !isCollectorProxyNetworkError(error)) {
+  if (resolveProxyMode() !== "proxyxoay" || collectorProxyFailureKind(error) !== "network") {
     return false;
   }
 

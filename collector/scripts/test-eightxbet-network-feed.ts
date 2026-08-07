@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { deliverEightXBetSnapshot } from "../eightxbet/src/index.js";
 import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
+  collectorProxyFailureKind,
   collectorProxyRetryDelayMs,
+  discardFailedCollectorProxy,
   isCollectorProxyNetworkError,
+  isEightXBetBootstrapReady,
   normalizeIndonesianToMalayOdds,
   observeStableSignature,
   parseEightXBetOddsDiffFrame,
@@ -21,12 +27,54 @@ assert.equal(
   isCollectorProxyNetworkError(new Error("page.goto: net::ERR_CONNECTION_RESET")),
   true
 );
+assert.equal(
+  isCollectorProxyNetworkError(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
+  true
+);
 assert.equal(isCollectorProxyNetworkError(new Error("incomplete fixture coverage")), false);
+assert.equal(collectorProxyFailureKind(new Error("net::ERR_PROXY_CONNECTION_FAILED")), "network");
+assert.equal(
+  collectorProxyFailureKind(new Error("ProxyXoay acquisition failed: Con 42s moi co the doi proxy")),
+  "cooldown"
+);
+assert.equal(collectorProxyFailureKind(new Error("incomplete fixture coverage")), "other");
 assert.equal(
   collectorProxyRetryDelayMs(new Error("Con 24s moi co the doi proxy"), 2_000),
   26_000
 );
 assert.equal(collectorProxyRetryDelayMs(new Error("other failure"), 8_000), 8_000);
+
+const emptyBootstrapSnapshot = { selections: [] };
+assert.equal(
+  isEightXBetBootstrapReady(emptyBootstrapSnapshot, {
+    metadataFixtures: 1,
+    decodedFixtures: 1,
+    fixturesWithQuotes: 0,
+    pendingFixtures: 0
+  }),
+  true,
+  "a fully decoded fixture with suspended/empty quotes may bootstrap"
+);
+assert.equal(
+  isEightXBetBootstrapReady(emptyBootstrapSnapshot, {
+    metadataFixtures: 1,
+    decodedFixtures: 0,
+    fixturesWithQuotes: 0,
+    pendingFixtures: 1
+  }),
+  false,
+  "an empty snapshot must not bootstrap while a fixture is pending"
+);
+assert.equal(
+  isEightXBetBootstrapReady(emptyBootstrapSnapshot, {
+    metadataFixtures: 1,
+    decodedFixtures: 1,
+    fixturesWithQuotes: 1,
+    pendingFixtures: 0
+  }),
+  false,
+  "an empty snapshot must not bootstrap when coverage still reports quotes"
+);
 
 let signatureState: { signature: string | null; since: number } = {
   signature: null,
@@ -521,11 +569,43 @@ async function testOddsFormatLabelUsesLocatorAPI() {
   );
 }
 
+async function testFailedProxyIsDiscarded() {
+  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "surebet-8xbet-proxy-"));
+  const cacheFile = path.join(tempDirectory, "proxy-cache.json");
+  const environment = {
+    mode: process.env.COLLECTOR_PROXY_MODE,
+    cacheEnabled: process.env.COLLECTOR_PROXY_CACHE_ENABLED,
+    cacheFile: process.env.COLLECTOR_PROXY_CACHE_FILE
+  };
+
+  process.env.COLLECTOR_PROXY_MODE = "proxyxoay";
+  process.env.COLLECTOR_PROXY_CACHE_ENABLED = "true";
+  process.env.COLLECTOR_PROXY_CACHE_FILE = cacheFile;
+  await writeFile(cacheFile, JSON.stringify({ version: 1, settings: { server: "http://127.0.0.1:1" } }));
+
+  try {
+    assert.equal(
+      await discardFailedCollectorProxy(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
+      true
+    );
+    await assert.rejects(readFile(cacheFile));
+  } finally {
+    if (environment.mode === undefined) delete process.env.COLLECTOR_PROXY_MODE;
+    else process.env.COLLECTOR_PROXY_MODE = environment.mode;
+    if (environment.cacheEnabled === undefined) delete process.env.COLLECTOR_PROXY_CACHE_ENABLED;
+    else process.env.COLLECTOR_PROXY_CACHE_ENABLED = environment.cacheEnabled;
+    if (environment.cacheFile === undefined) delete process.env.COLLECTOR_PROXY_CACHE_FILE;
+    else process.env.COLLECTOR_PROXY_CACHE_FILE = environment.cacheFile;
+    await rm(tempDirectory, { recursive: true, force: true });
+  }
+}
+
 Promise.all([
   testSnapshotDeliveryModes(),
   testMarketDeltaDelivery(),
   testOddsFormatGateRejectsUnexpectedFeed(),
-  testOddsFormatLabelUsesLocatorAPI()
+  testOddsFormatLabelUsesLocatorAPI(),
+  testFailedProxyIsDiscarded()
 ])
   .then(() => console.log("8xbet network feed parser tests passed"))
   .catch((error) => {
