@@ -36,6 +36,12 @@ async function runWorker(sink: BackendCollectorStreamSink) {
     applyCollectorProxyProfile(runtimeConfig);
   }
 
+  const cmdProxyMode = envString("JUN88_CMD_PROXY_MODE", "").trim();
+  if (cmdProxyMode) {
+    process.env.COLLECTOR_PROXY_MODE = cmdProxyMode;
+    console.log(`[jun88-cmd-worker] proxy mode override=${cmdProxyMode}`);
+  }
+
   const collector = new Jun88CmdCollector();
   logCollectorProxyDebug("jun88-cmd");
   console.log("[jun88-cmd-worker] starting in streaming mode");

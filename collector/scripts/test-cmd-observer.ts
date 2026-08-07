@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import {
+  buildCmdReconcileDeltas,
   configureCmdUpstreamRefresh,
   installCmdObserver,
+  readStableCmdSnapshot,
   selectStableCmdSnapshotFixtures
 } from "../shared/src/bookmakers/jun88-cmd-runtime.js";
 import { parseJun88CmdSnapshot } from "../shared/src/bookmakers/parsers/jun88-cmd-parser.js";
@@ -38,6 +40,28 @@ async function main() {
     "A changing fixture must not prevent stable fixtures from bootstrapping"
   );
 
+  const changedReconcileSnapshot = {
+    ...snapshot,
+    selections: snapshot.selections.map((selection, index) =>
+      index === 0 ? { ...selection, odds: Number((selection.odds + 0.01).toFixed(2)) } : selection
+    )
+  };
+  const reconcileDeltas = buildCmdReconcileDeltas(
+    changedReconcileSnapshot,
+    new Map(snapshot.selections.map((selection) => [selection.outcomeId, selection]))
+  );
+  assert.ok(
+    reconcileDeltas.some((delta) => delta.outcomeId === snapshot.selections[0]?.outcomeId),
+    "reconcile must repair an ordinary open-price change missed by the DOM observer"
+  );
+  assert.equal(
+    reconcileDeltas.filter((delta) => delta.fixtureId === snapshot.selections[0]?.fixtureId && delta.op === "upsert").length,
+    snapshot.selections.filter((selection) => selection.fixtureId === snapshot.selections[0]?.fixtureId).length,
+    "reconcile must resend the complete affected fixture"
+  );
+
+  await testAsyncUpstreamRenderOrdering(html, snapshot);
+
   process.env.CMD_DOM_SCAN_MS = "100";
   process.env.CMD_LIVE_POLL_MS = "2000";
   process.env.CMD_TODAY_POLL_MS = "5000";
@@ -56,6 +80,33 @@ async function main() {
         observations.push(value as { fixtureIds?: string[]; observedAt?: string });
       }
     });
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    const stableRead = await readStableCmdSnapshot(page, "jun88-cmd", "bootstrap");
+    assert.ok(stableRead, "CMD bootstrap read must return a snapshot");
+    assert.equal(
+      stableRead?.snapshot.selections.length,
+      snapshot.selections.length,
+      "CMD bootstrap fingerprint must preserve all parsed selections"
+    );
+    const reconcileOdds = await page.evaluate(() => {
+      const node = document.querySelector(
+        ".match.default-match .w-hdp .tableDiv-match-odds__detail > a"
+      );
+      if (!node) {
+        throw new Error("CMD fixture has no odds node for reconcile test");
+      }
+      const current = Number.parseFloat(node.textContent?.trim() || "0");
+      const next = Number((current + 0.03).toFixed(2));
+      setTimeout(() => {
+        node.textContent = String(next);
+      }, 100);
+      return next;
+    });
+    const reconciledRead = await readStableCmdSnapshot(page, "jun88-cmd", "reconcile");
+    assert.ok(
+      reconciledRead?.snapshot.selections.some((selection) => selection.odds === reconcileOdds),
+      "CMD reconcile must wait for the changed fixture before returning a snapshot"
+    );
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
       const win = window as typeof window & Record<string, unknown>;
@@ -222,6 +273,62 @@ async function main() {
       return delta.fixtureId === omittedFixtureID && delta.op === "upsert";
     }));
     console.log("CMD observer emitted a fixture omitted from the partial bootstrap");
+  } finally {
+    await browser.close();
+  }
+}
+
+async function testAsyncUpstreamRenderOrdering(html: string, snapshot: ReturnType<typeof parseJun88CmdSnapshot>) {
+  process.env.CMD_DOM_SCAN_MS = "100";
+  process.env.CMD_OBSERVATION_SETTLE_MS = "350";
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    const events: Array<{ kind: "delta" | "observe"; at: number }> = [];
+    let nextOdds = 0;
+    await page.exposeBinding("__surebet_cmd_emit__", async (_source, value) => {
+      if (Array.isArray(value) && value.some((item) => (item as { odds?: number }).odds === nextOdds)) {
+        events.push({ kind: "delta", at: Date.now() });
+      }
+    });
+    await page.exposeBinding("__surebet_cmd_observe__", async () => {
+      events.push({ kind: "observe", at: Date.now() });
+    });
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => {
+      const win = window as typeof window & Record<string, unknown>;
+      win.LastRunningVersion = "async-render-test";
+      win.onLoadedIncRunningData = () => {
+        const node = document.querySelector(
+          ".match.default-match .w-hdp .tableDiv-match-odds__detail > a"
+        );
+        if (!node) return;
+        const current = Number.parseFloat(node.textContent?.trim() || "0");
+        const next = Number((current + 0.02).toFixed(2));
+        setTimeout(() => {
+          node.textContent = String(next);
+        }, 250);
+      };
+    });
+    nextOdds = await page.evaluate(() => {
+      const node = document.querySelector(
+        ".match.default-match .w-hdp .tableDiv-match-odds__detail > a"
+      );
+      const current = Number.parseFloat(node?.textContent?.trim() || "0");
+      return Number((current + 0.02).toFixed(2));
+    });
+    await configureCmdUpstreamRefresh(page);
+    await installCmdObserver(page, snapshot);
+    await page.evaluate(() => {
+      const callback = (window as typeof window & Record<string, unknown>).onLoadedIncRunningData;
+      if (typeof callback === "function") callback();
+    });
+    await assertEventually(() => events.some((event) => event.kind === "delta") &&
+      events.some((event) => event.kind === "observe"));
+    const deltaAt = events.find((event) => event.kind === "delta")?.at ?? 0;
+    const observeAt = events.find((event) => event.kind === "observe")?.at ?? 0;
+    assert.ok(deltaAt > 0 && observeAt > 0 && deltaAt <= observeAt,
+      `upstream observation must follow DOM delta (events=${JSON.stringify(events)})`);
   } finally {
     await browser.close();
   }

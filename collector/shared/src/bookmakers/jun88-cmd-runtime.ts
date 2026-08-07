@@ -35,10 +35,20 @@ export class Jun88CmdRuntime {
       try {
         let target = await resolveCmdContentTarget(page);
         await configureCmdUpstreamRefresh(target);
+        console.log(
+          `[jun88-cmd] timing reconcile_ms=${cmdReconcileIntervalMs()} ` +
+          `bootstrap_settle_ms=${cmdSnapshotSettleMs("bootstrap")} ` +
+          `live_poll_ms=${cmdLivePollIntervalMs()} ` +
+          `today_poll_ms=${cmdTodayPollIntervalMs()} ` +
+          `dom_scan_ms=${cmdDomScanIntervalMs()} ` +
+          `observation_settle_ms=${cmdObserverObservationSettleMs()}`
+        );
 
         // Phase B: extract only match table HTML instead of full page dump
         const initialRead = await readStableCmdSnapshot(target, this.collectorId, "bootstrap");
-        if (!initialRead || initialRead.observedSelections === 0) {
+        if (!initialRead ||
+          initialRead.observedSelections === 0 ||
+          initialRead.snapshot.selections.length === 0) {
           throw new Error("Jun88 CMD initial page did not expose parseable market selections");
         }
         const initialSnapshot = initialRead.snapshot;
@@ -129,7 +139,6 @@ export class Jun88CmdRuntime {
               continue;
             }
             const reconciledSnapshot = reconciledRead.snapshot;
-            const reconciledSnapshotMap = selectionMap(reconciledSnapshot);
             const reconciledFixtureIds = new Set(
               reconciledSnapshot.selections.map((selection) => selection.fixtureId)
             );
@@ -138,14 +147,9 @@ export class Jun88CmdRuntime {
                 reconciledFixtureIds.has(selection.fixtureId)
               )
             );
-            const deltas = buildDeltas(
+            const deltas = buildCmdReconcileDeltas(
               reconciledSnapshot,
-              previousReconciledFixtures,
-              reconciledSnapshotMap
-            ).filter((delta) =>
-              delta.op === "remove" ||
-              delta.suspended ||
-              !activeSnapshotMap.has(delta.outcomeId)
+              previousReconciledFixtures
             );
             activeSnapshot = {
               ...activeSnapshot,
@@ -165,7 +169,7 @@ export class Jun88CmdRuntime {
             lastHeartbeatAt = Date.now();
           }
 
-          await page.waitForTimeout(Math.max(Math.floor(heartbeatMs / 2), 250));
+          await page.waitForTimeout(cmdRuntimeLoopIntervalMs());
         }
       } catch (error) {
         await writeDebugArtifacts(page, `${this.collectorId}-stream-failed`);
@@ -198,14 +202,31 @@ export async function configureCmdUpstreamRefresh(target: Page | Frame): Promise
           continue;
         }
         const wrapped = function(...args) {
-          const result = current.apply(this, args);
-          win.__surebet_cmd_upstream_tick__ =
-            Number(win.__surebet_cmd_upstream_tick__ || 0) + 1;
-          win.__surebet_cmd_upstream_version__ = String(win.LastRunningVersion || "");
-          return result;
+          try {
+            return current.apply(this, args);
+          } finally {
+            win.__surebet_cmd_upstream_tick__ =
+              Number(win.__surebet_cmd_upstream_tick__ || 0) + 1;
+            win.__surebet_cmd_upstream_tick_at__ = Date.now();
+            win.__surebet_cmd_upstream_version__ = String(win.LastRunningVersion || "");
+          }
         };
         wrapped.__surebetCmdUpstreamHook = true;
         win[name] = wrapped;
+      }
+      const afterRender = win.AfterRenderBetView;
+      if (typeof afterRender === "function" && !afterRender.__surebetCmdRenderHook) {
+        const wrappedAfterRender = function(...args) {
+          try {
+            return afterRender.apply(this, args);
+          } finally {
+            win.__surebet_cmd_render_at__ = Date.now();
+            win.__surebet_cmd_render_tick__ =
+              Number(win.__surebet_cmd_render_tick__ || 0) + 1;
+          }
+        };
+        wrappedAfterRender.__surebetCmdRenderHook = true;
+        win.AfterRenderBetView = wrappedAfterRender;
       }
 
       if (typeof win.ResetLiveTimerCounter === "function") {
@@ -351,15 +372,31 @@ export async function installCmdObserver(
   );
 
   const script = `
-    ((seededFingerprints, bindingName, observationBindingName, scanIntervalMs) => {
+    ((seededFingerprints, bindingName, observationBindingName, scanIntervalMs, observationSettleMs) => {
       const win = window;
       if (!win.__surebet_cmd_stream__) {
-        win.__surebet_cmd_stream__ = { queue: [], seen: {}, byRow: {}, rowFingerprints: {}, settleTimers: {} };
+        win.__surebet_cmd_stream__ = {
+          queue: [],
+          seen: {},
+          byRow: {},
+          rowFingerprints: {},
+          settleTimers: {},
+          deltaInFlight: false,
+          deltaRetryTimer: null,
+          observationInFlight: false,
+          lastMutationAt: Date.now()
+        };
       }
       const state = win.__surebet_cmd_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
       state.rowFingerprints = {};
       state.observedUpstreamTick = Number(win.__surebet_cmd_upstream_tick__ || 0);
+      state.observedUpstreamTickAt = Number(win.__surebet_cmd_upstream_tick_at__ || 0);
+      state.lastMutationAt = Date.now();
+      state.deltaInFlight = false;
+      if (state.deltaRetryTimer) clearTimeout(state.deltaRetryTimer);
+      state.deltaRetryTimer = null;
+      state.observationInFlight = false;
       if (state.observer) state.observer.disconnect();
       if (state.scanTimer) clearInterval(state.scanTimer);
       for (const pending of Object.values(state.settleTimers || {})) {
@@ -371,6 +408,45 @@ export async function installCmdObserver(
       const normalizeToken = (value) =>
         value.normalize("NFKD").replace(/[^\\p{L}\\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase();
       const parseOdds = (value) => Number.parseFloat((value || "").replace(/[^\\d./-]+/g, ""));
+      const installUpstreamHooks = () => {
+        for (const name of [
+          "onLoadedIncRunningData",
+          "onLoadedIncTodayData",
+          "onLoadedIncEarlyData"
+        ]) {
+          const current = win[name];
+          if (typeof current !== "function" || current.__surebetCmdUpstreamHook) {
+            continue;
+          }
+          const wrapped = function(...args) {
+            try {
+              return current.apply(this, args);
+            } finally {
+              win.__surebet_cmd_upstream_tick__ =
+                Number(win.__surebet_cmd_upstream_tick__ || 0) + 1;
+              win.__surebet_cmd_upstream_tick_at__ = Date.now();
+              win.__surebet_cmd_upstream_version__ = String(win.LastRunningVersion || "");
+            }
+          };
+          wrapped.__surebetCmdUpstreamHook = true;
+          win[name] = wrapped;
+        }
+        const afterRender = win.AfterRenderBetView;
+        if (typeof afterRender === "function" && !afterRender.__surebetCmdRenderHook) {
+          const wrappedAfterRender = function(...args) {
+            try {
+              return afterRender.apply(this, args);
+            } finally {
+              win.__surebet_cmd_render_at__ = Date.now();
+              win.__surebet_cmd_render_tick__ =
+                Number(win.__surebet_cmd_render_tick__ || 0) + 1;
+            }
+          };
+          wrappedAfterRender.__surebetCmdRenderHook = true;
+          win.AfterRenderBetView = wrappedAfterRender;
+        }
+      };
+      installUpstreamHooks();
       const availability = ${JSON.stringify(CMD_AVAILABILITY_CONFIG)};
       const unavailableClassPattern = new RegExp(availability.unavailableClassPatternSource, "i");
       const unavailableStylePattern = new RegExp(availability.unavailableStylePatternSource, "i");
@@ -662,11 +738,34 @@ export async function installCmdObserver(
       }).join("\\u0001");
 
       const emitQueue = () => {
-        if (state.queue.length === 0 || typeof win[bindingName] !== "function") return;
+        if (
+          state.queue.length === 0 ||
+          state.deltaInFlight ||
+          state.deltaRetryTimer ||
+          typeof win[bindingName] !== "function"
+        ) return;
         const batch = state.queue.splice(0, state.queue.length);
-        Promise.resolve(win[bindingName](batch)).catch(() => {
-          state.queue.unshift(...batch);
-        });
+        state.deltaInFlight = true;
+        let failed = false;
+        Promise.resolve()
+          .then(() => win[bindingName](batch))
+          .catch(() => {
+            failed = true;
+            state.queue.unshift(...batch);
+          })
+          .finally(() => {
+            state.deltaInFlight = false;
+            if (state.queue.length > 0) {
+              if (failed) {
+                state.deltaRetryTimer = setTimeout(() => {
+                  state.deltaRetryTimer = null;
+                  emitQueue();
+                }, 250);
+              } else {
+                emitQueue();
+              }
+            }
+          });
       };
 
       const scheduleStableRow = (rowKey) => {
@@ -761,6 +860,9 @@ export async function installCmdObserver(
             }
           }
         }
+        if (rows.size > 0 || removedRows.length > 0) {
+          state.lastMutationAt = Date.now();
+        }
         for (const row of removedRows) scheduleStableRow(row.getAttribute("groupid") || row.id || "");
         for (const row of rows) scheduleStableRow(row.getAttribute("groupid") || row.id || "");
       });
@@ -779,6 +881,7 @@ export async function installCmdObserver(
       state.observer = observer;
 
       state.scanTimer = setInterval(() => {
+        installUpstreamHooks();
         const rows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"));
         const groupedRows = new Map();
         for (const row of rows) {
@@ -801,30 +904,46 @@ export async function installCmdObserver(
           if (!groupedRows.has(rowKey)) scheduleStableRow(rowKey);
         }
 
-        if (hasNewUpstreamResponse &&
+        const now = Date.now();
+        const upstreamTickAt = Number(win.__surebet_cmd_upstream_tick_at__ || 0);
+        const renderAt = Number(win.__surebet_cmd_render_at__ || 0);
+        const quietSince = Math.max(state.lastMutationAt || 0, upstreamTickAt || 0, renderAt || 0);
+        const renderSettled = hasNewUpstreamResponse &&
+          now - quietSince >= observationSettleMs;
+        if (renderSettled &&
           Object.keys(state.settleTimers).length === 0 &&
+          state.queue.length === 0 &&
+          !state.deltaInFlight &&
+          !state.observationInFlight &&
           typeof win[observationBindingName] === "function") {
           const fixtureIds = Array.from(groupedRows.keys())
             .map((rowKey) => state.byRow[rowKey]?.[0]?.fixtureId || "")
             .filter(Boolean);
           const previousTick = Number(state.observedUpstreamTick || 0);
           state.observedUpstreamTick = upstreamTick;
-          Promise.resolve(win[observationBindingName]({
-            fixtureIds: Array.from(new Set(fixtureIds)),
-            observedAt: new Date().toISOString(),
-            providerVersion: String(win.LastRunningVersion || "")
-          })).catch(() => {
-            if (Number(state.observedUpstreamTick || 0) === upstreamTick) {
-              state.observedUpstreamTick = previousTick;
-            }
-          });
+          state.observedUpstreamTickAt = upstreamTickAt;
+          state.observationInFlight = true;
+          Promise.resolve()
+            .then(() => win[observationBindingName]({
+              fixtureIds: Array.from(new Set(fixtureIds)),
+              observedAt: new Date().toISOString(),
+              providerVersion: String(win.LastRunningVersion || "")
+            }))
+            .catch(() => {
+              if (Number(state.observedUpstreamTick || 0) === upstreamTick) {
+                state.observedUpstreamTick = previousTick;
+              }
+            })
+            .finally(() => {
+              state.observationInFlight = false;
+            });
         }
       }, scanIntervalMs);
     })
   `;
 
   await target.evaluate(
-    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)}, ${JSON.stringify(CMD_OBSERVATION_BINDING)}, ${cmdDomScanIntervalMs()})`
+    `${script}(${JSON.stringify(seededFingerprints)}, ${JSON.stringify(CMD_DELTA_BINDING)}, ${JSON.stringify(CMD_OBSERVATION_BINDING)}, ${cmdDomScanIntervalMs()}, ${cmdObserverObservationSettleMs()})`
   );
 }
 
@@ -845,7 +964,93 @@ async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
   return partial;
 }
 
-type StableCmdSnapshotRead = {
+type CmdDomFingerprint = Record<string, string>;
+
+/**
+ * Fingerprint only fields which affect parsed selections. Live match clocks and
+ * score counters are intentionally excluded because they change continuously
+ * without changing the odds snapshot.
+ */
+async function readCmdDomFingerprint(target: Page | Frame): Promise<CmdDomFingerprint> {
+  const script = `
+    (() => {
+      const text = (node) => node && node.textContent
+        ? node.textContent.replace(/\\s+/g, " ").trim()
+        : "";
+      const attributes = (node) => [
+        node.id || "",
+        node.className || "",
+        node.getAttribute("href") || "",
+        node.getAttribute("title") || "",
+        node.getAttribute("name") || "",
+        node.getAttribute("aria-disabled") || "",
+        node.getAttribute("aria-hidden") || "",
+        node.getAttribute("disabled") || "",
+        node.getAttribute("hidden") || "",
+        node.getAttribute("style") || "",
+        node.getAttribute("data-status") || "",
+        node.getAttribute("data-state") || "",
+        node.getAttribute("data-active") || "",
+        node.getAttribute("data-enabled") || "",
+        node.getAttribute("data-odds") || "",
+        node.getAttribute("data-value") || "",
+        node.getAttribute("value") || ""
+      ].join("|");
+      const marketSelector = [
+        ".w-hdp .tableDiv-match-odds",
+        ".w-ou .tableDiv-match-odds",
+        ".col-45 .tableDiv-match-odds__X12detail"
+      ].join(", ");
+      const rows = Array.from(
+        document.querySelectorAll(".match.default-match, .match.copy-match")
+      );
+      const grouped = new Map();
+      for (const row of rows) {
+        const rowKey = row.getAttribute("groupid") || row.id || "";
+        if (!rowKey) continue;
+        const matchId = (row.id || "").replace(/^R_/, "");
+        const teamAndIdentity = [
+          rowKey,
+          row.id || "",
+          row.getAttribute("leagueid") || "",
+          attributes(row),
+          text(row.querySelector("#ht_" + matchId)),
+          text(row.querySelector("#at_" + matchId)),
+          text(row.querySelector(".drawcss"))
+        ].join("|");
+        const marketValues = Array.from(row.querySelectorAll(marketSelector)).map((node) => {
+          const controls = Array.from(node.querySelectorAll("a, button, input")).map((control) => [
+            text(control),
+            attributes(control)
+          ].join("|")).join(";");
+          const ancestors = [node.parentElement, node.parentElement && node.parentElement.parentElement]
+            .filter(Boolean)
+            .map((ancestor) => attributes(ancestor))
+            .join(";");
+          return [text(node), attributes(node), ancestors, controls].join("|");
+        });
+        const rowFingerprint = [teamAndIdentity, ...marketValues].join("\\u0002");
+        const current = grouped.get(rowKey) || [];
+        current.push(rowFingerprint);
+        grouped.set(rowKey, current);
+      }
+      if (grouped.size === 0) {
+        const fallback = Array.from(document.querySelectorAll("a.odds, [data-odds], [data-value]"))
+          .map((node) => [text(node), attributes(node)].join("|"))
+          .join("\\u0001");
+        if (fallback) grouped.set("__fallback__", [fallback]);
+      }
+      return Object.fromEntries(
+        Array.from(grouped.entries())
+          .map(([rowKey, values]) => [rowKey, values.sort().join("\\u0001")])
+          .sort(([left], [right]) => left.localeCompare(right))
+      );
+    })()
+  `;
+  return await target.evaluate(script) as CmdDomFingerprint;
+}
+
+export type StableCmdSnapshotRead = {
   snapshot: OddsSnapshot;
   observedFixtures: number;
   observedSelections: number;
@@ -853,13 +1058,14 @@ type StableCmdSnapshotRead = {
   attempts: number;
 };
 
-async function readStableCmdSnapshot(
+export async function readStableCmdSnapshot(
   target: Page | Frame,
   collectorId: string,
   mode: "bootstrap" | "reconcile"
 ): Promise<StableCmdSnapshotRead | null> {
   const readStartedAt = Date.now();
   let attempts = 0;
+  let previousFingerprint = await readCmdDomFingerprint(target);
   let previous = parseJun88CmdSnapshot(
     await extractCmdMatchHtml(target),
     target.url(),
@@ -869,27 +1075,62 @@ async function readStableCmdSnapshot(
   do {
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
     attempts += 1;
+    const currentFingerprint = await readCmdDomFingerprint(target);
+    if (equalCmdDomFingerprints(previousFingerprint, currentFingerprint)) {
+      if (previous.selections.length === 0) {
+        continue;
+      }
+      const result = stableCmdSnapshotRead(previous, previous, attempts);
+      logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
+      return result;
+    }
     const current = parseJun88CmdSnapshot(
       await extractCmdMatchHtml(target),
       target.url(),
       collectorId
     );
     const stable = selectStableCmdSnapshotFixtures(previous, current);
-    if (stable.selections.length > 0) {
+    if (mode === "bootstrap" && stable.selections.length > 0) {
       const result = stableCmdSnapshotRead(stable, current, attempts);
       logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
       return result;
     }
     previous = current;
-  } while (Date.now() - settleStartedAt < 500);
+    previousFingerprint = currentFingerprint;
+  } while (Date.now() - settleStartedAt < cmdSnapshotSettleMs(mode));
 
   if (previous.selections.length === 0) {
+    console.warn(
+      `[jun88-cmd] snapshot mode=${mode} has no parseable selections after ` +
+      `${cmdSnapshotSettleMs(mode)}ms`
+    );
     return null;
+  }
+  if (mode === "bootstrap") {
+    console.warn(
+      `[jun88-cmd] bootstrap snapshot remained active during ` +
+      `${cmdSnapshotSettleMs(mode)}ms; using the latest parsed state`
+    );
+    const result = stableCmdSnapshotRead(previous, previous, attempts);
+    logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
+    return result;
   }
   const emptySnapshot = { ...previous, selections: [] };
   const result = stableCmdSnapshotRead(emptySnapshot, previous, attempts);
   logStableCmdSnapshot(mode, result, Date.now() - readStartedAt);
   return result;
+}
+
+function equalCmdDomFingerprints(
+  previous: CmdDomFingerprint,
+  current: CmdDomFingerprint
+) {
+  const previousKeys = Object.keys(previous);
+  const currentKeys = Object.keys(current);
+  if (previousKeys.length !== currentKeys.length) {
+    return false;
+  }
+  return previousKeys.every((key) => previous[key] === current[key]);
 }
 
 export function selectStableCmdSnapshotFixtures(
@@ -908,6 +1149,37 @@ export function selectStableCmdSnapshotFixtures(
     stableSelections.push(...selections);
   }
   return { ...current, selections: stableSelections };
+}
+
+/**
+ * Reconciliation is a recovery path, so an affected fixture is sent as a
+ * complete atomic batch. This repairs a price which the DOM observer missed
+ * and keeps v1 consumers from seeing only one side of a market.
+ */
+export function buildCmdReconcileDeltas(
+  snapshot: OddsSnapshot,
+  previous: Map<string, OddsSelection>
+) {
+  const next = selectionMap(snapshot);
+  const changed = buildDeltas(snapshot, previous, next);
+  if (changed.length === 0) {
+    return [];
+  }
+
+  const affectedFixtures = new Set(changed.map((delta) => delta.fixtureId));
+  const completeUpserts = buildDeltas(
+    snapshot,
+    new Map<string, OddsSelection>(),
+    new Map(
+      Array.from(next).filter(([, selection]) => affectedFixtures.has(selection.fixtureId))
+    )
+  ).filter((delta) => delta.op === "upsert");
+  const removals = changed.filter((delta) => delta.op === "remove");
+  const byOutcome = new Map<string, OddsDelta>();
+  for (const delta of [...completeUpserts, ...removals]) {
+    byOutcome.set(`${delta.op}:${delta.outcomeId}`, delta);
+  }
+  return Array.from(byOutcome.values());
 }
 
 function selectionsByFixture(selections: OddsSelection[]) {
@@ -1034,7 +1306,14 @@ function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
 }
 
 function cmdReconcileIntervalMs() {
-  return Math.min(Math.max(envInt("CMD_RECONCILE_MS", 30_000), 15_000), 45_000);
+  return Math.min(Math.max(envInt("CMD_RECONCILE_MS", 15_000), 15_000), 45_000);
+}
+
+function cmdSnapshotSettleMs(mode: "bootstrap" | "reconcile") {
+  if (mode === "bootstrap") {
+    return Math.min(Math.max(envInt("CMD_BOOTSTRAP_SETTLE_MS", 8_000), 1_000), 20_000);
+  }
+  return 500;
 }
 
 function cmdDomScanIntervalMs() {
@@ -1046,9 +1325,17 @@ function cmdLivePollIntervalMs() {
 }
 
 function cmdTodayPollIntervalMs() {
-  return Math.min(Math.max(envInt("CMD_TODAY_POLL_MS", 5_000), 2_000), 30_000);
+  return Math.min(Math.max(envInt("CMD_TODAY_POLL_MS", 2_000), 1_000), 30_000);
 }
 
 function cmdObserverHealthIntervalMs() {
   return Math.min(Math.max(envInt("CMD_OBSERVER_HEALTH_MS", 2_000), 1_000), 10_000);
+}
+
+function cmdObserverObservationSettleMs() {
+  return Math.min(Math.max(envInt("CMD_OBSERVATION_SETTLE_MS", 350), 100), 1_000);
+}
+
+function cmdRuntimeLoopIntervalMs() {
+  return Math.min(Math.max(Math.floor(cmdObserverHealthIntervalMs() / 2), 250), 1_000);
 }

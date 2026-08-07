@@ -37,6 +37,7 @@ Can doi toi thieu:
 - `SEED_SUPER_ADMIN_PASSWORD`
 - `TELEGRAM_BOT_TOKEN` neu giu webhook dong bo metadata Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
+- `JUN88_CMD_PROXY_MODE` de trong de ke thua proxy profile; dat `off` neu CMD chay nhanh hon khi truy cap truc tiep
 
 Mac dinh production dang de:
 
