@@ -142,7 +142,7 @@ export function CollectorConfigScreen() {
                     Proxy xoay mặc định
                   </p>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Áp dụng chung cho eightxbet và jun88-cmd. Collector sẽ gọi ProxyXoay tối đa mỗi 60 giây, ghi vào cache, rồi dùng cache đó ở lần recycle browser kế tiếp.
+                    Áp dụng cho eightxbet. Jun88 CMD luôn chạy direct và không dùng proxy này. Collector sẽ gọi ProxyXoay tối đa mỗi 60 giây, ghi vào cache, rồi dùng cache đó ở lần recycle browser kế tiếp.
                   </p>
                 </div>
 

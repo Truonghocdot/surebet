@@ -38,11 +38,10 @@ async function runWorker(sink: BackendCollectorStreamSink) {
     applyCollectorProxyProfile(runtimeConfig);
   }
 
-  const cmdProxyMode = envString("JUN88_CMD_PROXY_MODE", "").trim();
-  if (cmdProxyMode) {
-    process.env.COLLECTOR_PROXY_MODE = cmdProxyMode;
-    console.log(`[jun88-cmd-worker] proxy mode override=${cmdProxyMode}`);
-  }
+  // Jun88 CMD is intentionally direct. The backend runtime profile is shared
+  // with 8xbet, so force this worker back to direct after every config sync.
+  process.env.COLLECTOR_PROXY_MODE = "off";
+  console.log("[jun88-cmd-worker] proxy mode forced=off (direct Jun88 CMD)");
 
   const collector = new Jun88CmdCollector();
   logCollectorProxyDebug("jun88-cmd");

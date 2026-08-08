@@ -258,6 +258,7 @@ services:
     dns: *public-dns
     environment:
       <<: *collector-environment
+      COLLECTOR_PROXY_MODE: "off"
       CMD_RECONCILE_MS: ${CMD_RECONCILE_MS:-15000}
       CMD_RECONCILE_SETTLE_MS: ${CMD_RECONCILE_SETTLE_MS:-1500}
       CMD_BOOTSTRAP_SETTLE_MS: ${CMD_BOOTSTRAP_SETTLE_MS:-8000}
@@ -266,7 +267,6 @@ services:
       CMD_TODAY_POLL_MS: ${CMD_TODAY_POLL_MS:-2000}
       CMD_OBSERVER_HEALTH_MS: ${CMD_OBSERVER_HEALTH_MS:-2000}
       CMD_OBSERVATION_SETTLE_MS: ${CMD_OBSERVATION_SETTLE_MS:-350}
-      JUN88_CMD_PROXY_MODE: ${JUN88_CMD_PROXY_MODE:-}
     volumes:
       - collector-tmp:/app/collector/tmp
     depends_on:

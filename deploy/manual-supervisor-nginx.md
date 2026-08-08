@@ -287,8 +287,6 @@ CMD_LIVE_POLL_MS=2000
 CMD_TODAY_POLL_MS=2000
 CMD_OBSERVER_HEALTH_MS=2000
 CMD_OBSERVATION_SETTLE_MS=350
-# Để trống để kế thừa profile proxy từ backend; đặt off nếu CMD chạy nhanh hơn khi đi thẳng.
-JUN88_CMD_PROXY_MODE=
 
 COLLECTOR_HEADLESS=true
 COLLECTOR_SLOWMO=0
