@@ -1002,22 +1002,35 @@ export async function installCmdObserver(
  * Avoids serialising the full page (~500KB+) via target.content() and sending
  * it back over CDP. The parser only uses .tableDiv rows so we grab those containers.
  */
-async function extractCmdMatchHtml(target: Page | Frame): Promise<string> {
-  const partial = await target.evaluate(() => {
+async function extractCmdMatchHtml(
+  target: Page | Frame,
+  rowKeys?: readonly string[]
+): Promise<string> {
+  const partial = await target.evaluate((selectedRowKeys) => {
+    const matchSelector = ".match.default-match, .match.copy-match";
+    const selected = selectedRowKeys ? new Set(selectedRowKeys) : null;
     const containers = Array.from(document.querySelectorAll(".tableDiv"))
-      .filter((container) => container.querySelector(
-        ".match.default-match, .match.copy-match"
-      ));
+      .map((container) => {
+        if (!selected) return container;
+        const clone = container.cloneNode(true) as Element;
+        for (const row of Array.from(clone.querySelectorAll(matchSelector))) {
+          const key = row.getAttribute("groupid") || row.id || "";
+          if (!selected.has(key)) row.remove();
+        }
+        return clone;
+      })
+      .filter((container) => container.querySelector(matchSelector));
     if (containers.length > 0) {
       return `<div class="surebet-partial">${containers.map((el) => el.outerHTML).join("")}</div>`;
     }
     // fallback: whole body (triggers parseFallbackMatches in the parser)
-    return document.body?.outerHTML ?? "";
-  });
+    return selected ? "" : (document.body?.outerHTML ?? "");
+  }, rowKeys ? [...rowKeys] : null);
   return partial;
 }
 
 type CmdDomFingerprint = Record<string, string>;
+const cmdStableFingerprintByTarget = new WeakMap<Page | Frame, CmdDomFingerprint>();
 
 /**
  * Fingerprint only fields which affect parsed selections. Live match clocks and
@@ -1154,10 +1167,10 @@ export async function readStableCmdSnapshot(
     fingerprintMs += Date.now() - startedAt;
     return result;
   };
-  const readSnapshot = async () => {
+  const readSnapshot = async (rowKeys?: readonly string[]) => {
     const startedAt = Date.now();
     const result = parseJun88CmdSnapshot(
-      await extractCmdMatchHtml(target),
+      await extractCmdMatchHtml(target, rowKeys),
       target.url(),
       collectorId
     );
@@ -1165,20 +1178,28 @@ export async function readStableCmdSnapshot(
     return result;
   };
 
-  let previousFingerprint = await readFingerprint();
-  let previous = await readSnapshot();
+  const reconcileFallback = mode === "reconcile" ? fallbackSnapshot : undefined;
+  const initialFingerprint = await readFingerprint();
+  let previousFingerprint = reconcileFallback
+    ? (cmdStableFingerprintByTarget.get(target) ?? initialFingerprint)
+    : initialFingerprint;
+  let previous = reconcileFallback ?? await readSnapshot();
   let bestStable: { snapshot: OddsSnapshot; observed: OddsSnapshot } | null = null;
   const settleStartedAt = Date.now();
   const finish = (
     snapshot: OddsSnapshot,
     observed: OddsSnapshot,
     status: StableCmdSnapshotStatus,
-    stableFixturesOverride?: number
+    stableFixturesOverride?: number,
+    stableFingerprint: CmdDomFingerprint = previousFingerprint
   ) => {
     const settledStatus = status === "complete" && mode === "reconcile" && fallbackSnapshot &&
       !coversFallbackFixtures(snapshot, fallbackSnapshot)
       ? "partial"
       : status;
+    if (settledStatus !== "fallback") {
+      cmdStableFingerprintByTarget.set(target, stableFingerprint);
+    }
     return readCmdSourceLag(target).then((sourceLagMs) => {
       const result = stableCmdSnapshotRead(
         snapshot,
@@ -1202,11 +1223,66 @@ export async function readStableCmdSnapshot(
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
     attempts += 1;
     const currentFingerprint = await readFingerprint();
-    if (equalCmdDomFingerprints(previousFingerprint, currentFingerprint)) {
+    const fingerprintsEqual = equalCmdDomFingerprints(
+      previousFingerprint,
+      currentFingerprint
+    );
+
+    if (reconcileFallback) {
+      const currentRowKeys = new Set(Object.keys(currentFingerprint));
+      const previousFixtureIds = new Set(
+        previous.selections.map((selection) => selection.fixtureId)
+      );
+      const changedRowKeys = changedCmdDomFingerprintKeys(
+        previousFingerprint,
+        currentFingerprint
+      );
+      const rowKeysToParse = new Set(
+        changedRowKeys.filter((rowKey) => currentRowKeys.has(rowKey))
+      );
+      for (const rowKey of currentRowKeys) {
+        if (!previousFixtureIds.has(rowKey)) rowKeysToParse.add(rowKey);
+      }
+
+      const patch = rowKeysToParse.size > 0
+        ? await readSnapshot(Array.from(rowKeysToParse))
+        : null;
+      const current = mergeCmdIncrementalSnapshot(
+        previous,
+        patch,
+        currentRowKeys,
+        rowKeysToParse
+      );
+      const hasCompleteFixtureCoverage = Array.from(previousFixtureIds)
+        .every((fixtureId) => currentRowKeys.has(fixtureId));
+
+      if (fingerprintsEqual) {
+        if (current.selections.length === 0) {
+          return finish(reconcileFallback, current, "fallback", 0);
+        }
+        return finish(
+          current,
+          current,
+          hasCompleteFixtureCoverage ? "complete" : "partial",
+          undefined,
+          currentFingerprint
+        );
+      }
+
+      const stable = selectStableCmdSnapshotFixtures(previous, current);
+      if (stable.selections.length > 0) {
+        bestStable = { snapshot: stable, observed: current };
+      }
+      previous = current;
+      previousFingerprint = currentFingerprint;
+      continue;
+    }
+
+    if (fingerprintsEqual) {
       if (previous.selections.length === 0) {
         continue;
       }
-      return finish(previous, previous, "complete");
+      return finish(previous, previous, "complete", undefined, currentFingerprint);
     }
     const current = await readSnapshot();
     const stable = selectStableCmdSnapshotFixtures(previous, current);
@@ -1216,7 +1292,9 @@ export async function readStableCmdSnapshot(
         return finish(
           stable,
           current,
-          stable.selections.length === current.selections.length ? "complete" : "partial"
+          stable.selections.length === current.selections.length ? "complete" : "partial",
+          undefined,
+          currentFingerprint
         );
       }
     }
@@ -1265,6 +1343,34 @@ function equalCmdDomFingerprints(
     return false;
   }
   return previousKeys.every((key) => previous[key] === current[key]);
+}
+
+function changedCmdDomFingerprintKeys(
+  previous: CmdDomFingerprint,
+  current: CmdDomFingerprint
+) {
+  const keys = new Set([...Object.keys(previous), ...Object.keys(current)]);
+  return Array.from(keys).filter((key) => previous[key] !== current[key]);
+}
+
+function mergeCmdIncrementalSnapshot(
+  base: OddsSnapshot,
+  patch: OddsSnapshot | null,
+  currentRowKeys: ReadonlySet<string>,
+  parsedRowKeys: ReadonlySet<string>
+): OddsSnapshot {
+  const patchedFixtureIds = new Set(parsedRowKeys);
+  for (const selection of patch?.selections ?? []) {
+    patchedFixtureIds.add(selection.fixtureId);
+  }
+  const retainedSelections = base.selections.filter((selection) =>
+    currentRowKeys.has(selection.fixtureId) &&
+    !patchedFixtureIds.has(selection.fixtureId)
+  );
+  return {
+    ...(patch ?? base),
+    selections: [...retainedSelections, ...(patch?.selections ?? [])]
+  };
 }
 
 export function selectStableCmdSnapshotFixtures(

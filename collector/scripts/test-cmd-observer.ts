@@ -108,6 +108,31 @@ async function main() {
       reconciledRead?.snapshot.selections.some((selection) => selection.odds === reconcileOdds),
       "CMD reconcile must wait for the changed fixture before returning a snapshot"
     );
+    const incrementalOdds = await page.evaluate(() => {
+      const node = document.querySelector(
+        ".match.default-match .w-hdp .tableDiv-match-odds__detail > a"
+      );
+      if (!node) {
+        throw new Error("CMD fixture has no odds node for incremental reconcile test");
+      }
+      const next = Number((Number.parseFloat(node.textContent?.trim() || "0") + 0.04).toFixed(2));
+      node.textContent = String(next);
+      return next;
+    });
+    const incrementalRead = await readStableCmdSnapshot(
+      page,
+      "jun88-cmd",
+      "reconcile",
+      reconciledRead!.snapshot
+    );
+    assert.ok(
+      incrementalRead?.snapshot.selections.some((selection) => selection.odds === incrementalOdds),
+      "incremental reconcile must repair an odds change missed by the observer"
+    );
+    assert.ok(
+      (incrementalRead?.parseMs ?? Number.POSITIVE_INFINITY) < stableRead!.parseMs,
+      "incremental reconcile must parse less work than the full bootstrap snapshot"
+    );
     await page.setContent(html, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
       const win = window as typeof window & Record<string, unknown>;
@@ -368,6 +393,11 @@ async function testReconcileFallbackPreservesSnapshot(
     );
     assert.equal(partialRead?.status, "partial");
     assert.equal(partialRead?.stableFixtures, 1);
+    assert.equal(
+      partialRead?.parseMs,
+      0,
+      "an unchanged partial reconcile must reuse the fallback without a full DOM parse"
+    );
     assert.ok(
       (partialRead?.snapshot.selections.length ?? 0) > 0,
       "a stable DOM subset must remain available for partial reconcile"
