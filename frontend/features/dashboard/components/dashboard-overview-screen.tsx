@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useState } from "react";
 
 import { DataPanel } from "@/components/dashboard/data-panel";
 import { SectionHeader } from "@/components/dashboard/section-header";
@@ -11,10 +11,20 @@ import type {
   DashboardOpportunity,
   DashboardSnapshot
 } from "@/features/dashboard/schemas/crm-schemas";
+import {
+  DEFAULT_MINIMUM_VISIBLE_MS,
+  nextMinimumVisibleExpiry,
+  reconcileMinimumVisibleItems,
+  type MinimumVisibleEntry
+} from "@/lib/minimum-visible-items";
+
+const EMPTY_OPPORTUNITIES: DashboardOpportunity[] = [];
 
 export function DashboardOverviewScreen() {
   const query = useDashboardSnapshotQuery();
-  const opportunities = useStableOpportunityOrder(query.data?.opportunities ?? []);
+  const opportunities = useMinimumVisibleOpportunities(
+    query.data?.opportunities ?? EMPTY_OPPORTUNITIES
+  );
 
   return (
     <div className="dashboard-page">
@@ -154,20 +164,40 @@ function OpportunityLegs({ row }: { row: DashboardOpportunity }) {
   );
 }
 
-function useStableOpportunityOrder(items: DashboardOpportunity[]) {
-  const order = useRef<string[]>([]);
-  const itemsByID = new Map(items.map((item) => [item.id, item]));
-  const knownIDs = new Set(order.current);
-  const newIDs = items
-    .filter((item) => !knownIDs.has(item.id))
-    .map((item) => item.id);
-  order.current = [
-    ...newIDs,
-    ...order.current.filter((id) => itemsByID.has(id))
-  ];
-  return order.current
-    .map((id) => itemsByID.get(id))
-    .filter((item): item is DashboardOpportunity => Boolean(item));
+function useMinimumVisibleOpportunities(items: DashboardOpportunity[]) {
+  const [entries, setEntries] = useState<MinimumVisibleEntry<DashboardOpportunity>[]>(
+    () => reconcileMinimumVisibleItems([], items, Date.now(), DEFAULT_MINIMUM_VISIBLE_MS)
+  );
+
+  useEffect(() => {
+    setEntries((previous) => reconcileMinimumVisibleItems(
+      previous,
+      items,
+      Date.now(),
+      DEFAULT_MINIMUM_VISIBLE_MS
+    ));
+  }, [items]);
+
+  useEffect(() => {
+    const now = Date.now();
+    const expiry = nextMinimumVisibleExpiry(entries, items, now, DEFAULT_MINIMUM_VISIBLE_MS);
+    if (expiry === null) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setEntries((previous) => reconcileMinimumVisibleItems(
+        previous,
+        items,
+        Date.now(),
+        DEFAULT_MINIMUM_VISIBLE_MS
+      ));
+    }, Math.max(0, expiry - now) + 1);
+
+    return () => window.clearTimeout(timer);
+  }, [entries, items]);
+
+  return entries.map((entry) => entry.item);
 }
 
 function formatOdds(value: number) {

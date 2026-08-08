@@ -130,6 +130,11 @@ export class Jun88CmdRuntime {
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
             await configureCmdUpstreamRefresh(target);
+            console.log(
+              `[jun88-cmd] reconcile start fixtures=${new Set(
+                Array.from(activeSnapshotMap.values()).map((selection) => selection.fixtureId)
+              ).size} selections=${activeSnapshotMap.size}`
+            );
             const fallbackSnapshot: OddsSnapshot = {
               ...activeSnapshot,
               selections: Array.from(activeSnapshotMap.values())
