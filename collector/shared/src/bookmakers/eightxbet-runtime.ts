@@ -656,7 +656,9 @@ async function waitForEightXBetExpectedOddsFormat(
     await page.waitForTimeout(50);
   }
   const diagnostics = feed.oddsFormatDiagnostics();
+  const missingOddsSocket = !diagnostics.destination && !diagnostics.priceDisplay;
   throw new Error(
+    `${missingOddsSocket ? "ERR_WEBSOCKET_CONNECTION_FAILED: " : ""}` +
     `8xbet source unhealthy: pd1 format was not confirmed within ${timeoutMs}ms ` +
     `(destination=${diagnostics.destination || "none"} raw=${formatRawOddsSamples(diagnostics)})`
   );

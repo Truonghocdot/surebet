@@ -69,7 +69,7 @@ export async function resolveCollectorProxy(): Promise<CollectorProxySettings | 
 
 export function isCollectorProxyNetworkError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
-  return /(?:ERR_(?:CONNECTION_(?:RESET|CLOSED|REFUSED)|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED|SOCKS_CONNECTION_FAILED|TIMED_OUT)|ECONNRESET|ETIMEDOUT)/i.test(
+  return /(?:ERR_(?:CONNECTION_(?:RESET|CLOSED|REFUSED|ABORTED)|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED|SOCKS_CONNECTION_FAILED|WEBSOCKET_CONNECTION_FAILED|NETWORK_CHANGED|NAME_NOT_RESOLVED|TIMED_OUT)|ECONNRESET|ETIMEDOUT)/i.test(
     message
   );
 }
@@ -99,7 +99,16 @@ export async function discardFailedCollectorProxy(error: unknown) {
     return false;
   }
 
-  await unlink(resolveProxyCachePath()).catch(() => undefined);
+  let discarded = false;
+  try {
+    await unlink(resolveProxyCachePath());
+    discarded = true;
+  } catch {
+    // A prior failure may already have removed the cache.
+  }
+  if (!discarded) {
+    return false;
+  }
   console.warn("[collector-proxy] discarded cached proxy after a network failure");
   return true;
 }

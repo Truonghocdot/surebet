@@ -32,6 +32,10 @@ assert.equal(
   isCollectorProxyNetworkError(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
   true
 );
+assert.equal(
+  isCollectorProxyNetworkError(new Error("ERR_WEBSOCKET_CONNECTION_FAILED: pd1 destination=none")),
+  true
+);
 assert.equal(isCollectorProxyNetworkError(new Error("incomplete fixture coverage")), false);
 assert.equal(collectorProxyFailureKind(new Error("net::ERR_PROXY_CONNECTION_FAILED")), "network");
 assert.equal(
@@ -649,6 +653,11 @@ async function testFailedProxyIsDiscarded() {
       true
     );
     await assert.rejects(readFile(cacheFile));
+    assert.equal(
+      await discardFailedCollectorProxy(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
+      false,
+      "a missing cache must not be reported as a second discard"
+    );
   } finally {
     if (environment.mode === undefined) delete process.env.COLLECTOR_PROXY_MODE;
     else process.env.COLLECTOR_PROXY_MODE = environment.mode;
