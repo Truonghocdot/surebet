@@ -17,7 +17,8 @@ import {
   parseEightXBetFullMatchPayload,
   parseEightXBetStandardFixtures,
   readEightXBetOddsFormatLabel,
-  resolveEightXBetHardRecycleMs
+  resolveEightXBetHardRecycleMs,
+  shouldOverlayEightXBetReconcile
 } from "@surebet/collector-shared";
 import type { OddsDelta } from "@surebet/collector-shared";
 
@@ -96,19 +97,74 @@ assert.equal(
   "a healthy page must only use the 30-minute hard fallback by default"
 );
 assert.equal(
-  resolveEightXBetHardRecycleMs(45 * 60 * 1_000, 5 * 60 * 1_000),
+  resolveEightXBetHardRecycleMs(45 * 60 * 1_000),
   45 * 60 * 1_000,
   "the explicit hard-recycle setting must take precedence"
-);
-assert.equal(
-  resolveEightXBetHardRecycleMs(Number.NaN, 20 * 60 * 1_000),
-  30 * 60 * 1_000,
-  "the legacy page-refresh setting must remain supported without restoring short recycle gaps"
 );
 assert.equal(
   resolveEightXBetHardRecycleMs(1_000),
   30 * 60 * 1_000,
   "hard recycle must not accept a value below the 30-minute safety floor"
+);
+
+const healthyCoverage = {
+  metadataFixtures: 10,
+  decodedFixtures: 10,
+  fixturesWithQuotes: 8,
+  pendingFixtures: 0,
+  filteredFixtures: 0
+};
+assert.equal(
+  shouldOverlayEightXBetReconcile({
+    coverage: healthyCoverage,
+    pendingFixtureCount: 0,
+    revision: 4,
+    lastReconcileRevision: 4,
+    lastOddsMessageAt: 9_000,
+    now: 10_000,
+    staleMs: 30_000
+  }),
+  false,
+  "a healthy unchanged feed must skip the full overlay snapshot"
+);
+assert.equal(
+  shouldOverlayEightXBetReconcile({
+    coverage: healthyCoverage,
+    pendingFixtureCount: 0,
+    revision: 5,
+    lastReconcileRevision: 4,
+    lastOddsMessageAt: 9_000,
+    now: 10_000,
+    staleMs: 30_000
+  }),
+  true,
+  "a feed revision must trigger an overlay snapshot"
+);
+assert.equal(
+  shouldOverlayEightXBetReconcile({
+    coverage: { ...healthyCoverage, decodedFixtures: 9, pendingFixtures: 1 },
+    pendingFixtureCount: 1,
+    revision: 4,
+    lastReconcileRevision: 4,
+    lastOddsMessageAt: 9_000,
+    now: 10_000,
+    staleMs: 30_000
+  }),
+  true,
+  "incomplete coverage must retain the overlay recovery path"
+);
+assert.equal(
+  shouldOverlayEightXBetReconcile({
+    coverage: healthyCoverage,
+    pendingFixtureCount: 0,
+    revision: 4,
+    lastReconcileRevision: 4,
+    lastOddsMessageAt: 1_000,
+    now: 40_000,
+    staleMs: 30_000
+  }),
+  true,
+  "a stale feed must retain the overlay recovery path"
 );
 
 const deliveredModes: string[] = [];
@@ -390,6 +446,7 @@ async function testMarketDeltaDelivery() {
       delivered.push(deltas);
     }
   });
+  const initialRevision = feed.stateRevision();
   page.emit("websocket", socket);
 
   socket.emit("framereceived", {
@@ -403,6 +460,8 @@ async function testMarketDeltaDelivery() {
     })
   });
   await feed.flush();
+  assert.ok(feed.stateRevision() > initialRevision, "market frames must advance feed revision");
+  const initRevision = feed.stateRevision();
   assert.ok(feed.lastOddsMessageAt() > 0, "valid odds frames must update stream liveness");
   assert.equal(delivered.length, 0, "an unchanged INIT must not emit deltas");
   assert.equal(unchangedObservations, 1, "an unchanged provider event must refresh its exact batch");
@@ -430,6 +489,7 @@ async function testMarketDeltaDelivery() {
     })
   });
   await feed.flush();
+  assert.ok(feed.stateRevision() > initRevision, "changed odds must advance feed revision");
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0].length, 2, "two frames inside 50ms must produce one final fixture delivery");
   assert.ok(delivered[0].every((delta) => delta.marketId === "hdp-ah"));

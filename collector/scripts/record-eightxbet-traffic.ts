@@ -1,5 +1,4 @@
 import {
-  applyCollectorProxyProfile,
   EightXBetRuntime,
   envInt,
   envString,
@@ -11,10 +10,7 @@ const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
 
 async function main() {
   process.env.EIGHTXBET_TRAFFIC_RECORDER = "true";
-  const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch(() => null);
-  if (runtimeConfig) {
-    applyCollectorProxyProfile(runtimeConfig);
-  }
+  await syncCollectorRuntimeConfig(backendURL).catch(() => undefined);
 
   const runtime = new EightXBetRuntime("8xbet-traffic-recorder");
   const durationMs = Math.max(envInt("EIGHTXBET_TRAFFIC_DURATION_MS", 5 * 60_000), 10_000);

@@ -1,11 +1,11 @@
 import {
   BackendCollectorStreamSink,
   envString,
-  applyCollectorProxyProfile,
   collectorProxyFailureKind,
   collectorProxyRetryDelayMs,
   discardFailedCollectorProxy,
   logCollectorProxyDebug,
+  startCollectorResourceTelemetry,
   syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
 import { EightXBetCollector } from "../eightxbet/src/index.js";
@@ -18,17 +18,14 @@ async function main() {
     bookmakerId: "8xbet",
     lobbyId: "default"
   });
+  startCollectorResourceTelemetry("8xbet");
   await runWorkerSafely(sink);
 }
 
 async function runWorker(sink: BackendCollectorStreamSink) {
-  const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch((error) => {
+  await syncCollectorRuntimeConfig(backendURL).catch((error) => {
     console.warn("[8xbet-worker] collector runtime config sync failed:", error);
-    return null;
   });
-  if (runtimeConfig) {
-    applyCollectorProxyProfile(runtimeConfig);
-  }
 
   logCollectorProxyDebug("8xbet");
 

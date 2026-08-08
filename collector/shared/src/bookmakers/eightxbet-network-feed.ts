@@ -30,8 +30,6 @@ type FeedFixtureState = {
   deliveredSelections: Map<string, OddsSelection>;
   pendingMarkets: Set<SupportedMarketCode>;
   occurredAt: string;
-  lastEventFull: boolean;
-  lastTouchedMarkets: SupportedMarketCode[];
   sourceEventId: string;
   oddsFormat: "indonesian";
   retired: boolean;
@@ -55,6 +53,9 @@ export class EightXBetNetworkFeed {
   private deliveryQueue = Promise.resolve();
   private deliveryRunning = false;
   private lastTelemetryAt = 0;
+  private telemetryDeliveries = 0;
+  private readonly telemetryFixtures = new Set<string>();
+  private telemetryMaxSourceLagMs = 0;
   private lastCoverageAt = 0;
   private lastCoverageSignature = "";
   private metadataFixtureTotal = 0;
@@ -66,6 +67,7 @@ export class EightXBetNetworkFeed {
   private formatObservationCount = 0;
   private formatUnhealthyReason = "";
   private lastOddsMessageAtMs = 0;
+  private feedRevision = 0;
   private readonly deliveryRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly deliveryCoalesceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -190,6 +192,10 @@ export class EightXBetNetworkFeed {
     return this.lastOddsMessageAtMs;
   }
 
+  stateRevision() {
+    return this.feedRevision;
+  }
+
   activeFixtureIds() {
     return this.activeMetadataFixtureIds
       ? Array.from(this.activeMetadataFixtureIds).sort()
@@ -217,6 +223,7 @@ export class EightXBetNetworkFeed {
     this.formatObservationCount = 0;
     this.formatUnhealthyReason = "";
     this.lastOddsMessageAtMs = 0;
+    this.feedRevision = 0;
     if (!clearQuotes) {
       return;
     }
@@ -422,6 +429,7 @@ export class EightXBetNetworkFeed {
     if (!metadataChanged) {
       return;
     }
+    this.feedRevision += 1;
     rebuildMarketSelections(current, current.seenMarkets);
     if (current.seenMarkets.size > 0) {
       for (const code of current.seenMarkets) {
@@ -479,11 +487,10 @@ export class EightXBetNetworkFeed {
       return;
     }
 
+    this.feedRevision += 1;
     current.occurredAt = occurredAt || new Date().toISOString();
     current.sourceEventId = sourceEventId;
     current.oddsFormat = oddsFormat;
-    current.lastEventFull = full;
-    current.lastTouchedMarkets = Array.from(touchedMarkets);
     rebuildMarketSelections(current, touchedMarkets);
     this.logCoverage();
     for (const code of touchedMarkets) {
@@ -584,8 +591,6 @@ export class EightXBetNetworkFeed {
         deliveredSelections: new Map(),
         pendingMarkets: new Set(),
         occurredAt: new Date().toISOString(),
-        lastEventFull: false,
-        lastTouchedMarkets: [],
         sourceEventId: "",
         oddsFormat: "indonesian",
         retired: false
@@ -612,6 +617,7 @@ export class EightXBetNetworkFeed {
   }
 
   private applyMetadataSnapshot(matches: Record<string, unknown>[], totalFixtureCount: number) {
+    const previousActive = this.activeMetadataFixtureIds;
     const active = new Set<string>();
     for (const match of matches) {
       const fixtureId = stringID(match.iid);
@@ -621,6 +627,9 @@ export class EightXBetNetworkFeed {
     }
 
     this.retireFixturesMissingFromMetadata(active);
+    if (!sameStringSet(previousActive, active)) {
+      this.feedRevision += 1;
+    }
     this.metadataFixtureTotal = totalFixtureCount;
     this.activeMetadataFixtureIds = active;
     this.logCoverage();
@@ -649,6 +658,7 @@ export class EightXBetNetworkFeed {
       }
 
       state.retired = true;
+      this.feedRevision += 1;
       state.occurredAt = new Date().toISOString();
       const retiringMarkets = new Set(state.seenMarkets);
       for (const selection of state.deliveredSelections.values()) {
@@ -698,17 +708,23 @@ export class EightXBetNetworkFeed {
       return;
     }
     const now = Date.now();
+    const sourceLagMs = Math.max(now - new Date(state.occurredAt).getTime(), 0);
+    this.telemetryDeliveries += 1;
+    this.telemetryFixtures.add(fixtureId);
+    this.telemetryMaxSourceLagMs = Math.max(this.telemetryMaxSourceLagMs, sourceLagMs);
     const intervalMs = Math.max(envInt("EIGHTXBET_STREAM_TELEMETRY_MS", 5_000), 1_000);
     if (now - this.lastTelemetryAt < intervalMs) {
       return;
     }
     this.lastTelemetryAt = now;
-    const sourceLagMs = Math.max(now - new Date(state.occurredAt).getTime(), 0);
     console.log(
-      `[8xbet-network] event fixture=${fixtureId} mode=${state.lastEventFull ? "init" : "update"}` +
-        ` markets=${state.lastTouchedMarkets.join(",")}` +
-        ` outcomes=${selectionCount(state)} source_lag_ms=${sourceLagMs}`
+      `[8xbet-network] stream events=${this.telemetryDeliveries}` +
+        ` fixtures=${this.telemetryFixtures.size}` +
+        ` source_lag_ms=${this.telemetryMaxSourceLagMs}`
     );
+    this.telemetryDeliveries = 0;
+    this.telemetryFixtures.clear();
+    this.telemetryMaxSourceLagMs = 0;
   }
 
   private logCoverage() {
@@ -828,6 +844,16 @@ function selectionCount(state: FeedFixtureState) {
   return count;
 }
 
+function sameStringSet(left: Set<string> | null, right: Set<string>) {
+  if (!left || left.size !== right.size) {
+    return false;
+  }
+  for (const value of right) {
+    if (!left.has(value)) return false;
+  }
+  return true;
+}
+
 function buildHandicapSelections(
   state: FeedFixtureState,
   code: "ah" | "ah_1st",
@@ -861,7 +887,6 @@ function buildOverUnderSelections(
   code: "ou" | "ou_1st",
   lines: unknown[]
 ) {
-  const metadata = state.metadata!;
   const marketId = code === "ou" ? "o-u-ou" : "o-u-ou-1st";
   const result: OddsSelection[] = [];
   for (const rawLine of lines) {
@@ -1068,8 +1093,6 @@ export function buildEightXBetNetworkFixtureSnapshot(options: {
     deliveredSelections: new Map(),
     pendingMarkets: new Set(),
     occurredAt: options.occurredAt,
-    lastEventFull: true,
-    lastTouchedMarkets: [],
     sourceEventId: options.occurredAt,
     oddsFormat: "indonesian",
     retired: false

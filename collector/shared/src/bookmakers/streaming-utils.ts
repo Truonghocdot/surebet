@@ -100,11 +100,3 @@ export function heartbeatOf(source: CollectorSource): CollectorHeartbeat {
     sentAt: new Date().toISOString()
   };
 }
-
-export function assertSnapshotHasSelections(snapshot: OddsSnapshot, label = snapshot.source.collectorId) {
-  if (snapshot.selections.length === 0) {
-    throw new Error(
-      `[${label}] parsed 0 selections. Lobby is reachable, but no odds rows were extracted.`
-    );
-  }
-}

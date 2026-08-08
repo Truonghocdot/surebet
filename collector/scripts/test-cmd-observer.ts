@@ -63,7 +63,7 @@ async function main() {
   await testAsyncUpstreamRenderOrdering(html, snapshot);
   await testReconcileFallbackPreservesSnapshot(html, snapshot);
 
-  process.env.CMD_DOM_SCAN_MS = "100";
+  process.env.CMD_DOM_SCAN_MS = "1000";
   process.env.CMD_LIVE_POLL_MS = "2000";
   process.env.CMD_TODAY_POLL_MS = "5000";
   const browser = await chromium.launch({ headless: true });
@@ -138,9 +138,46 @@ async function main() {
       const win = window as typeof window & Record<string, unknown>;
       win.LastRunningVersion = "version-1";
       win.onLoadedIncRunningData = () => undefined;
+      win.AfterRenderBetView = () => undefined;
     });
     await configureCmdUpstreamRefresh(page);
     await installCmdObserver(page, snapshot);
+    await page.waitForTimeout(700);
+    const observerStateBeforeIdle = await page.evaluate(() => {
+      const state = (window as typeof window & {
+        __surebet_cmd_stream__?: { scanCount?: number; scanWatchdog?: number };
+      }).__surebet_cmd_stream__;
+      return {
+        scans: Number(state?.scanCount || 0),
+        watchdog: Boolean(state?.scanWatchdog)
+      };
+    });
+    assert.equal(observerStateBeforeIdle.watchdog, true, "CMD observer watchdog must be installed");
+    await page.waitForTimeout(250);
+    const scansAfterIdleWindow = await page.evaluate(() => {
+      const state = (window as typeof window & {
+        __surebet_cmd_stream__?: { scanCount?: number };
+      }).__surebet_cmd_stream__;
+      return Number(state?.scanCount || 0);
+    });
+    assert.equal(
+      scansAfterIdleWindow,
+      observerStateBeforeIdle.scans,
+      "an idle observer must not run another full scan between watchdog ticks"
+    );
+    await page.evaluate(() => {
+      const callback = (window as typeof window & Record<string, unknown>).AfterRenderBetView;
+      if (typeof callback !== "function") return;
+      callback();
+      callback();
+      callback();
+    });
+    await assertEventually(async () => await page.evaluate((expectedScans) => {
+      const state = (window as typeof window & {
+        __surebet_cmd_stream__?: { scanCount?: number };
+      }).__surebet_cmd_stream__;
+      return Number(state?.scanCount || 0) === expectedScans;
+    }, scansAfterIdleWindow + 1));
 
     await page.evaluate(() => {
       const row = document.querySelector(".match.default-match");
@@ -459,10 +496,10 @@ async function testReconcileFallbackPreservesSnapshot(
   }
 }
 
-async function assertEventually(predicate: () => boolean) {
+async function assertEventually(predicate: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
-    if (predicate()) {
+    if (await predicate()) {
       return;
     }
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));

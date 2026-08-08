@@ -1,8 +1,8 @@
 import {
-  applyCollectorProxyProfile,
   BackendCollectorStreamSink,
   envString,
   logCollectorProxyDebug,
+  startCollectorResourceTelemetry,
   syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
 import { Jun88CmdCollector } from "../jun88-cmd/src/index.js";
@@ -10,6 +10,7 @@ import { Jun88CmdCollector } from "../jun88-cmd/src/index.js";
 const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
 
 installTimestampedConsole();
+process.env.COLLECTOR_PROXY_MODE = "off";
 
 async function main() {
   const sink = new BackendCollectorStreamSink(backendURL, {
@@ -17,6 +18,8 @@ async function main() {
     bookmakerId: "jun88",
     lobbyId: "cmd"
   });
+  logCollectorProxyDebug("jun88-cmd");
+  startCollectorResourceTelemetry("jun88-cmd");
 
   while (true) {
     try {
@@ -29,22 +32,11 @@ async function main() {
 }
 
 async function runWorker(sink: BackendCollectorStreamSink) {
-  const runtimeConfig = await syncCollectorRuntimeConfig(backendURL).catch((error) => {
+  await syncCollectorRuntimeConfig(backendURL, { applyProxy: false }).catch((error) => {
     console.warn("[jun88-cmd-worker] collector runtime config sync failed:", error);
-    return null;
   });
 
-  if (runtimeConfig) {
-    applyCollectorProxyProfile(runtimeConfig);
-  }
-
-  // Jun88 CMD is intentionally direct. The backend runtime profile is shared
-  // with 8xbet, so force this worker back to direct after every config sync.
-  process.env.COLLECTOR_PROXY_MODE = "off";
-  console.log("[jun88-cmd-worker] proxy mode forced=off (direct Jun88 CMD)");
-
   const collector = new Jun88CmdCollector();
-  logCollectorProxyDebug("jun88-cmd");
   console.log("[jun88-cmd-worker] starting in streaming mode");
   await collector.stream(sink);
 }

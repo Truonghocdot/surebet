@@ -2,7 +2,6 @@ import type { Frame, Page } from "playwright";
 import type {
   CollectorSource,
   CollectContext,
-  CollectorHeartbeat,
   CollectorSink,
   OddsDelta,
   OddsSelection,
@@ -11,6 +10,7 @@ import type {
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { envInt } from "../core/env.js";
+import { updateCollectorResourceTelemetry } from "../core/resource-telemetry.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { CMD_AVAILABILITY_CONFIG } from "./cmd-availability.js";
@@ -109,11 +109,25 @@ export class Jun88CmdRuntime {
         let lastHeartbeatAt = Date.now();
         let lastReconcileAt = Date.now();
         let lastObserverHealthAt = Date.now();
+        let lastObserverTelemetryAt = Date.now();
+        let lastReconcileParseMs = 0;
         const heartbeatMs = heartbeatIntervalMs();
 
         while (!page.isClosed()) {
           if (streamFailure) {
             throw streamFailure;
+          }
+
+          if (Date.now() - lastObserverTelemetryAt >= 60_000) {
+            const observerTelemetry = await readCmdObserverTelemetry(target);
+            if (observerTelemetry) {
+              updateCollectorResourceTelemetry(this.collectorId, {
+                observerScanMs: observerTelemetry.scanMs,
+                observerRowsScanned: observerTelemetry.rows,
+                reconcileParseMs: lastReconcileParseMs
+              });
+            }
+            lastObserverTelemetryAt = Date.now();
           }
 
           if (Date.now() - lastObserverHealthAt >= cmdObserverHealthIntervalMs()) {
@@ -130,11 +144,6 @@ export class Jun88CmdRuntime {
 
           if (Date.now() - lastReconcileAt >= cmdReconcileIntervalMs()) {
             await configureCmdUpstreamRefresh(target);
-            console.log(
-              `[jun88-cmd] reconcile start fixtures=${new Set(
-                Array.from(activeSnapshotMap.values()).map((selection) => selection.fixtureId)
-              ).size} selections=${activeSnapshotMap.size}`
-            );
             const fallbackSnapshot: OddsSnapshot = {
               ...activeSnapshot,
               selections: Array.from(activeSnapshotMap.values())
@@ -145,6 +154,7 @@ export class Jun88CmdRuntime {
               "reconcile",
               fallbackSnapshot
             );
+            lastReconcileParseMs = reconciledRead?.parseMs ?? 0;
             if (!reconciledRead || reconciledRead.status === "fallback" ||
               reconciledRead.snapshot.selections.length === 0) {
               lastReconcileAt = Date.now();
@@ -220,6 +230,7 @@ export async function configureCmdUpstreamRefresh(target: Page | Frame): Promise
               Number(win.__surebet_cmd_upstream_tick__ || 0) + 1;
             win.__surebet_cmd_upstream_tick_at__ = Date.now();
             win.__surebet_cmd_upstream_version__ = String(win.LastRunningVersion || "");
+            win.__surebet_cmd_stream__?.requestScan?.();
           }
         };
         wrapped.__surebetCmdUpstreamHook = true;
@@ -234,6 +245,7 @@ export async function configureCmdUpstreamRefresh(target: Page | Frame): Promise
             win.__surebet_cmd_render_at__ = Date.now();
             win.__surebet_cmd_render_tick__ =
               Number(win.__surebet_cmd_render_tick__ || 0) + 1;
+            win.__surebet_cmd_stream__?.requestScan?.();
           }
         };
         wrappedAfterRender.__surebetCmdRenderHook = true;
@@ -259,11 +271,33 @@ async function isCmdObserverHealthy(target: Page | Frame) {
   return target.evaluate(() => {
     const state = (
       window as typeof window & {
-        __surebet_cmd_stream__?: { observer?: MutationObserver; scanTimer?: number };
+        __surebet_cmd_stream__?: {
+          observer?: MutationObserver;
+          scanWatchdog?: number;
+        };
       }
     ).__surebet_cmd_stream__;
-    return Boolean(state?.observer && state.scanTimer);
+    return Boolean(state?.observer && state.scanWatchdog);
   }).catch(() => false);
+}
+
+async function readCmdObserverTelemetry(target: Page | Frame) {
+  return target.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __surebet_cmd_stream__?: {
+          lastScanMs?: number;
+          lastScanRows?: number;
+          scanCount?: number;
+        };
+      }
+    ).__surebet_cmd_stream__;
+    return {
+      scanMs: Number(state?.lastScanMs || 0),
+      rows: Number(state?.lastScanRows || 0),
+      scans: Number(state?.scanCount || 0)
+    };
+  }).catch(() => null);
 }
 
 async function readCmdConfirmedSelection(
@@ -395,12 +429,19 @@ export async function installCmdObserver(
           deltaInFlight: false,
           deltaRetryTimer: null,
           observationInFlight: false,
+          scanTimer: null,
+          scanWatchdog: null,
+          lastScanMs: 0,
+          lastScanRows: 0,
+          scanCount: 0,
+          revision: 0,
           lastMutationAt: Date.now()
         };
       }
       const state = win.__surebet_cmd_stream__;
       state.seen = Object.assign({}, seededFingerprints || {});
       state.rowFingerprints = {};
+      state.revision = 0;
       state.observedUpstreamTick = Number(win.__surebet_cmd_upstream_tick__ || 0);
       state.observedUpstreamTickAt = Number(win.__surebet_cmd_upstream_tick_at__ || 0);
       state.lastMutationAt = Date.now();
@@ -409,7 +450,10 @@ export async function installCmdObserver(
       state.deltaRetryTimer = null;
       state.observationInFlight = false;
       if (state.observer) state.observer.disconnect();
-      if (state.scanTimer) clearInterval(state.scanTimer);
+      if (state.scanTimer) clearTimeout(state.scanTimer);
+      if (state.scanWatchdog) clearInterval(state.scanWatchdog);
+      state.scanTimer = null;
+      state.scanWatchdog = null;
       for (const pending of Object.values(state.settleTimers || {})) {
         if (pending && pending.timer) clearTimeout(pending.timer);
       }
@@ -437,6 +481,7 @@ export async function installCmdObserver(
                 Number(win.__surebet_cmd_upstream_tick__ || 0) + 1;
               win.__surebet_cmd_upstream_tick_at__ = Date.now();
               win.__surebet_cmd_upstream_version__ = String(win.LastRunningVersion || "");
+              requestScan(observationSettleMs);
             }
           };
           wrapped.__surebetCmdUpstreamHook = true;
@@ -451,6 +496,7 @@ export async function installCmdObserver(
               win.__surebet_cmd_render_at__ = Date.now();
               win.__surebet_cmd_render_tick__ =
                 Number(win.__surebet_cmd_render_tick__ || 0) + 1;
+              requestScan(observationSettleMs);
             }
           };
           wrappedAfterRender.__surebetCmdRenderHook = true;
@@ -646,6 +692,9 @@ export async function installCmdObserver(
           .filter((node) => (node.getAttribute("groupid") || node.id || "") === rowKey);
         const rowFingerprint = fingerprintRows(groupRows);
         if (emit && state.rowFingerprints[rowKey] === rowFingerprint) return;
+        if (state.rowFingerprints[rowKey] !== rowFingerprint) {
+          state.revision = Number(state.revision || 0) + 1;
+        }
         state.rowFingerprints[rowKey] = rowFingerprint;
         const current = parseMatchGroup(rowKey);
         const previous = state.byRow[rowKey] || [];
@@ -849,6 +898,7 @@ export async function installCmdObserver(
                 }
                 delete state.byRow[rowKey];
                 delete state.rowFingerprints[rowKey];
+                state.revision = Number(state.revision || 0) + 1;
               }
               emitQueue();
               return;
@@ -930,7 +980,8 @@ export async function installCmdObserver(
       });
       state.observer = observer;
 
-      state.scanTimer = setInterval(() => {
+      const scanRows = () => {
+        const scanStartedAt = Date.now();
         installUpstreamHooks();
         const rows = Array.from(document.querySelectorAll(".match.default-match, .match.copy-match"));
         const groupedRows = new Map();
@@ -960,6 +1011,9 @@ export async function installCmdObserver(
         const quietSince = Math.max(state.lastMutationAt || 0, upstreamTickAt || 0, renderAt || 0);
         const renderSettled = hasNewUpstreamResponse &&
           now - quietSince >= observationSettleMs;
+        if (hasNewUpstreamResponse && !renderSettled) {
+          requestScan(Math.max(observationSettleMs - (now - quietSince), 1));
+        }
         if (renderSettled &&
           Object.keys(state.settleTimers).length === 0 &&
           state.queue.length === 0 &&
@@ -988,7 +1042,23 @@ export async function installCmdObserver(
               state.observationInFlight = false;
             });
         }
-      }, scanIntervalMs);
+        state.lastScanMs = Date.now() - scanStartedAt;
+        state.lastScanRows = rows.length;
+        state.scanCount = Number(state.scanCount || 0) + 1;
+      };
+
+      const requestScan = (delayMs = 0) => {
+        if (state.scanTimer && delayMs <= 0) return;
+        if (state.scanTimer) clearTimeout(state.scanTimer);
+        state.scanTimer = setTimeout(() => {
+          state.scanTimer = null;
+          scanRows();
+        }, Math.max(delayMs, 0));
+      };
+
+      state.scanWatchdog = setInterval(requestScan, scanIntervalMs);
+      state.requestScan = () => requestScan(observationSettleMs);
+      requestScan();
     })
   `;
 
@@ -1009,28 +1079,63 @@ async function extractCmdMatchHtml(
   const partial = await target.evaluate((selectedRowKeys) => {
     const matchSelector = ".match.default-match, .match.copy-match";
     const selected = selectedRowKeys ? new Set(selectedRowKeys) : null;
-    const containers = Array.from(document.querySelectorAll(".tableDiv"))
-      .map((container) => {
-        if (!selected) return container;
-        const clone = container.cloneNode(true) as Element;
-        for (const row of Array.from(clone.querySelectorAll(matchSelector))) {
-          const key = row.getAttribute("groupid") || row.id || "";
-          if (!selected.has(key)) row.remove();
+    if (selected) {
+      const partialContainers = [];
+      for (const container of Array.from(document.querySelectorAll(".tableDiv"))) {
+        const entries = Array.from(container.querySelectorAll(
+          ".league label, .match.default-match, .match.copy-match"
+        ));
+        let leagueLabel = "";
+        const fragments = [];
+        for (const entry of entries) {
+          if (entry.matches(".league label")) {
+            leagueLabel = entry.outerHTML;
+            continue;
+          }
+          const key = entry.getAttribute("groupid") || entry.id || "";
+          if (!selected.has(key)) continue;
+          const league = leagueLabel ? `<div class="league">${leagueLabel}</div>` : "";
+          fragments.push(`${league}${entry.outerHTML}`);
         }
-        return clone;
-      })
+        if (fragments.length > 0) {
+          partialContainers.push(`<div class="tableDiv">${fragments.join("")}</div>`);
+        }
+      }
+      if (partialContainers.length > 0) {
+        return `<div class="surebet-partial">${partialContainers.join("")}</div>`;
+      }
+      return "";
+    }
+
+    const containers = Array.from(document.querySelectorAll(".tableDiv"))
       .filter((container) => container.querySelector(matchSelector));
     if (containers.length > 0) {
       return `<div class="surebet-partial">${containers.map((el) => el.outerHTML).join("")}</div>`;
     }
     // fallback: whole body (triggers parseFallbackMatches in the parser)
-    return selected ? "" : (document.body?.outerHTML ?? "");
+    return document.body?.outerHTML ?? "";
   }, rowKeys ? [...rowKeys] : null);
   return partial;
 }
 
 type CmdDomFingerprint = Record<string, string>;
-const cmdStableFingerprintByTarget = new WeakMap<Page | Frame, CmdDomFingerprint>();
+type CmdFingerprintCache = {
+  fingerprint: CmdDomFingerprint;
+  observerRevision: number | null;
+};
+const cmdStableFingerprintByTarget = new WeakMap<Page | Frame, CmdFingerprintCache>();
+
+async function readCmdObserverRevision(target: Page | Frame) {
+  return target.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __surebet_cmd_stream__?: { revision?: number };
+      }
+    ).__surebet_cmd_stream__;
+    const revision = Number(state?.revision);
+    return Number.isFinite(revision) ? revision : null;
+  }).catch(() => null);
+}
 
 /**
  * Fingerprint only fields which affect parsed selections. Live match clocks and
@@ -1161,10 +1266,21 @@ export async function readStableCmdSnapshot(
   let attempts = 0;
   let fingerprintMs = 0;
   let parseMs = 0;
+  let lastObserverRevision: number | null = null;
   const readFingerprint = async () => {
+    const observerRevision = await readCmdObserverRevision(target);
+    lastObserverRevision = observerRevision;
+    const cached = cmdStableFingerprintByTarget.get(target);
+    if (observerRevision !== null && cached?.observerRevision === observerRevision) {
+      return cached.fingerprint;
+    }
     const startedAt = Date.now();
     const result = await readCmdDomFingerprint(target);
     fingerprintMs += Date.now() - startedAt;
+    cmdStableFingerprintByTarget.set(target, {
+      fingerprint: result,
+      observerRevision
+    });
     return result;
   };
   const readSnapshot = async (rowKeys?: readonly string[]) => {
@@ -1179,9 +1295,10 @@ export async function readStableCmdSnapshot(
   };
 
   const reconcileFallback = mode === "reconcile" ? fallbackSnapshot : undefined;
+  const cachedFingerprint = cmdStableFingerprintByTarget.get(target);
   const initialFingerprint = await readFingerprint();
   let previousFingerprint = reconcileFallback
-    ? (cmdStableFingerprintByTarget.get(target) ?? initialFingerprint)
+    ? (cachedFingerprint?.fingerprint ?? initialFingerprint)
     : initialFingerprint;
   let previous = reconcileFallback ?? await readSnapshot();
   let bestStable: { snapshot: OddsSnapshot; observed: OddsSnapshot } | null = null;
@@ -1198,7 +1315,10 @@ export async function readStableCmdSnapshot(
       ? "partial"
       : status;
     if (settledStatus !== "fallback") {
-      cmdStableFingerprintByTarget.set(target, stableFingerprint);
+      cmdStableFingerprintByTarget.set(target, {
+        fingerprint: stableFingerprint,
+        observerRevision: lastObserverRevision
+      });
     }
     return readCmdSourceLag(target).then((sourceLagMs) => {
       const result = stableCmdSnapshotRead(
@@ -1585,7 +1705,7 @@ function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
 }
 
 function cmdReconcileIntervalMs() {
-  return Math.min(Math.max(envInt("CMD_RECONCILE_MS", 15_000), 15_000), 45_000);
+  return Math.min(Math.max(envInt("CMD_RECONCILE_MS", 30_000), 15_000), 60_000);
 }
 
 function cmdSnapshotSettleMs(mode: "bootstrap" | "reconcile") {
@@ -1596,7 +1716,7 @@ function cmdSnapshotSettleMs(mode: "bootstrap" | "reconcile") {
 }
 
 function cmdDomScanIntervalMs() {
-  return Math.max(envInt("CMD_DOM_SCAN_MS", 200), 100);
+  return Math.min(Math.max(envInt("CMD_DOM_SCAN_MS", 1_000), 500), 10_000);
 }
 
 function cmdLivePollIntervalMs() {

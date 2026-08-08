@@ -8,12 +8,14 @@ type BackendCollectorRuntimeConfigResponse = {
   };
 };
 
-export type SyncedCollectorRuntimeConfig =
-  NonNullable<BackendCollectorRuntimeConfigResponse["data"]>;
+type SyncCollectorRuntimeConfigOptions = {
+  applyProxy?: boolean;
+};
 
 export async function syncCollectorRuntimeConfig(
-  backendURL: string
-): Promise<SyncedCollectorRuntimeConfig> {
+  backendURL: string,
+  options: SyncCollectorRuntimeConfigOptions = {}
+): Promise<void> {
   const target = `${backendURL.replace(/\/+$/, "")}/v1/collector/runtime-config`;
   const response = await fetch(target, {
     method: "GET",
@@ -34,11 +36,11 @@ export async function syncCollectorRuntimeConfig(
   applySetting("JUN88_BASE_URL", payload.data.jun88_base_url);
   applySetting("JUN88_CMD_PAGE_URL", payload.data.jun88_cmd_page_url);
 
-  applyProxySettings({
-    token: payload.data.collector_proxyxoay_token
-  });
-
-  return payload.data;
+  if (options.applyProxy !== false) {
+    applyProxySettings({
+      token: payload.data.collector_proxyxoay_token
+    });
+  }
 }
 
 function applySetting(key: string, value?: string) {
@@ -59,10 +61,4 @@ function applyProxySettings(options: {
   applySetting("COLLECTOR_PROXY_BYPASS", "");
   applySetting("COLLECTOR_PROXY_CACHE_ENABLED", token ? "true" : "");
   applySetting("COLLECTOR_PROXY_CACHE_FILE", token ? "tmp/collector/proxyxoay-cache.json" : "");
-}
-
-export function applyCollectorProxyProfile(config: SyncedCollectorRuntimeConfig) {
-  applyProxySettings({
-    token: config.collector_proxyxoay_token
-  });
 }

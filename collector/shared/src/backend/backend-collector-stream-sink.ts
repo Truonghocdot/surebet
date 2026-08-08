@@ -44,9 +44,6 @@ type ConfirmQuoteFrame = {
   timeout_ms?: number;
 };
 
-const eventStartAtLogTimes = new Map<string, number>();
-const eventStartAtLogIntervalMs = 60_000;
-
 export class BackendCollectorStreamSink implements CollectorSink {
   private readonly startedAt = new Date().toISOString();
   private readonly streamURL: string;
@@ -76,7 +73,6 @@ export class BackendCollectorStreamSink implements CollectorSink {
     this.replaceLatestSnapshot(snapshot);
     await this.enqueue(async () => {
       await this.ensureConnected();
-      logEventStartAtNormalization(snapshot.source, snapshot.collectedAt, snapshot.selections);
       await this.sendBootstrapSnapshot(snapshot);
       await this.sendFixtureMarketSnapshots(
         new Set(snapshot.selections.map((selection) => selection.fixtureId)),
@@ -100,7 +96,6 @@ export class BackendCollectorStreamSink implements CollectorSink {
       const upserts: any[] = [];
 
       for (const delta of deltas) {
-        logEventStartAtNormalization(delta.source, delta.collectedAt, [delta]);
         if (delta.op === "remove") {
           await this.sendFrame({
             type: "quote_remove",
@@ -845,47 +840,4 @@ function fixtureMarketFingerprint(snapshot: FixtureMarketSnapshot) {
       )
     );
   return crypto.createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
-}
-
-function logEventStartAtNormalization(
-  source: { collectorId: string; bookmakerId: BookmakerCode; lobbyId: LobbyCode },
-  collectedAt: string,
-  items: Array<{ eventStartAt?: string }>
-) {
-  const pairs = new Map<string, number>();
-  for (const item of items) {
-    const raw = item.eventStartAt?.trim() ?? "";
-    if (raw === "") {
-      continue;
-    }
-    const normalized = normalizeSourceEventStartAt(source, raw, collectedAt);
-    const key = `${raw}=>${normalized}`;
-    pairs.set(key, (pairs.get(key) ?? 0) + 1);
-  }
-
-  if (pairs.size === 0) {
-    return;
-  }
-
-  const signature = [
-    source.collectorId,
-    source.bookmakerId,
-    source.lobbyId,
-    ...Array.from(pairs.entries())
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, count]) => `${key}:${count}`)
-  ].join("|");
-  const now = Date.now();
-  const previousLogAt = eventStartAtLogTimes.get(signature) ?? 0;
-  if (now - previousLogAt < eventStartAtLogIntervalMs) {
-    return;
-  }
-  eventStartAtLogTimes.set(signature, now);
-
-  for (const [key, count] of pairs.entries()) {
-    const [raw, normalized] = key.split("=>");
-    console.log(
-      `[${source.collectorId}-worker] eventStartAt raw="${raw}" normalized="${normalized}" count=${count}`
-    );
-  }
 }

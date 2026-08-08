@@ -123,6 +123,7 @@ export class EightXBetRuntime {
         }
       );
       let lastReconcileAt = Date.now();
+      let lastReconcileRevision = this.networkFeed.stateRevision();
       const reconcileMs = eightXBetReconcileIntervalMs();
       const hardRecycleMs = eightXBetHardRecycleMs();
       const hardRecycleAt = Date.now() + hardRecycleMs;
@@ -155,6 +156,7 @@ export class EightXBetRuntime {
           await this.networkFeed.flush();
           assertEightXBetOddsFormatHealthy(this.networkFeed.oddsFormatDiagnostics());
           const coverage = this.networkFeed.coverageStats();
+          const pendingAfterFlush = this.networkFeed.pendingActiveFixtureIds();
           if (coverageIsIncomplete(coverage)) {
             incompleteCoverageSince ||= Date.now();
             if (Date.now() - incompleteCoverageSince >= eightXBetCoverageGraceMs()) {
@@ -167,8 +169,20 @@ export class EightXBetRuntime {
           } else {
             incompleteCoverageSince = 0;
           }
-          snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
-          await onSnapshot(snapshot, "observation");
+          const currentRevision = this.networkFeed.stateRevision();
+          if (shouldOverlayEightXBetReconcile({
+            coverage,
+            pendingFixtureCount: pendingAfterFlush.length,
+            revision: currentRevision,
+            lastReconcileRevision,
+            lastOddsMessageAt: this.networkFeed.lastOddsMessageAt(),
+            now: Date.now(),
+            staleMs: eightXBetStreamStaleMs()
+          })) {
+            snapshot = this.networkFeed.overlaySnapshot(emptyEightXBetSnapshot(this.collectorId));
+            await onSnapshot(snapshot, "observation");
+          }
+          lastReconcileRevision = currentRevision;
           lastReconcileAt = Date.now();
           continue;
         }
@@ -973,22 +987,16 @@ function eightXBetReconcileIntervalMs() {
 }
 
 export function resolveEightXBetHardRecycleMs(
-  hardRecycleMs = Number.NaN,
-  legacyPageRefreshMs = Number.NaN
+  hardRecycleMs = Number.NaN
 ) {
   const configured = Number.isFinite(hardRecycleMs)
     ? hardRecycleMs
-    : Number.isFinite(legacyPageRefreshMs)
-      ? legacyPageRefreshMs
-      : EIGHTXBET_HARD_RECYCLE_DEFAULT_MS;
+    : EIGHTXBET_HARD_RECYCLE_DEFAULT_MS;
   return Math.max(Math.trunc(configured), EIGHTXBET_HARD_RECYCLE_MIN_MS);
 }
 
 function eightXBetHardRecycleMs() {
-  return resolveEightXBetHardRecycleMs(
-    envInt("EIGHTXBET_HARD_RECYCLE_MS", Number.NaN),
-    envInt("EIGHTXBET_PAGE_REFRESH_MS", Number.NaN)
-  );
+  return resolveEightXBetHardRecycleMs(envInt("EIGHTXBET_HARD_RECYCLE_MS", Number.NaN));
 }
 
 function eightXBetBootstrapStableMs() {
@@ -1013,6 +1021,23 @@ function eightXBetStreamStaleMs() {
 function coverageIsIncomplete(stats: ReturnType<EightXBetNetworkFeed["coverageStats"]>) {
   const allowedPending = Math.max(2, Math.floor(stats.metadataFixtures * 0.1));
   return stats.pendingFixtures > allowedPending;
+}
+
+export function shouldOverlayEightXBetReconcile(options: {
+  coverage: ReturnType<EightXBetNetworkFeed["coverageStats"]>;
+  pendingFixtureCount: number;
+  revision: number;
+  lastReconcileRevision: number;
+  lastOddsMessageAt: number;
+  now: number;
+  staleMs: number;
+}) {
+  const stale = options.lastOddsMessageAt <= 0 ||
+    options.now - options.lastOddsMessageAt >= options.staleMs;
+  return coverageIsIncomplete(options.coverage) ||
+    options.pendingFixtureCount > 0 ||
+    stale ||
+    options.revision !== options.lastReconcileRevision;
 }
 
 function assertEightXBetStreamLive(feed: EightXBetNetworkFeed) {

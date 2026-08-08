@@ -13,3 +13,4 @@ export * from "./core/env.js";
 export * from "./core/page-url-resolver.js";
 export * from "./core/proxy.js";
 export * from "./core/resource-blocking.js";
+export * from "./core/resource-telemetry.js";

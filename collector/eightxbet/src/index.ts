@@ -21,9 +21,6 @@ export class EightXBetCollector {
       snapshot: OddsSnapshot,
       mode: "bootstrap" | "observation"
     ) => {
-      const previousSummary = currentSnapshot ? summarizeSnapshot(currentSnapshot) : null;
-      const nextSummary = summarizeSnapshot(snapshot);
-      logEightXBetSnapshotTelemetry(mode, previousSummary, nextSummary);
       await deliverEightXBetSnapshot(sink, snapshot, mode);
       if (mode === "bootstrap") {
         bootstrapSent = true;
@@ -124,18 +121,6 @@ export async function deliverEightXBetSnapshot(
   }
 }
 
-function summarizeSnapshot(snapshot: OddsSnapshot) {
-  const fixtures = new Set<string>();
-  const markets = new Set<string>();
-  for (let i = 0; i < snapshot.selections.length; i++) {
-    const sel = snapshot.selections[i];
-    fixtures.add(sel.fixtureId);
-    markets.add(`${sel.fixtureId}|${sel.marketId}`);
-  }
-  const outcomes = snapshot.selections.length;
-  return { fixtures: fixtures.size, markets: markets.size, outcomes };
-}
-
 function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
   let latest = Date.parse(fallback);
   for (const delta of deltas) {
@@ -145,17 +130,4 @@ function latestDeltaTimestamp(deltas: OddsDelta[], fallback: string) {
     }
   }
   return Number.isFinite(latest) ? new Date(latest).toISOString() : fallback;
-}
-
-function logEightXBetSnapshotTelemetry(
-  mode: "bootstrap" | "observation",
-  previous: { fixtures: number; markets: number; outcomes: number } | null,
-  next: { fixtures: number; markets: number; outcomes: number }
-) {
-  console.log(
-    `[8xbet-worker] snapshot mode=${mode}` +
-      ` fixtures=${previous?.fixtures ?? 0}->${next.fixtures}` +
-      ` markets=${previous?.markets ?? 0}->${next.markets}` +
-      ` outcomes=${previous?.outcomes ?? 0}->${next.outcomes}`
-  );
 }
