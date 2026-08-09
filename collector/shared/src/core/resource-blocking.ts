@@ -1,7 +1,7 @@
 import type { BrowserContext } from "playwright";
 import { envBool, envString } from "./env.js";
 
-const DEFAULT_BLOCKED_RESOURCE_TYPES = "image,media,font";
+const DEFAULT_BLOCKED_RESOURCE_TYPES = "image,media,font,stylesheet";
 
 export async function installCollectorResourceBlocking(context: BrowserContext) {
   if (!envBool("COLLECTOR_BLOCK_HEAVY_RESOURCES", true)) {
