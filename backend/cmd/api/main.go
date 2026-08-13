@@ -19,7 +19,6 @@ import (
 	"surebet/backend/internal/repository/redisstore"
 	"surebet/backend/internal/runtimeconfig"
 	"surebet/backend/internal/surebet"
-	"surebet/backend/internal/telegram"
 	"surebet/backend/pkg/health"
 )
 
@@ -30,10 +29,6 @@ func main() {
 	db, err := gormstore.Open(cfg.Postgres)
 	if err != nil {
 		log.Error("failed to open postgres", "error", err.Error())
-		os.Exit(1)
-	}
-	if err := gormstore.EnsureTelegramRecipientSchema(db); err != nil {
-		log.Error("failed to ensure telegram recipient schema", "error", err.Error())
 		os.Exit(1)
 	}
 	redisClient, err := redisstore.Open(cfg.Redis)
@@ -57,7 +52,6 @@ func main() {
 	}
 	warmCancel()
 	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
-	telegramRecipientRepository := gormstore.NewTelegramRecipientRepository(db)
 	realtimeHub := realtime.NewHub(log)
 	go realtimeHub.Run()
 	go func() {
@@ -71,12 +65,6 @@ func main() {
 	)
 	detector := calculator.NewDetectorWithLogger(log)
 	surebetQuery := surebet.NewQueryService(oddsStateRepository, detector)
-	telegramAdmin := telegram.NewAdminService(telegramRecipientRepository)
-	telegramWebhook := telegram.NewWebhookService(
-		cfg.Telegram,
-		telegramRecipientRepository,
-	)
-
 	collectorStream := collector.NewStreamService(
 		oddsStateRepository,
 		collector.NewMultiEventPublisher(
@@ -91,11 +79,11 @@ func main() {
 		surebetQuery,
 		collectorStream,
 		detector,
-		cfg.Telegram,
+		cfg.Surebet,
 		verifiedSurebetRepository,
 	)
 	verificationService := surebet.NewVerificationService(
-		cfg.Telegram,
+		cfg.Surebet,
 		surebetQuery,
 		confirmationService,
 		verifiedSurebetRepository,
@@ -124,9 +112,7 @@ func main() {
 		OddsQuery:       odds.NewQueryService(oddsStateRepository),
 		CollectorStream: collectorStream,
 		SurebetConfirm:  confirmationService,
-		InternalToken:   cfg.Telegram.BotToken,
-		TelegramAdmin:   telegramAdmin,
-		TelegramWebhook: telegramWebhook,
+		InternalToken:   cfg.InternalToken,
 		Realtime:        realtimeHub,
 		SurebetQuery:    verifiedSurebetQuery,
 	})

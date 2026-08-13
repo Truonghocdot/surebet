@@ -11,15 +11,16 @@ import (
 )
 
 type Config struct {
-	App       AppConfig
-	Auth      AuthConfig
-	Collector CollectorRuntimeConfig
-	HTTP      HTTPConfig
-	Telegram  TelegramConfig
-	Redis     RedisConfig
-	Postgres  PostgresConfig
-	Runtime   RuntimeConfig
-	Odds      OddsConfig
+	App           AppConfig
+	Auth          AuthConfig
+	Collector     CollectorRuntimeConfig
+	HTTP          HTTPConfig
+	InternalToken string
+	Surebet       SurebetConfig
+	Redis         RedisConfig
+	Postgres      PostgresConfig
+	Runtime       RuntimeConfig
+	Odds          OddsConfig
 }
 
 type AppConfig struct {
@@ -50,11 +51,7 @@ type HTTPConfig struct {
 	WriteTimeout time.Duration
 }
 
-type TelegramConfig struct {
-	BotToken             string
-	WebhookSecret        string
-	APIBaseURL           string
-	RequestTimeout       time.Duration
+type SurebetConfig struct {
 	VerificationMode     string
 	ConfirmationTimeout  time.Duration
 	ConfirmationValidity time.Duration
@@ -114,12 +111,9 @@ func LoadFromEnv() Config {
 			ReadTimeout:  envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
 			WriteTimeout: envDuration("HTTP_WRITE_TIMEOUT", 15*time.Second),
 		},
-		Telegram: TelegramConfig{
-			BotToken:             envString("TELEGRAM_BOT_TOKEN", ""),
-			WebhookSecret:        envString("TELEGRAM_WEBHOOK_SECRET", ""),
-			APIBaseURL:           envString("TELEGRAM_API_BASE_URL", "https://api.telegram.org"),
-			RequestTimeout:       envDuration("TELEGRAM_REQUEST_TIMEOUT", 10*time.Second),
-			VerificationMode:     envString("TELEGRAM_VERIFICATION_MODE", "shadow"),
+		InternalToken: envString("INTERNAL_API_TOKEN", ""),
+		Surebet: SurebetConfig{
+			VerificationMode:     envString("SUREBET_VERIFICATION_MODE", "shadow"),
 			ConfirmationTimeout:  envDuration("SUREBET_CONFIRM_TIMEOUT", 2*time.Second),
 			ConfirmationValidity: envDuration("SUREBET_CONFIRM_VALIDITY", 2*time.Second),
 			ConfirmationMaxSkew:  envDuration("SUREBET_CONFIRM_MAX_SKEW", time.Second),

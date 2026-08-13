@@ -78,7 +78,7 @@ func NewConfirmationServiceWithConfig(
 	current CurrentSurebetReader,
 	confirmer CollectorQuoteConfirmer,
 	detector calculator.Detector,
-	cfg config.TelegramConfig,
+	cfg config.SurebetConfig,
 	verified ...VerifiedOpportunityStore,
 ) *ConfirmationService {
 	timeout := positiveDuration(cfg.ConfirmationTimeout, confirmationTimeout)

@@ -32,10 +32,10 @@ Can doi toi thieu:
 
 - `POSTGRES_PASSWORD`
 - `AUTH_TOKEN_SECRET`
+- `INTERNAL_API_TOKEN`
 - `LARAVEL_APP_KEY`
 - `SEED_FRONTEND_USER_PASSWORD`
 - `SEED_SUPER_ADMIN_PASSWORD`
-- `TELEGRAM_BOT_TOKEN` neu giu webhook dong bo metadata Telegram
 - `COLLECTOR_PROXY_*` neu collector can proxy
 - `CMD_RECONCILE_SETTLE_MS=1500` de reconcile cho DOM render on dinh truoc khi doc lai
 
@@ -167,23 +167,8 @@ Chi o mot deploy sau, khi v2 da chay on dinh het cua so rollback, moi xoa bridge
 trong `ObserveFixtureBatches` va duong `quote_upsert` v1. Truoc khi xoa, xac nhan
 khong con consumer nao doc namespace `odds:v2` hoac frame protocol v1.
 
-Webhook Telegram:
-
-- URL: `https://api.tykfk.site/api/telegram/webhook`
-- Secret header: `X-Telegram-Bot-Api-Secret-Token`
-- Gia tri secret lay tu `TELEGRAM_WEBHOOK_SECRET`
-
-Set webhook:
-
-```bash
-curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  -d "url=https://api.tykfk.site/api/telegram/webhook" \
-  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
-```
-
 ## Ghi chu
 
 - Volume `collector-tmp` giu lai cache proxy va debug artifacts cua collector qua cac lan restart container.
 - Backend API va collector noi bo noi voi nhau qua network Docker, khong mo cong rieng ra Internet.
-- Telegram webhook production nen tro ve `backend-api`, khong can di qua `laravel-admin`.
 - Compose production co gan san DNS public `1.1.1.1` va `8.8.8.8` cho cac container can ra Internet. Viec nay tranh loi `lookup ... on 127.0.0.53:53: connection refused` khi host dung `systemd-resolved`.

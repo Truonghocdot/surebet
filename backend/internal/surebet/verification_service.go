@@ -43,7 +43,7 @@ type CollectorConnectionHealth interface {
 }
 
 type VerificationService struct {
-	cfg         config.TelegramConfig
+	cfg         config.SurebetConfig
 	candidates  CurrentSurebetReader
 	confirmer   HardSurebetConfirmer
 	store       VerificationStore
@@ -68,7 +68,7 @@ type verificationAttempt struct {
 }
 
 func NewVerificationService(
-	cfg config.TelegramConfig,
+	cfg config.SurebetConfig,
 	candidates CurrentSurebetReader,
 	confirmer HardSurebetConfirmer,
 	store VerificationStore,

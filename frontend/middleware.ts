@@ -21,7 +21,8 @@ export function middleware(request: NextRequest) {
   if (
     hasSession &&
     (pathname === "/opportunities" || pathname.startsWith("/opportunities/") ||
-      pathname === "/matches" || pathname.startsWith("/matches/"))
+      pathname === "/matches" || pathname.startsWith("/matches/") ||
+      pathname === "/admin" || pathname.startsWith("/admin/"))
   ) {
     return NextResponse.redirect(buildPublicURL(request, "/dashboard"));
   }

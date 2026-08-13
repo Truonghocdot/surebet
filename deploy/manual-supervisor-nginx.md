@@ -21,15 +21,6 @@ Tài liệu hướng dẫn triển khai ứng dụng trực tiếp bằng tài k
 - **Reverse Proxy**: Nginx
 - **Process Manager**: Supervisor
 
-### Ghi chú về Telegram
-
-- Đã bỏ hoàn toàn worker gửi surebet sang Telegram.
-- Đã bỏ hoàn toàn notification message Telegram cho surebet.
-- Frontend hiện nhận realtime qua WebSocket và phát Chrome Notification tại trình duyệt.
-- Các biến `TELEGRAM_*` chỉ còn cần nếu vẫn muốn giữ webhook để đồng bộ metadata chat/recipient.
-
----
-
 ## 1. Chuẩn bị môi trường & Cài đặt Package cơ bản
 
 Để tránh lỗi tương tác khi chạy bằng `root` (như hỏi Timezone hoặc cấu hình package), thiết lập môi trường không tương tác:
@@ -179,6 +170,7 @@ APP_NAME=surebet-platform
 APP_ENV=production
 AUTH_TOKEN_SECRET=thay-secret-that-o-day
 AUTH_TOKEN_TTL=12h
+INTERNAL_API_TOKEN=thay-token-noi-bo-that-o-day
 HTTP_ADDRESS=127.0.0.1:8080
 HTTP_READ_TIMEOUT=15s
 HTTP_WRITE_TIMEOUT=15s
@@ -201,11 +193,7 @@ COLLECTOR_PROXY_SERVER=
 COLLECTOR_PROXY_BYPASS=
 COLLECTOR_PROXYXOAY_KEY=
 
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_WEBHOOK_SECRET=
-TELEGRAM_API_BASE_URL=https://api.telegram.org
-TELEGRAM_REQUEST_TIMEOUT=10s
-TELEGRAM_VERIFICATION_MODE=auto
+SUREBET_VERIFICATION_MODE=auto
 
 SUREBET_CONFIRM_TIMEOUT=2s
 SUREBET_CONFIRM_VALIDITY=2s
@@ -355,8 +343,6 @@ DB_SSLMODE=disable
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_PASSWORD=
-
-TELEGRAM_WEBHOOK_SECRET=
 
 SEED_FRONTEND_USER_ID=surebet-operator
 SEED_FRONTEND_USER_EMAIL=operator@tykfk.site

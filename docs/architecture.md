@@ -27,7 +27,7 @@ flowchart LR
 ## Lưu trữ
 
 - Redis là source of truth cho current odds và verified opportunity ngắn hạn.
-- PostgreSQL lưu người dùng, runtime settings và metadata Telegram recipients.
+- PostgreSQL lưu người dùng và runtime settings.
 - Redis AOF được bật trong Compose để giảm mất current-state khi restart.
 
 ## Xác nhận cơ hội

@@ -78,10 +78,6 @@ SET lobby_id = CASE
 END
 WHERE lobby_id IN ('\''ibc'\'','\''m8'\'');
 
-UPDATE telegram_notification_logs
-SET message = replace(replace(message, '\''jun88/ibc'\'', '\''jun88/saba'\''), '\''jun88/m8'\'', '\''jun88/m9bet'\'')
-WHERE message LIKE '\''%jun88/ibc%'\'' OR message LIKE '\''%jun88/m8%'\'';
-
 COMMIT;
 SQL'
 

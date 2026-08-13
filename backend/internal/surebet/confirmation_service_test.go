@@ -190,7 +190,7 @@ func TestConfirmationServiceTimesOutTheWholeConfirmation(t *testing.T) {
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
 		blockingConfirmationConfirmer{},
 		calculator.NewDetector(),
-		config.TelegramConfig{ConfirmationTimeout: 10 * time.Millisecond},
+		config.SurebetConfig{ConfirmationTimeout: 10 * time.Millisecond},
 	)
 	if _, confirmed, err := service.ConfirmCurrentSurebet(context.Background(), candidate.ID); err == nil || confirmed {
 		t.Fatalf("timed out confirmation must fail: confirmed=%t err=%v", confirmed, err)

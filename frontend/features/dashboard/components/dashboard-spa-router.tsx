@@ -1,7 +1,6 @@
 "use client";
 
 import { DashboardOverviewScreen } from "@/features/dashboard/components/dashboard-overview-screen";
-import { AdminTelegramRecipientsScreen } from "@/features/admin/components/admin-telegram-recipients-screen";
 import { CollectorConfigScreen } from "@/features/admin/components/collector-config-screen";
 import type { DashboardHref } from "@/lib/dashboard-spa";
 
@@ -12,10 +11,6 @@ const views: Array<{
   {
     href: "/dashboard",
     screen: <DashboardOverviewScreen />
-  },
-  {
-    href: "/admin",
-    screen: <AdminTelegramRecipientsScreen />
   },
   {
     href: "/collector-config",

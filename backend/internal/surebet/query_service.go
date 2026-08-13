@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// In-play odds can disappear in seconds. Telegram alerts must use quotes
+	// In-play odds can disappear in seconds. Realtime consumers must use quotes
 	// observed almost simultaneously, otherwise the detector can combine a
 	// current leg with a no-longer-offered one.
 	detectorQuoteFreshnessWindow = 25 * time.Second

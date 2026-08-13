@@ -23,8 +23,6 @@ type Dependencies struct {
 	CollectorStream CollectorStreamService
 	SurebetConfirm  SurebetConfirmationService
 	InternalToken   string
-	TelegramAdmin   TelegramAdminService
-	TelegramWebhook TelegramWebhookService
 	Realtime        RealtimeService
 	SurebetQuery    SurebetQueryService
 }

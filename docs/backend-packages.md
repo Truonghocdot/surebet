@@ -7,7 +7,6 @@
 - `internal/odds`: normalization và current odds query.
 - `internal/calculator`: matching fixture/market và surebet detector.
 - `internal/surebet`: candidate query, hard confirmation và verified registry.
-- `internal/telegram`: đồng bộ webhook và quản trị metadata recipient; không gửi surebet.
 - `internal/repository/gormstore`: PostgreSQL repositories.
 - `internal/repository/redisstore`: odds current-state và verified opportunity.
 - `internal/realtime`: frontend WebSocket hub.

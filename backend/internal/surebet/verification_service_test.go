@@ -18,7 +18,7 @@ func TestVerificationTriggerDoesNotBlockCollectorIngest(t *testing.T) {
 		release: make(chan struct{}),
 	}
 	service := NewVerificationService(
-		config.TelegramConfig{},
+		config.SurebetConfig{},
 		confirmationReaderStub{items: nil},
 		nil,
 		store,
@@ -47,7 +47,7 @@ func TestVerificationTriggerDoesNotBlockCollectorIngest(t *testing.T) {
 
 func TestVerificationCandidateAttemptsAreRateLimitedByFingerprint(t *testing.T) {
 	service := NewVerificationService(
-		config.TelegramConfig{}, nil, nil, nil, nil, nil, nil,
+		config.SurebetConfig{}, nil, nil, nil, nil, nil, nil,
 	)
 	candidate := confirmationCandidate()
 	now := time.Now()
@@ -79,7 +79,7 @@ func TestVerificationSkipsHardConfirmationWhenSuppressed(t *testing.T) {
 	candidate := confirmationCandidate()
 	confirmer := &countingVerificationConfirmer{item: candidate}
 	service := NewVerificationService(
-		config.TelegramConfig{VerificationMode: "suppressed"},
+		config.SurebetConfig{VerificationMode: "suppressed"},
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
 		confirmer,
 		&verificationStoreStub{},
@@ -101,7 +101,7 @@ func TestVerificationServicePublishesCandidateOnce(t *testing.T) {
 	candidate.ExpiresAt = time.Now().UTC().Add(time.Minute)
 	broadcaster := &verificationBroadcasterStub{}
 	service := NewVerificationService(
-		config.TelegramConfig{},
+		config.SurebetConfig{},
 		nil,
 		nil,
 		&verificationStoreStub{},
@@ -130,7 +130,7 @@ func TestVerificationServiceDoesNotPublishExpiredOrAmbiguousCandidate(t *testing
 	candidate := confirmationCandidate()
 	broadcaster := &verificationBroadcasterStub{}
 	service := NewVerificationService(
-		config.TelegramConfig{},
+		config.SurebetConfig{},
 		nil,
 		nil,
 		&verificationStoreStub{},
@@ -162,7 +162,7 @@ func TestVerificationServiceRejectsQuoteChangedDuringConfirmation(t *testing.T) 
 	release := make(chan struct{})
 	store := &verificationStoreStub{}
 	service := NewVerificationService(
-		config.TelegramConfig{VerificationMode: "strict"},
+		config.SurebetConfig{VerificationMode: "strict"},
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
 		verificationConfirmerStub{item: confirmed, started: started, release: release},
 		store,
@@ -210,7 +210,7 @@ func TestVerificationServiceAcceptsHardConfirmDeltaThatRemainsCurrent(t *testing
 	store := &verificationStoreStub{}
 	broadcaster := &verificationBroadcasterStub{}
 	service := NewVerificationService(
-		config.TelegramConfig{VerificationMode: "strict"},
+		config.SurebetConfig{VerificationMode: "strict"},
 		confirmationReaderStub{items: []dto.SurebetView{candidate}},
 		verificationConfirmerStub{item: confirmed, started: started, release: release},
 		store,

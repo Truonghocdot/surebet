@@ -15,16 +15,6 @@ type UserRepository interface {
 	UpdateLastLogin(ctx context.Context, id string, loggedAt time.Time) error
 }
 
-type TelegramRecipientRepository interface {
-	ListActive(ctx context.Context) ([]models.TelegramRecipient, error)
-	ListAll(ctx context.Context) ([]models.TelegramRecipient, error)
-	GetByID(ctx context.Context, id uint64) (models.TelegramRecipient, error)
-	GetByChatID(ctx context.Context, chatID string) (models.TelegramRecipient, error)
-	Upsert(ctx context.Context, recipient models.TelegramRecipient) error
-	Save(ctx context.Context, recipient models.TelegramRecipient) (models.TelegramRecipient, error)
-	DeleteByID(ctx context.Context, id uint64) error
-}
-
 type RuntimeSettingRepository interface {
 	ListByPrefix(ctx context.Context, prefix string) ([]models.RuntimeSetting, error)
 	UpsertMany(ctx context.Context, settings []models.RuntimeSetting) error

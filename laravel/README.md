@@ -61,9 +61,3 @@ Sau khi migrate va seed xong, panel quan tri co san tai:
 
 Tai day chi tai khoan `super_admin` moi vao duoc.
 Tai khoan frontend role `operator` se dang nhap duoc vao frontend/backend API, nhung se khong vao duoc Laravel Filament.
-
-## Telegram webhook
-
-Webhook production nen duoc tro ve `backend-api`.
-
-Route Laravel `POST /api/telegram/webhook` chi nen xem nhu fallback/legacy trong giai doan chuyen doi.

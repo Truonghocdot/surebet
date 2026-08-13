@@ -1,7 +1,6 @@
 import type { Route } from "next";
 import {
   Activity,
-  BellRing,
   Cable,
   type LucideIcon
 } from "lucide-react";
@@ -24,12 +23,6 @@ export function navigationItems(user: Pick<SessionUser, "role">): NavItem[] {
   ];
 
   if (user.role === "super_admin") {
-    items.push({
-      label: "Telegram",
-      href: "/admin",
-      description: "Quản lý chat nhận thông báo",
-      icon: BellRing
-    });
     items.push({
       label: "Collector",
       href: "/collector-config",
