@@ -2,16 +2,11 @@
 
 namespace App\Models;
 
-use Filament\Models\Contracts\HasName;
-use Filament\Models\Contracts\FilamentUser;
-use Filament\Panel;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Model;
 
-class User extends Authenticatable implements FilamentUser, HasName
+class User extends Model
 {
-    use Notifiable;
     use SoftDeletes;
 
     protected $table = 'users';
@@ -34,20 +29,4 @@ class User extends Authenticatable implements FilamentUser, HasName
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
-
-    public function canAccessPanel(Panel $panel): bool
-    {
-        return $this->is_active && $this->role === 'super_admin';
-    }
-
-    public function getFilamentName(): string
-    {
-        $name = trim((string) ($this->full_name ?? ''));
-
-        if ($name !== '') {
-            return $name;
-        }
-
-        return trim((string) $this->email);
-    }
 }

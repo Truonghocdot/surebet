@@ -16,7 +16,6 @@ Tài liệu hướng dẫn triển khai ứng dụng trực tiếp bằng tài k
 
 - **Frontend (Next.js)**: `tykfk.site` -> `127.0.0.1:3000`
 - **Backend API & WebSocket (Go)**: `api.tykfk.site` -> `127.0.0.1:8080`
-- **Admin Panel (Laravel)**: `admin.tykfk.site` -> `127.0.0.1:9500`
 - **Collector (Node.js/Playwright)**: Chạy 8xbet & jun88-cmd ngầm qua Supervisor
 - **Reverse Proxy**: Nginx
 - **Process Manager**: Supervisor
@@ -311,7 +310,7 @@ COLLECTOR_PROXYXOAY_WHITELIST=
 recycle hiện dùng `EIGHTXBET_HARD_RECYCLE_MS=1800000` và code không chấp nhận
 chu kỳ ngắn hơn 30 phút.
 
-### 7.4. Cấu hình Laravel Admin (`laravel/.env`)
+### 7.4. Cấu hình Laravel CLI (`laravel/.env`)
 
 ```bash
 nano /var/www/html/surebet/laravel/.env
@@ -322,15 +321,7 @@ Nội dung mẫu:
 ```dotenv
 APP_NAME="Surebet Data Tools"
 APP_ENV=production
-APP_KEY=base64:thay-key-laravel-o-day
-APP_DEBUG=false
-APP_URL=https://admin.tykfk.site
 APP_TIMEZONE=Asia/Ho_Chi_Minh
-APP_LOCALE=vi
-APP_FALLBACK_LOCALE=en
-
-SESSION_DRIVER=file
-CACHE_STORE=file
 
 DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
@@ -418,12 +409,11 @@ npm ci
 npx playwright install --with-deps chromium
 ```
 
-### 9.4. Cài đặt Laravel Admin Dependencies, Migration & Seed
+### 9.4. Cài đặt Laravel CLI Dependencies, Migration & Seed
 
 ```bash
 cd /var/www/html/surebet/laravel
 COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-php artisan key:generate --force
 php artisan migrate --force
 php artisan db:seed --force
 ```
@@ -442,7 +432,7 @@ Nội dung cấu hình:
 
 ```ini
 [group:surebet]
-programs=surebet-backend-api,surebet-frontend,surebet-laravel-admin,surebet-collector-8xbet,surebet-collector-jun88-cmd
+programs=surebet-backend-api,surebet-frontend,surebet-collector-8xbet,surebet-collector-jun88-cmd
 
 [program:surebet-backend-api]
 directory=/var/www/html/surebet/backend
@@ -469,19 +459,6 @@ killasgroup=true
 stopsignal=TERM
 stopwaitsecs=20
 stdout_logfile=/var/log/surebet/frontend.log
-redirect_stderr=true
-
-[program:surebet-laravel-admin]
-directory=/var/www/html/surebet/laravel
-command=/usr/bin/php artisan serve --host=127.0.0.1 --port=9500
-autostart=true
-autorestart=true
-startsecs=5
-stopasgroup=true
-killasgroup=true
-stopsignal=TERM
-stopwaitsecs=20
-stdout_logfile=/var/log/surebet/laravel-admin.log
 redirect_stderr=true
 
 [program:surebet-collector-8xbet]
@@ -515,6 +492,16 @@ redirect_stderr=true
 
 Lưu ý:
 
+- Không còn `surebet-laravel-admin`; Laravel chỉ chạy CLI khi migrate, seed hoặc retention.
+- Trên VPS cũ, dừng process, xóa block `[program:surebet-laravel-admin]` khỏi file Supervisor và bỏ tên nó khỏi `programs=`:
+
+```bash
+supervisorctl stop surebet:surebet-laravel-admin || true
+supervisorctl reread
+supervisorctl update
+```
+
+- Xóa server block `admin.tykfk.site` khỏi Nginx rồi chạy `nginx -t && systemctl reload nginx`.
 - Không còn `surebet-telegram-worker` trong group Supervisor.
 - Nếu VPS cũ từng có worker Telegram, hãy xóa hẳn block cũ của nó khỏi `/etc/supervisor/conf.d/surebet.conf` trước khi `reread/update`.
 
@@ -583,21 +570,6 @@ server {
     }
 }
 
-server {
-    listen 80;
-    listen [::]:80;
-    server_name admin.tykfk.site;
-
-    location / {
-        proxy_pass http://127.0.0.1:9500;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-}
 ```
 
 ### Bước 11.2: Kích hoạt Site Nginx & Reload Service
@@ -613,7 +585,7 @@ systemctl reload nginx
 
 ```bash
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d tykfk.site -d api.tykfk.site -d admin.tykfk.site
+certbot --nginx -d tykfk.site -d api.tykfk.site
 ```
 
 *(Certbot sẽ tự tạo chứng chỉ SSL và tự động cập nhật file `/etc/nginx/sites-available/surebet.conf` để chuyển hướng HTTP -> HTTPS 443).*
@@ -677,11 +649,9 @@ npm ci
 cd /var/www/html/surebet/laravel
 COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 php artisan migrate --force
-php artisan optimize:clear
 
 supervisorctl restart surebet:surebet-backend-api
 supervisorctl restart surebet:surebet-frontend
-supervisorctl restart surebet:surebet-laravel-admin
 supervisorctl restart surebet:surebet-collector-8xbet
 supervisorctl restart surebet:surebet-collector-jun88-cmd
 supervisorctl status
@@ -720,15 +690,13 @@ tail -n 100 /var/log/surebet/collector-8xbet.log
 tail -n 100 /var/log/surebet/collector-jun88-cmd.log
 ```
 
-### 13.6. Chỉ update Laravel Admin
+### 13.6. Chạy Laravel CLI khi cần migrate/seed/retention
 
 ```bash
 cd /var/www/html/surebet/laravel
 COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 php artisan migrate --force
-php artisan optimize:clear
-supervisorctl restart surebet:surebet-laravel-admin
-tail -n 100 /var/log/surebet/laravel-admin.log
+php artisan db:seed --force
 ```
 
 ### 13.7. Khi chỉ sửa file `.env`
@@ -736,7 +704,6 @@ tail -n 100 /var/log/surebet/laravel-admin.log
 ```bash
 supervisorctl restart surebet:surebet-backend-api
 supervisorctl restart surebet:surebet-frontend
-supervisorctl restart surebet:surebet-laravel-admin
 supervisorctl restart surebet:surebet-collector-8xbet
 supervisorctl restart surebet:surebet-collector-jun88-cmd
 ```
@@ -753,9 +720,6 @@ tail -f /var/log/surebet/backend-api.log
 
 # Xem log Frontend Next.js
 tail -f /var/log/surebet/frontend.log
-
-# Xem log Laravel Admin
-tail -f /var/log/surebet/laravel-admin.log
 
 # Xem log 8xbet Collector
 tail -f /var/log/surebet/collector-8xbet.log
@@ -779,8 +743,6 @@ curl -I http://127.0.0.1:8080/healthz
 # Kiểm tra Frontend Next.js
 curl -I http://127.0.0.1:3000
 
-# Kiểm tra Laravel Admin
-curl -I http://127.0.0.1:9500
 ```
 
 Nếu muốn kiểm tra redirect public sau Nginx:
@@ -788,5 +750,4 @@ Nếu muốn kiểm tra redirect public sau Nginx:
 ```bash
 curl -I https://tykfk.site/
 curl -I https://api.tykfk.site/healthz
-curl -I https://admin.tykfk.site/
 ```

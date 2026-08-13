@@ -1,21 +1,20 @@
 # Surebet Laravel Data Tools
 
-Service Laravel nay dung de quan ly schema va du lieu PostgreSQL bang cac lenh `php artisan`.
-No dung chung database voi backend Go, khong thay the backend runtime.
+Service Laravel nay chi la CLI quan ly schema va du lieu PostgreSQL bang cac lenh `php artisan`.
+No khong chay thuong truc va khong cung cap web admin.
 
 ## Lenh hay dung
 
 Chay tu thu muc goc repo:
 
 ```bash
-docker compose --profile tools run --rm laravel-data php artisan list
-docker compose --profile tools run --rm laravel-data php artisan migrate
-docker compose --profile tools run --rm laravel-data php artisan db:seed
-docker compose --profile tools run --rm laravel-data php artisan migrate --seed
-docker compose --profile tools run --rm laravel-data php artisan odds:stats
-docker compose --profile tools run --rm laravel-data php artisan odds:retention --dry-run
-docker compose --profile tools run --rm laravel-data php artisan odds:retention --vacuum
-docker compose --profile tools run --rm laravel-data php artisan tinker
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan list
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan migrate
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan db:seed
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan migrate --seed
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan odds:stats
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan odds:retention --dry-run
+docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan odds:retention --vacuum
 ```
 
 ## Chinh sach don odds
@@ -35,7 +34,7 @@ Hay chay `--dry-run` truoc khi xoa that.
   - email: `operator@surebet.local`
   - password: `matkhau123`
   - role: `operator`
-- Filament super admin:
+- Frontend super admin:
   - email: `superadmin@surebet.local`
   - password: `superadmin123`
   - role: `super_admin`
@@ -52,12 +51,3 @@ Co the doi qua `.env` bang:
 - `SEED_SUPER_ADMIN_PASSWORD`
 - `SEED_SUPER_ADMIN_FULL_NAME`
 - `SEED_SUPER_ADMIN_ROLE`
-
-## Filament admin
-
-Sau khi migrate va seed xong, panel quan tri co san tai:
-
-- `/admin`
-
-Tai day chi tai khoan `super_admin` moi vao duoc.
-Tai khoan frontend role `operator` se dang nhap duoc vao frontend/backend API, nhung se khong vao duoc Laravel Filament.

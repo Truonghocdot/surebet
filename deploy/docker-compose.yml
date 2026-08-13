@@ -51,10 +51,10 @@ services:
     ports:
       - "8080:8080"
 
-  laravel-data:
+  laravel-cli:
     build:
       context: ../laravel
-    container_name: surebet-laravel-data
+    container_name: surebet-laravel-cli
     profiles:
       - tools
     environment:
