@@ -31,12 +31,12 @@ export function RealtimeNotificationCenter() {
   );
   const dispatchedBrowserNotificationIDs = useRef(new Set<string>());
 
-  const openOpportunities = useCallback((notificationID: string) => {
+  const openDashboard = useCallback((notificationID: string) => {
     window.focus();
-    if (window.location.pathname !== "/opportunities") {
-      window.history.pushState(null, "", "/opportunities");
+    if (window.location.pathname !== "/dashboard") {
+      window.history.pushState(null, "", "/dashboard");
     }
-    startTransition(() => setActiveHref("/opportunities"));
+    startTransition(() => setActiveHref("/dashboard"));
     dismissNotification(notificationID);
   }, [dismissNotification, setActiveHref]);
 
@@ -64,14 +64,14 @@ export function RealtimeNotificationCenter() {
     }
 
     for (const notification of freshNotifications) {
-      showBrowserNotification(notification, () => openOpportunities(notification.id));
+      showBrowserNotification(notification, () => openDashboard(notification.id));
     }
   }, [
     browserNotificationPermission,
     browserNotificationsEnabled,
     browserNotificationsInitialized,
     notifications,
-    openOpportunities
+    openDashboard
   ]);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function RealtimeNotificationCenter() {
           key={notification.id}
           notification={notification}
           onDismiss={() => dismissNotification(notification.id)}
-          onOpen={() => openOpportunities(notification.id)}
+          onOpen={() => openDashboard(notification.id)}
         />
       ))}
     </div>

@@ -92,6 +92,7 @@ export type FixtureMarketSnapshot = {
 export type Jun88LobbyAccess = {
   lobbyId: Exclude<LobbyCode, "default">;
   launchURL: string;
+  loginURL?: string;
   expectedOriginPatterns?: string[];
 };
 

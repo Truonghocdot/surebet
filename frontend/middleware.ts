@@ -18,6 +18,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(buildPublicURL(request, "/dashboard"));
   }
 
+  if (
+    hasSession &&
+    (pathname === "/opportunities" || pathname.startsWith("/opportunities/") ||
+      pathname === "/matches" || pathname.startsWith("/matches/"))
+  ) {
+    return NextResponse.redirect(buildPublicURL(request, "/dashboard"));
+  }
+
   if (!publicPaths.has(pathname) && !hasSession) {
     return NextResponse.redirect(buildPublicURL(request, "/login"));
   }

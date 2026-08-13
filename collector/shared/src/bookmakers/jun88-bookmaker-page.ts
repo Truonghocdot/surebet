@@ -1,7 +1,8 @@
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { formatError, writeContextDebugArtifacts } from "../core/debug.js";
-import { envInt } from "../core/env.js";
+import { envBool, envInt, envString } from "../core/env.js";
+import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
 import type { Jun88LobbyAccess } from "../contracts.js";
 
 export async function withJun88BookmakerPage<T>(
@@ -21,6 +22,8 @@ export async function withJun88BookmakerPage<T>(
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
       }
     });
+    await installCollectorResourceBlocking(context);
+    await ensureJun88Login(context, lobby);
 
     const page = await openLobby(context, lobby, targetURL);
     try {
@@ -31,12 +34,138 @@ export async function withJun88BookmakerPage<T>(
     }
   } catch (error) {
     if (context) {
+      for (const currentPage of context.pages()) {
+        await currentPage.locator('input[type="password"]').fill("").catch(() => undefined);
+      }
       await writeContextDebugArtifacts(context, `${lobby.lobbyId}-open-failed`);
     }
 
     throw new Error(`[${lobby.lobbyId}] open bookmaker page failed: ${formatError(error)}`);
   } finally {
     await browser.close();
+  }
+}
+
+async function ensureJun88Login(context: BrowserContext, lobby: Jun88LobbyAccess) {
+  if (!envBool("JUN88_LOGIN_ENABLED", false)) {
+    return;
+  }
+
+  const username = envString("JUN88_LOGIN_USERNAME", "").trim();
+  const password = envString("JUN88_LOGIN_PASSWORD", "").trim();
+  if (!username || !password) {
+    throw new Error(
+      "JUN88_LOGIN_ENABLED=true requires JUN88_LOGIN_USERNAME and JUN88_LOGIN_PASSWORD"
+    );
+  }
+
+  const loginURL = envString(
+    "JUN88_LOGIN_URL",
+    lobby.loginURL || "https://www.jun88b5.net/vi-vn/home"
+  ).trim();
+  const page = await context.newPage();
+  const timeoutMs = Math.max(envInt("COLLECTOR_LOGIN_TIMEOUT_MS", 20_000), 5_000);
+
+  try {
+    await page.goto(loginURL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await waitForStablePage(page);
+    await page.waitForTimeout(
+      Math.min(Math.max(envInt("COLLECTOR_LOGIN_SETTLE_MS", 1_000), 250), 5_000)
+    );
+
+    const passwordField = await firstVisibleLocator(
+      page.locator('input[type="password"]')
+    );
+    if (!passwordField) {
+      const entryButton = await firstVisibleLocator(
+        page.getByRole("button", { name: /đăng nhập|login/i })
+      );
+      if (!entryButton) {
+        throw new Error("Jun88 login button was not found on the home page");
+      }
+      await entryButton.click();
+    }
+
+    const resolvedPasswordField =
+      passwordField ||
+      (await firstVisibleLocator(page.locator('input[type="password"]')));
+    if (!resolvedPasswordField) {
+      throw new Error("Jun88 password field was not rendered after opening login form");
+    }
+
+    const usernameField = await firstVisibleLocator(
+      page.locator(
+        'form input[autocomplete="username"], form input[name*="user" i], form input[name*="account" i], form input[type="text"], form input[type="tel"]'
+      )
+    ) || await firstVisibleLocator(
+      page.locator(
+        'input[autocomplete="username"], input[name*="user" i], input[name*="account" i], input[type="text"], input[type="tel"]'
+      )
+    );
+    if (!usernameField) {
+      throw new Error("Jun88 username field was not rendered after opening login form");
+    }
+
+    await usernameField.fill(username);
+    await resolvedPasswordField.fill(password);
+
+    const submitButton = await firstVisibleLocator(
+      page.getByRole("button", { name: /đăng nhập|login/i }).last()
+    );
+    if (!submitButton) {
+      throw new Error("Jun88 login submit button was not found");
+    }
+    await submitButton.click();
+    await waitForLoginFormToClose(page, resolvedPasswordField, timeoutMs);
+
+    const formStillVisible = await resolvedPasswordField.isVisible().catch(() => false);
+    if (formStillVisible) {
+      const errorText = await readLoginError(page);
+      throw new Error(`Jun88 login did not complete${errorText ? `: ${errorText}` : ""}`);
+    }
+
+    console.log(`[jun88-auth] login succeeded path=${safePathname(page.url())}`);
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
+
+async function waitForLoginFormToClose(
+  page: Page,
+  passwordField: Locator,
+  timeoutMs: number
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await passwordField.isVisible().catch(() => false))) {
+      return;
+    }
+    await page.waitForTimeout(200);
+  }
+}
+
+async function firstVisibleLocator(locator: Locator): Promise<Locator | null> {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function readLoginError(page: Page) {
+  const errorLocator = page.locator('[role="alert"], .error, .err, .text-danger');
+  const texts = await errorLocator.allTextContents().catch(() => []);
+  return texts.map((text) => text.trim()).filter(Boolean).slice(0, 1).join(" ").slice(0, 240);
+}
+
+function safePathname(url: string) {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
   }
 }
 

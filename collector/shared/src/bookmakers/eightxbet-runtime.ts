@@ -7,7 +7,7 @@ import type {
 } from "../contracts.js";
 import { collectorLaunchOptions } from "../core/browser.js";
 import { writeDebugArtifacts } from "../core/debug.js";
-import { envInt } from "../core/env.js";
+import { envBool, envInt, envString } from "../core/env.js";
 import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
 import {
   EightXBetNetworkFeed,
@@ -306,17 +306,20 @@ export class EightXBetRuntime {
     await installEightXBetSocketSubscriptionBridge(context);
 
     const page = await context.newPage();
-    this.detachNetworkFeed = this.networkFeed.attach(page);
-    this.detachTrafficRecorder = this.trafficRecorder.attach(page);
     this.context = context;
     this.page = page;
     this.targetURL = targetURL;
 
     try {
+      await ensureEightXBetLogin(page);
+      this.detachNetworkFeed = this.networkFeed.attach(page);
+      this.detachTrafficRecorder = this.trafficRecorder.attach(page);
       await waitForEightXBetReady(page, targetURL, this.networkFeed);
       await this.captureOddsFormatLabel(page);
       return page;
     } catch (error) {
+      await page.getByTestId("login-field-password").fill("").catch(() => undefined);
+      await page.getByTestId("login-field-account").fill("").catch(() => undefined);
       await writeDebugArtifacts(page, `${this.collectorId}-odds-format-gate-failed`);
       await this.resetPage(true);
       throw error;
@@ -449,6 +452,89 @@ export class EightXBetRuntime {
         `decoded=${coverage.decodedFixtures} with_quotes=${coverage.fixturesWithQuotes} ` +
         `pending=${coverage.pendingFixtures})`
     );
+  }
+}
+
+async function ensureEightXBetLogin(page: Page) {
+  if (!envBool("EIGHTXBET_LOGIN_ENABLED", false)) {
+    return;
+  }
+
+  const username = envString("EIGHTXBET_LOGIN_USERNAME", "").trim();
+  const password = envString("EIGHTXBET_LOGIN_PASSWORD", "").trim();
+  if (!username || !password) {
+    throw new Error(
+      "EIGHTXBET_LOGIN_ENABLED=true requires EIGHTXBET_LOGIN_USERNAME and EIGHTXBET_LOGIN_PASSWORD"
+    );
+  }
+
+  const loginURL = envString("EIGHTXBET_LOGIN_URL", "https://8x4455.com/login").trim();
+  const timeoutMs = Math.max(envInt("COLLECTOR_LOGIN_TIMEOUT_MS", 20_000), 5_000);
+  await page.goto(loginURL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await page.waitForTimeout(Math.min(Math.max(envInt("COLLECTOR_LOGIN_SETTLE_MS", 1_000), 250), 5_000));
+
+  const accountField = page.getByTestId("login-field-account");
+  const passwordField = page.getByTestId("login-field-password");
+  if (!(await passwordField.isVisible().catch(() => false))) {
+    const entryButton = page
+      .getByTestId("submit-btn")
+      .filter({ hasText: /đăng nhập|login/i })
+      .first();
+    await entryButton.waitFor({ state: "visible", timeout: timeoutMs });
+    await entryButton.click();
+  }
+
+  await accountField.waitFor({ state: "visible", timeout: timeoutMs });
+  await passwordField.waitFor({ state: "visible", timeout: timeoutMs });
+  await accountField.fill(username);
+  await passwordField.fill(password);
+
+  const submitButton = page
+    .getByTestId("submit-btn")
+    .filter({ hasText: /đăng nhập|login/i })
+    .last();
+  await submitButton.waitFor({ state: "visible", timeout: timeoutMs });
+  await submitButton.click();
+  await waitForLoginFormToClose(page, passwordField, timeoutMs);
+
+  if (await passwordField.isVisible().catch(() => false)) {
+    const errorText = await readEightXBetLoginError(page);
+    throw new Error(`8xbet login did not complete${errorText ? `: ${errorText}` : ""}`);
+  }
+
+  console.log(`[8xbet-auth] login succeeded path=${safeEightXBetPathname(page.url())}`);
+}
+
+async function waitForLoginFormToClose(
+  page: Page,
+  passwordField: ReturnType<Page["getByTestId"]>,
+  timeoutMs: number
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await passwordField.isVisible().catch(() => false))) {
+      return;
+    }
+    if (!/\/login(?:[/?#]|$)/i.test(page.url())) {
+      return;
+    }
+    await page.waitForTimeout(200);
+  }
+}
+
+async function readEightXBetLoginError(page: Page) {
+  const texts = await page
+    .locator('[role="alert"], [data-testid*="error"], .text-error')
+    .allTextContents()
+    .catch(() => []);
+  return texts.map((text) => text.trim()).filter(Boolean).slice(0, 1).join(" ").slice(0, 240);
+}
+
+function safeEightXBetPathname(url: string) {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
   }
 }
 

@@ -3,8 +3,6 @@ import {
   Activity,
   BellRing,
   Cable,
-  ArrowLeftRight,
-  Network,
   type LucideIcon
 } from "lucide-react";
 import type { SessionUser } from "@/features/auth/store/session-store";
@@ -23,16 +21,6 @@ export function navigationItems(user: Pick<SessionUser, "role">): NavItem[] {
       href: "/dashboard",
       icon: Activity
     },
-    {
-      label: "Cơ hội",
-      href: "/opportunities",
-      icon: ArrowLeftRight
-    },
-    {
-      label: "Trận khớp",
-      href: "/matches",
-      icon: Network
-    }
   ];
 
   if (user.role === "super_admin") {
