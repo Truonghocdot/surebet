@@ -46,11 +46,30 @@ export const dashboardOpportunitySchema = opportunitySchema.extend({
   )
 });
 
+export const fixtureMatchingMonitorSchema = z.object({
+  state: z.enum(["matching", "waiting", "source_missing"]),
+  matched_fixtures: z.number().int().nonnegative(),
+  checked_at: z.string(),
+  sources: z.array(
+    z.object({
+      id: z.enum(["jun88/cmd", "8xbet/default"]),
+      bookmaker_id: z.string(),
+      lobby_id: z.string(),
+      label: z.string(),
+      active_fixtures: z.number().int().nonnegative(),
+      latest_observed_at: z.string().optional(),
+      has_data: z.boolean()
+    })
+  ).length(2)
+});
+
 export const dashboardSnapshotSchema = z.object({
   stats: z.array(statCardSchema),
+  matching: fixtureMatchingMonitorSchema,
   opportunities: z.array(dashboardOpportunitySchema)
 });
 
 export type DashboardSnapshot = z.infer<typeof dashboardSnapshotSchema>;
 export type DashboardOpportunity = z.infer<typeof dashboardOpportunitySchema>;
+export type FixtureMatchingMonitor = z.infer<typeof fixtureMatchingMonitorSchema>;
 export type Opportunity = z.infer<typeof opportunitySchema>;

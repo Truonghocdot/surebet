@@ -74,6 +74,8 @@ export const config = {
     "/",
     "/login",
     "/dashboard/:path*",
+    "/matching/:path*",
+    "/auto-bet/:path*",
     "/matches/:path*",
     "/opportunities/:path*",
     "/admin/:path*",

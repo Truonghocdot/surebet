@@ -1,7 +1,9 @@
 import type { BrowserContext } from "playwright";
 import { envBool, envString } from "./env.js";
 
-const DEFAULT_BLOCKED_RESOURCE_TYPES = "image,media,font,stylesheet";
+// Stylesheets are required by bookmaker login forms and their visibility logic.
+// Keep them available even when an older environment still lists `stylesheet`.
+const DEFAULT_BLOCKED_RESOURCE_TYPES = "image,media,font";
 
 export async function installCollectorResourceBlocking(context: BrowserContext) {
   if (!envBool("COLLECTOR_BLOCK_HEAVY_RESOURCES", true)) {
@@ -14,6 +16,8 @@ export async function installCollectorResourceBlocking(context: BrowserContext) 
       .map((item) => item.trim())
       .filter(Boolean)
   );
+
+  blockedTypes.delete("stylesheet");
 
   if (blockedTypes.size === 0) {
     return;

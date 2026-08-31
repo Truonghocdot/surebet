@@ -100,6 +100,11 @@ apt install -y nodejs
 # Kiểm tra phiên bản
 node -v
 npm -v
+
+# Kích hoạt pnpm đúng phiên bản workspace
+corepack enable
+corepack prepare pnpm@11.21.0 --activate
+pnpm -v
 ```
 
 ---
@@ -181,16 +186,10 @@ REDIS_PASSWORD=
 
 ODDS_STATE_PROTOCOL=v1
 
-EIGHTXBET_BASE_URL=https://8x4455.com
-EIGHTXBET_INPLAY_PAGE_URL=https://8x4455.com/sportEvents/inplay/football
+EIGHTXBET_BASE_URL=https://8x2000.com
+EIGHTXBET_INPLAY_PAGE_URL=https://8x2000.com/sportEvents/inplay/football
 JUN88_BASE_URL=https://www.jun888e.ren
 JUN88_CMD_PAGE_URL=https://www.jun888e.ren/vi-vn/sports-landing/cmd
-
-COLLECTOR_PROXY_MODE=off
-COLLECTOR_PROXY_PROTOCOL=http
-COLLECTOR_PROXY_SERVER=
-COLLECTOR_PROXY_BYPASS=
-COLLECTOR_PROXYXOAY_KEY=
 
 SUREBET_VERIFICATION_MODE=auto
 
@@ -202,7 +201,8 @@ SUREBET_SHADOW_MIN_SAMPLES=20
 SUREBET_SHADOW_MIN_SUCCESS_RATE=0.80
 SUREBET_SHADOW_MAX_P95_LATENCY=1500ms
 
-AUTO_BET=false
+AUTO_BET_MODE=off
+AUTO_BET_TOTAL_STAKE_VND=100000
 MANUAL_CONFIRMATION=true
 RISK_VALIDATION=true
 MAX_STAKE_CHECK=true
@@ -239,10 +239,10 @@ NODE_ENV=production
 BACKEND_API_URL=http://127.0.0.1:8080
 PLAYWRIGHT_BROWSERS_PATH=/var/lib/surebet/playwright
 
-EIGHTXBET_BASE_URL=https://8x4455.com
-EIGHTXBET_INPLAY_PAGE_URL=https://8x4455.com/sportEvents/inplay/football
+EIGHTXBET_BASE_URL=https://8x2000.com
+EIGHTXBET_INPLAY_PAGE_URL=https://8x2000.com/sportEvents/inplay/football
 EIGHTXBET_LOGIN_ENABLED=false
-EIGHTXBET_LOGIN_URL=https://8x4455.com/login
+EIGHTXBET_LOGIN_URL=https://8x2000.com/login
 EIGHTXBET_LOGIN_USERNAME=
 EIGHTXBET_LOGIN_PASSWORD=
 JUN88_BASE_URL=https://www.jun888e.ren
@@ -285,6 +285,9 @@ CMD_TODAY_POLL_MS=2000
 CMD_OBSERVER_HEALTH_MS=2000
 CMD_OBSERVATION_SETTLE_MS=350
 
+AUTO_BET_MODE=off
+AUTO_BET_TOTAL_STAKE_VND=100000
+
 COLLECTOR_HEADLESS=true
 COLLECTOR_SLOWMO=0
 COLLECTOR_BLOCK_HEAVY_RESOURCES=true
@@ -293,17 +296,6 @@ COLLECTOR_SINGLE_PROCESS=false
 COLLECTOR_DEBUG_ARTIFACTS=true
 COLLECTOR_DEBUG_THROTTLE_MS=60000
 
-COLLECTOR_PROXY_MODE=off
-COLLECTOR_PROXY_PROTOCOL=http
-COLLECTOR_PROXY_BYPASS=
-COLLECTOR_PROXY_CACHE_ENABLED=true
-COLLECTOR_PROXY_CACHE_FILE=/var/lib/surebet/proxyxoay-cache.json
-COLLECTOR_PROXY_TIMEOUT_MS=10000
-COLLECTOR_PROXY_SERVER=
-COLLECTOR_PROXYXOAY_KEY=
-COLLECTOR_PROXYXOAY_NHAMANG=random
-COLLECTOR_PROXYXOAY_TINHTHANH=0
-COLLECTOR_PROXYXOAY_WHITELIST=
 ```
 
 `EIGHTXBET_PAGE_REFRESH_MS` là biến cũ. Xóa biến này khỏi `collector/.env`; hard
@@ -382,7 +374,7 @@ redis-cli ping
 
 ## 9. Build & Cài đặt Dependencies cho các Service (BẮT BUỘC ĐỂ TRÁNH LỖI SPAWN ERROR)
 
-> ⚠️ **LƯU Ý QUAN TRỌNG:** Nếu không chạy `npm ci` và `npm run build` cho `frontend` cũng như `collector`, Supervisor sẽ bị lỗi `spawn error` khi nạp service!
+> ⚠️ **LƯU Ý QUAN TRỌNG:** Nếu không cài dependency và build cho `frontend` cũng như `collector`, Supervisor sẽ bị lỗi `spawn error` khi nạp service. Collector dùng pnpm theo workspace manifest.
 
 ### 9.1. Build Backend Go
 
@@ -405,8 +397,8 @@ npm run build
 
 ```bash
 cd /var/www/html/surebet/collector
-npm ci
-npx playwright install --with-deps chromium
+pnpm install --frozen-lockfile
+pnpm exec playwright install --with-deps chromium
 ```
 
 ### 9.4. Cài đặt Laravel CLI Dependencies, Migration & Seed
@@ -463,7 +455,7 @@ redirect_stderr=true
 
 [program:surebet-collector-8xbet]
 directory=/var/www/html/surebet/collector
-command=/usr/bin/npm run run:8xbet-worker
+command=/usr/bin/pnpm run run:8xbet-worker
 environment=PATH="/usr/local/bin:/usr/bin:/bin",NODE_ENV="production"
 autostart=true
 autorestart=true
@@ -477,7 +469,7 @@ redirect_stderr=true
 
 [program:surebet-collector-jun88-cmd]
 directory=/var/www/html/surebet/collector
-command=/usr/bin/npm run run:jun88-cmd-worker
+command=/usr/bin/pnpm run run:jun88-cmd-worker
 environment=PATH="/usr/local/bin:/usr/bin:/bin",NODE_ENV="production"
 autostart=true
 autorestart=true
@@ -644,7 +636,7 @@ npm ci
 npm run build
 
 cd /var/www/html/surebet/collector
-npm ci
+pnpm install --frozen-lockfile
 
 cd /var/www/html/surebet/laravel
 COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
@@ -683,7 +675,7 @@ tail -n 100 /var/log/surebet/frontend.log
 
 ```bash
 cd /var/www/html/surebet/collector
-npm ci
+pnpm install --frozen-lockfile
 supervisorctl restart surebet:surebet-collector-8xbet
 supervisorctl restart surebet:surebet-collector-jun88-cmd
 tail -n 100 /var/log/surebet/collector-8xbet.log

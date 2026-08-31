@@ -373,43 +373,44 @@ func buildCoherentFixtureQuotes(event dto.CollectorStreamFixtureMarketSnapshot) 
 		for _, outcome := range market.Outcomes {
 			side := strings.ToLower(strings.TrimSpace(outcome.Side))
 			quotes = append(quotes, models.OddsQuote{
-				ID:               quoteID(event.Source.BookmakerID, event.Source.LobbyID, event.Fixture.FixtureID, marketID, outcome.OutcomeID),
-				BookmakerID:      event.Source.BookmakerID,
-				LobbyID:          event.Source.LobbyID,
-				FixtureID:        event.Fixture.FixtureID,
-				FixtureMarker:    fixtureMarker,
-				HomeTeam:         strings.TrimSpace(event.Fixture.HomeTeam),
-				AwayTeam:         strings.TrimSpace(event.Fixture.AwayTeam),
-				LeagueName:       strings.TrimSpace(event.Fixture.LeagueName),
-				Sport:            normalizeCollectorSport(event.Source, event.Fixture.Sport),
-				MarketID:         marketID,
-				MarketMarker:     slugText(marketID),
-				MarketName:       marketID,
-				OutcomeID:        outcome.OutcomeID,
-				OutcomeMarker:    slugText(side + " " + line),
-				OutcomeName:      strings.TrimSpace(outcome.OutcomeName),
-				Odds:             outcome.Odds,
-				AvailableStake:   outcome.AvailableStake,
-				Suspended:        !marketOpen || outcome.Suspended,
-				MatchState:       normalizeMatchState(event.Fixture.MatchState),
-				EventStartAt:     parseCollectorEventStartAt(event.Fixture.EventStartAt, observedAt),
-				CollectedAt:      observedAt,
-				LastObservedAt:   observedAt,
-				ChangedAt:        observedAt,
-				ProtocolVersion:  2,
-				BatchID:          event.BatchID,
-				BatchFingerprint: event.Fingerprint,
-				BatchSeq:         event.Seq,
-				BatchSessionID:   event.SessionID,
-				SourceEventID:    event.SourceEventID,
-				MarketObservedAt: observedAt,
-				PriceChangedAt:   observedAt,
-				CoherenceStatus:  "coherent",
-				MarketPeriod:     period,
-				MarketLine:       line,
-				MarketSide:       side,
-				RawOdds:          outcome.RawOdds,
-				OddsFormat:       strings.TrimSpace(outcome.OddsFormat),
+				ID:                quoteID(event.Source.BookmakerID, event.Source.LobbyID, event.Fixture.FixtureID, marketID, outcome.OutcomeID),
+				BookmakerID:       event.Source.BookmakerID,
+				LobbyID:           event.Source.LobbyID,
+				FixtureID:         event.Fixture.FixtureID,
+				FixtureMarker:     fixtureMarker,
+				HomeTeam:          strings.TrimSpace(event.Fixture.HomeTeam),
+				AwayTeam:          strings.TrimSpace(event.Fixture.AwayTeam),
+				LeagueName:        strings.TrimSpace(event.Fixture.LeagueName),
+				Sport:             normalizeCollectorSport(event.Source, event.Fixture.Sport),
+				MarketID:          marketID,
+				MarketMarker:      slugText(marketID),
+				MarketName:        marketID,
+				OutcomeID:         outcome.OutcomeID,
+				OutcomeMarker:     slugText(side + " " + line),
+				OutcomeName:       strings.TrimSpace(outcome.OutcomeName),
+				Odds:              outcome.Odds,
+				AvailableStake:    outcome.AvailableStake,
+				Suspended:         !marketOpen || outcome.Suspended,
+				MatchState:        normalizeMatchState(event.Fixture.MatchState),
+				EventStartAt:      parseCollectorEventStartAt(event.Fixture.EventStartAt, observedAt),
+				CollectedAt:       observedAt,
+				LastObservedAt:    observedAt,
+				ChangedAt:         observedAt,
+				ProtocolVersion:   2,
+				BatchID:           event.BatchID,
+				BatchFingerprint:  event.Fingerprint,
+				BatchSeq:          event.Seq,
+				BatchSessionID:    event.SessionID,
+				SourceEventID:     event.SourceEventID,
+				ProviderReference: strings.TrimSpace(outcome.ProviderRef),
+				MarketObservedAt:  observedAt,
+				PriceChangedAt:    observedAt,
+				CoherenceStatus:   "coherent",
+				MarketPeriod:      period,
+				MarketLine:        line,
+				MarketSide:        side,
+				RawOdds:           outcome.RawOdds,
+				OddsFormat:        strings.TrimSpace(outcome.OddsFormat),
 			})
 		}
 	}
@@ -437,7 +438,7 @@ func prepareCoherentQuote(current, next models.OddsQuote, found bool) models.Odd
 
 func coherentQuotePriceEqual(left, right models.OddsQuote) bool {
 	return left.Odds == right.Odds && left.RawOdds == right.RawOdds &&
-		left.OddsFormat == right.OddsFormat
+		left.OddsFormat == right.OddsFormat && left.ProviderReference == right.ProviderReference
 }
 
 func coherentQuoteStateEqual(left, right models.OddsQuote) bool {
@@ -448,6 +449,7 @@ func coherentQuoteStateEqual(left, right models.OddsQuote) bool {
 		left.MarketID == right.MarketID && left.MarketPeriod == right.MarketPeriod &&
 		left.MarketLine == right.MarketLine && left.MarketSide == right.MarketSide &&
 		left.OutcomeID == right.OutcomeID && left.OutcomeName == right.OutcomeName &&
+		left.ProviderReference == right.ProviderReference &&
 		left.Odds == right.Odds && left.RawOdds == right.RawOdds && left.OddsFormat == right.OddsFormat &&
 		left.AvailableStake == right.AvailableStake && left.Suspended == right.Suspended &&
 		left.MatchState == right.MatchState && sameOptionalTime(left.EventStartAt, right.EventStartAt)

@@ -40,6 +40,35 @@ func TestNormalizeMalayOdds(t *testing.T) {
 	}
 }
 
+func TestValidateTwoNegativeSurebetOdds(t *testing.T) {
+	if expectedReturn, ok := ValidateTwoNegativeSurebetOdds(-0.92, -0.88); !ok || math.Abs(expectedReturn-0.0557) > 0.00001 {
+		t.Fatalf("expected two negative profitable odds, return=%f ok=%t", expectedReturn, ok)
+	}
+	for _, pair := range [][2]float64{{-0.92, 0.96}, {0.96, 0.96}, {-1, -1}} {
+		if _, ok := ValidateTwoNegativeSurebetOdds(pair[0], pair[1]); ok {
+			t.Fatalf("expected pair to be rejected: %+v", pair)
+		}
+	}
+}
+
+func TestAllocateTwoWayStakeVND(t *testing.T) {
+	junStake, eightXBetStake, ok := AllocateTwoWayStakeVND(100_000, -0.92, -0.88)
+	if !ok || junStake <= 0 || eightXBetStake <= 0 || junStake+eightXBetStake != 100_000 {
+		t.Fatalf("unexpected stake allocation: jun=%d eightxbet=%d ok=%t", junStake, eightXBetStake, ok)
+	}
+	if junStake != 50_585 || eightXBetStake != 49_415 {
+		t.Fatalf("unexpected equal-return allocation: jun=%d eightxbet=%d", junStake, eightXBetStake)
+	}
+	junProfit := float64(junStake)*(1+1/0.92) - 100_000
+	eightXBetProfit := float64(eightXBetStake)*(1+1/0.88) - 100_000
+	if junProfit <= 0 || eightXBetProfit <= 0 {
+		t.Fatalf("realized profits must both be positive: jun=%f eightxbet=%f", junProfit, eightXBetProfit)
+	}
+	if _, _, ok := AllocateTwoWayStakeVND(100_000, -0.92, 0.88); ok {
+		t.Fatal("mixed-sign odds must not receive a stake allocation")
+	}
+}
+
 func TestDetectOverUnderUsesTwoNegativeOddsAndBestQuote(t *testing.T) {
 	now := time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC)
 	detector := newDetector(func() time.Time { return now })

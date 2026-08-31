@@ -1,0 +1,22 @@
+{
+  "capturedAt": "2026-08-14T14:11:33.366Z",
+  "pageUrl": "https://ss159.6688867.com/DomainNames/ss159/home.aspx?date=&sportType=&groupId=&mType=&oddsType=&betType=&choice=&matchID=&period=",
+  "sidebarFrameUrl": "https://ss159.6688867.com/Main/AdminLeftFrame.aspx#userInfoAnchor",
+  "selected": {
+    "frameUrl": "https://ss159.6688867.com/Member/BetOdds/HdpDouble.aspx?v=1&m1=Today&sports=S_&isHighlight=false",
+    "href": "javascript: OddsClick(this, '25212060_Hdp_Home');",
+    "text": "-0.93"
+  },
+  "slip": {
+    "team": "FC Orenburg",
+    "displayedOdds": "-0.93",
+    "canonicalOdds": "-0.93",
+    "oddsType": "MY",
+    "minimumStake": "20",
+    "maximumStake": "229166",
+    "stakeValueAfterSelection": "20",
+    "estimatedPayout": "20",
+    "stakeInputVisible": true,
+    "submitVisible": true
+  }
+}

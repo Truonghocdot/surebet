@@ -45,14 +45,19 @@ type OddsView struct {
 }
 
 type SurebetLegView struct {
-	BookmakerID string    `json:"bookmaker_id"`
-	LobbyID     string    `json:"lobby_id"`
-	FixtureID   string    `json:"fixture_id"`
-	MarketID    string    `json:"market_id"`
-	OutcomeID   string    `json:"outcome_id"`
-	OutcomeName string    `json:"outcome_name"`
-	Odds        float64   `json:"odds"`
-	ObservedAt  time.Time `json:"observed_at,omitempty"`
+	BookmakerID    string    `json:"bookmaker_id"`
+	LobbyID        string    `json:"lobby_id"`
+	FixtureID      string    `json:"fixture_id"`
+	MarketID       string    `json:"market_id"`
+	OutcomeID      string    `json:"outcome_id"`
+	OutcomeName    string    `json:"outcome_name"`
+	Odds           float64   `json:"odds"`
+	RawOdds        float64   `json:"raw_odds,omitempty"`
+	OddsFormat     string    `json:"odds_format,omitempty"`
+	SourceEventID  string    `json:"source_event_id,omitempty"`
+	ProviderRef    string    `json:"provider_ref,omitempty"`
+	AvailableStake float64   `json:"available_stake,omitempty"`
+	ObservedAt     time.Time `json:"observed_at,omitempty"`
 }
 
 type SurebetView struct {

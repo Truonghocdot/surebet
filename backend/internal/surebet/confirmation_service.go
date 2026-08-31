@@ -280,13 +280,20 @@ func (s *ConfirmationService) confirmCandidateUncached(
 	result.ConfirmationLatencyMS = time.Since(startedAt).Milliseconds()
 	result.MatchConfidence = current.MatchConfidence
 	result.MatchAmbiguous = false
-	observedByLeg := make(map[string]time.Time, len(current.Legs))
+	confirmedByLeg := make(map[string]dto.CollectorConfirmQuoteResponse, len(current.Legs))
 	for index, leg := range current.Legs {
-		observedByLeg[confirmationLegIdentity(leg)] = confirmed[index].ObservedAt.UTC()
+		confirmedByLeg[confirmationLegIdentity(leg)] = confirmed[index]
 	}
 	for index := range result.Legs {
-		if observedAt, ok := observedByLeg[confirmationLegIdentity(result.Legs[index])]; ok {
-			result.Legs[index].ObservedAt = observedAt
+		if response, ok := confirmedByLeg[confirmationLegIdentity(result.Legs[index])]; ok {
+			result.Legs[index].ObservedAt = response.ObservedAt.UTC()
+			if response.Selection != nil {
+				result.Legs[index].RawOdds = response.Selection.RawOdds
+				result.Legs[index].OddsFormat = response.Selection.OddsFormat
+				result.Legs[index].SourceEventID = response.Selection.SourceEventID
+				result.Legs[index].ProviderRef = response.Selection.ProviderRef
+				result.Legs[index].AvailableStake = response.Selection.AvailableStake
+			}
 		}
 	}
 	return result, true, nil

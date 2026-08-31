@@ -1,0 +1,1971 @@
+<aside
+  data-testid="live-video-side-bar"
+  data-role="chatroom-sidebar"
+  class="fixed bottom-0 box-border w-93_75 z-cover-page pb-0 overflow-hidden rounded-16 shadow-88 bg-layer-16"
+  style="top: 64px; height: 656px; right: 6px"
+>
+  <div
+    class="relative h-full border-none"
+    data-testid="sport-cart-fixed-column-shell"
+  >
+    <div class="flex h-full flex-col space-y-2">
+      <div class="bg-layer-15 rounded-12 shadow-67 backdrop-blur-sm">
+        <div
+          data-testid="sport-sidebar-scoreboard-basketball"
+          class="flex h-11 items-center px-4 text-text-2 font-semibold not-italic text-base leading-5"
+        >
+          <div class="mr-2 w-40 truncate text-right">Johor State BA U21(W)</div>
+          <div class="flex flex-1 items-center justify-center space-x-2">
+            <div>31</div>
+            <div class="h-0_5 w-2 bg-text-2"></div>
+            <div>23</div>
+          </div>
+          <div class="ml-2 w-40 truncate">Pulau Pinang U21(W)</div>
+        </div>
+        <div
+          data-testid="live-channel-streaming-basketball"
+          class="relative w-full cursor-pointer bg-black-53 flex-none overflow-hidden rounded-12"
+          style="height: 211px"
+        >
+          <div
+            class="absolute left-0 top-0 z-normal h-full w-full cursor-pointer"
+          ></div>
+          <div
+            data-testid="streaming-qualify-overlay"
+            class="absolute left-0 top-0 z-cover h-full w-full bg-black/100"
+            style="background-image: none"
+          >
+            <div
+              class="flex h-full flex-col items-center justify-center space-y-2"
+            >
+              <div class="flex items-center justify-center space-x-2">
+                <picture class=""
+                  ><img
+                    src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/ban_video_play-69adca8a.svg"
+                    class="h-9 w-9"
+                    loading="eager"
+                    draggable="false"
+                /></picture>
+                <p
+                  class="text-button-2 font-normal not-italic text-base leading-5"
+                >
+                  VIP 2 trở lên mới có thể xem
+                </p>
+              </div>
+              <button
+                data-testid="liveChannelStreamingLogin"
+                type="button"
+                class="overflow-hidden text-center relative break-words disabled:cursor-not-allowed hover:bg-button-hover bg-primary min-h-6_5 h-7_5 rounded-15 font-normal not-italic text-sm leading-4_5 text-title-button-special w-auto px-8"
+              >
+                Trung Tâm VIP
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-2">
+          <div
+            data-testid="MainNavV4"
+            id="v4-exhaustive-main-nav"
+            class="flex items-center"
+          >
+            <div class="relative flex max-w-20 flex-1 items-center lg:max-w-25">
+              <div
+                data-testid="main-nav-chatroom"
+                class="ml-4 flex size-7 cursor-pointer items-center justify-center rounded-full bg-theme-bg"
+                title="Trò Chuyện"
+              >
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 28 28"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class=""
+                >
+                  <path
+                    d="M13.9998 7C12.7464 7.00004 11.516 7.33661 10.4371 7.97456C9.35826 8.6125 8.47046 9.52841 7.86645 10.6266C7.26244 11.7249 6.96438 12.9651 7.00339 14.2179C7.04241 15.4707 7.41707 16.69 8.08825 17.7485C8.18625 17.983 8.11625 18.907 8.08825 19.3025C8.08825 19.558 8.05325 19.782 8.05325 19.95C8.05286 20.0637 8.07778 20.1761 8.12621 20.2791C8.17464 20.382 8.24536 20.4728 8.33325 20.545C8.68325 20.8425 9.16975 20.7515 9.95025 20.601C10.3773 20.4949 10.8157 20.4409 11.2558 20.44C12.2107 20.8468 13.2442 21.0361 14.2813 20.9943C15.3184 20.9525 16.3333 20.6805 17.2524 20.1981C18.1714 19.7157 18.9717 19.035 19.5953 18.2052C20.2188 17.3754 20.6501 16.4173 20.8577 15.4003C21.0653 14.3833 21.0442 13.3328 20.7958 12.325C20.5475 11.3172 20.0781 10.3772 19.4216 9.57314C18.7652 8.76909 17.9382 8.12108 17.0004 7.67604C16.0627 7.23101 15.0377 7.00008 13.9998 7ZM15.7498 16.1H12.2498C12.0641 16.1 11.8861 16.0262 11.7548 15.8949C11.6236 15.7637 11.5499 15.5856 11.5499 15.4C11.5499 15.2144 11.6236 15.0363 11.7548 14.9051C11.8861 14.7738 12.0641 14.7 12.2498 14.7H15.7498C15.9354 14.7 16.1134 14.7738 16.2447 14.9051C16.3759 15.0363 16.4496 15.2144 16.4496 15.4C16.4496 15.5856 16.3759 15.7637 16.2447 15.8949C16.1134 16.0262 15.9354 16.1 15.7498 16.1ZM16.4498 13.3H11.5498C11.3641 13.3 11.1861 13.2262 11.0548 13.0949C10.9236 12.9637 10.8499 12.7856 10.8499 12.6C10.8499 12.4144 10.9236 12.2363 11.0548 12.1051C11.1861 11.9738 11.3641 11.9 11.5498 11.9H16.4498C16.6354 11.9 16.8134 11.9738 16.9447 12.1051C17.0759 12.2363 17.1496 12.4144 17.1496 12.6C17.1496 12.7856 17.0759 12.9637 16.9447 13.0949C16.8134 13.2262 16.6354 13.3 16.4498 13.3Z"
+                    class="fill-theme-element"
+                  ></path>
+                </svg>
+              </div>
+            </div>
+            <div
+              data-testid="main-nav-quick-selection"
+              class="ml-4 flex size-7 cursor-pointer items-center justify-center rounded-full"
+              title="Nổi Bật"
+            >
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 28 28"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                class=""
+              >
+                <path
+                  d="M19.2381 11.4723C19.2381 10.8279 18.7264 10.3056 18.0952 10.3056H17.1666C17.1503 8.47729 15.7188 7 13.9539 7C12.1889 7 10.7577 8.4773 10.7411 10.3056H9.90475C9.27365 10.3056 8.76189 10.8279 8.76189 11.4723L8 19.8335C8 20.4774 8.51178 21 9.14286 21H18.8571C19.4883 21 20 20.4774 20 19.8335L19.2381 11.4723ZM12.5714 18.8611L13.3333 16.528H12.1905L15.4286 13.2221L14.4762 15.7503H15.8095L12.5714 18.8611ZM11.3084 10.3056C11.3249 8.80259 12.5021 7.58898 13.9539 7.58898C15.4056 7.58898 16.5829 8.80261 16.5994 10.3056H11.3084Z"
+                  class="fill-icon-3"
+                ></path>
+              </svg>
+            </div>
+            <div
+              data-testid="main-nav-data-line"
+              class="ml-4 flex size-7 cursor-pointer items-center justify-center rounded-full"
+              title="Thống Kê"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                class=""
+              >
+                <path
+                  d="M7 7V0C3.136 0 0 3.136 0 7C0 10.864 3.136 14 7 14C10.864 14 14 10.864 14 7H7Z"
+                  class="fill-icon-3"
+                ></path>
+                <path
+                  d="M8.162 0.098V5.824H13.888C13.398 2.898 11.102 0.602 8.162 0.098Z"
+                  class="fill-icon-3"
+                ></path>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="flex items-center bg-gray-bg space-x-1 rounded-30 p-1 mr-2"
+          >
+            <button
+              data-testid="toolbar-realLive-button"
+              type="button"
+              class="overflow-hidden text-center relative break-words font-semibold not-italic text-base leading-5 disabled:cursor-not-allowed text-text-2 bg-button-6 flex items-center justify-center rounded-full size-7 hover:bg-button-6"
+            >
+              <svg
+                width="14"
+                height="10"
+                viewBox="0 0 14 10"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                class=""
+              >
+                <path
+                  d="M9.32556 7.67232C9.32556 8.78065 8.42798 9.67898 7.33222 9.66732H1.99334C0.897585 9.66732 0 8.78065 0 7.67232V2.32898C0 1.22065 0.897585 0.333984 1.99334 0.333984H7.32057C8.41632 0.333984 9.3139 1.22065 9.3139 2.32898V7.66065L9.32556 7.67232Z"
+                  class="fill-icon-3 bg-gray-bg"
+                ></path>
+                <path
+                  d="M13.9767 7.99898C13.9184 8.54732 13.4521 8.94398 12.9276 8.89732C12.7061 8.89732 12.4963 8.83898 12.3097 8.72232L10.4913 7.27565C10.2814 7.21732 10.3514 6.86732 10.3514 6.66898V2.95898C10.3514 2.83065 10.4097 2.78398 10.5029 2.72565L12.2981 1.29065C12.2981 1.29065 12.2981 1.29065 12.3331 1.29065C12.5196 1.17398 12.741 1.11565 12.9509 1.11565C13.4638 1.05732 13.9301 1.46565 14 2.01398V7.98732L13.9767 7.99898Z"
+                  class="fill-icon-3 bg-gray-bg"
+                ></path>
+              </svg></button
+            ><button
+              data-testid="toolbar-H5-button"
+              type="button"
+              class="flex items-center justify-center rounded-full size-7 hover:bg-gray-bg"
+            >
+              <svg
+                width="14"
+                height="10"
+                viewBox="0 0 14 10"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                class=""
+              >
+                <path
+                  d="M1.17735 4.91898C1.17735 4.27732 0.652789 3.75232 0.011657 3.75232V6.08565C0.652789 6.08565 1.17735 5.56065 1.17735 4.91898Z"
+                  class="fill-icon-3"
+                ></path>
+                <path
+                  d="M12.8343 4.91898C12.8343 5.56065 13.3589 6.08565 14 6.08565V3.75232C13.3589 3.75232 12.8343 4.27732 12.8343 4.91898Z"
+                  class="fill-icon-3"
+                ></path>
+                <path
+                  d="M7.93838 5.58398C7.93838 5.58398 8.00833 5.49065 8.03164 5.44398C8.05495 5.39732 8.07827 5.35065 8.08992 5.30398C8.13655 5.18732 8.17152 5.05898 8.17152 4.91898C8.17152 4.77898 8.13655 4.65065 8.08992 4.53398C8.06661 4.48732 8.05495 4.44065 8.03164 4.39398C8.00833 4.34732 7.97336 4.30065 7.93838 4.25398C7.72856 3.96232 7.40216 3.75232 7.00583 3.75232C6.60949 3.75232 6.29475 3.95065 6.07327 4.25398C6.0383 4.30065 6.00333 4.34732 5.98002 4.39398C5.9567 4.44065 5.93339 4.48732 5.92173 4.53398C5.8751 4.65065 5.84013 4.77898 5.84013 4.91898C5.84013 5.05898 5.8751 5.18732 5.92173 5.30398C5.94505 5.35065 5.9567 5.39732 5.98002 5.44398C6.00333 5.49065 6.0383 5.53732 6.07327 5.58398C6.2831 5.87565 6.60949 6.08565 7.00583 6.08565C7.40216 6.08565 7.7169 5.88732 7.93838 5.58398Z"
+                  class="fill-icon-3"
+                ></path>
+                <path
+                  d="M4.67444 4.91898C4.67444 3.83398 5.42048 2.92398 6.42298 2.66732V0.333984H2.34305C1.0841 0.333984 0.0582848 1.33732 0.011657 2.58565C1.29392 2.58565 2.33139 3.63565 2.33139 4.91898C2.33139 6.20232 1.28226 7.25232 0 7.25232V7.33398C0 8.61732 1.04913 9.66732 2.33139 9.66732H6.41132V7.17065C5.40883 6.91398 4.66278 6.00398 4.66278 4.91898H4.67444Z"
+                  class="fill-icon-3"
+                ></path>
+                <path
+                  d="M11.6686 4.91898C11.6686 3.63565 12.7061 2.58565 13.9883 2.58565C13.9417 1.33732 12.9276 0.333984 11.6686 0.333984H7.58868V2.66732C8.59117 2.92398 9.33722 3.83398 9.33722 4.91898C9.33722 6.00398 8.59117 6.91398 7.58868 7.17065V9.66732H11.6686C12.9509 9.66732 14 8.61732 14 7.33398V7.25232C12.7177 7.25232 11.6686 6.20232 11.6686 4.91898Z"
+                  class="fill-icon-3"
+                ></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div
+        class="h-full overflow-auto overscroll-contain rounded-b-16 rounded-t-12"
+      >
+        <div class="opacity-100 h-full w-full">
+          <div
+            class="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-t-12 border-t-0_25 border-im-container-primary bg-layer-13 rounded-b-16"
+          >
+            <div class="flex-1 absolute inset-0">
+              <div
+                data-testid="undefined-v4-message-list"
+                class="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-none pt-3"
+                style="padding-bottom: 64px"
+              >
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 142px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 200px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 92px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 92px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 92px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 92px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 92px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 46px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 92px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 110px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 205px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 124px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div
+                  class="opacity-0"
+                  style="min-height: 74px; min-width: 363px"
+                >
+                  <div></div>
+                </div>
+                <div class="opacity-100">
+                  <div data-msgid="3351405500204293" class="flex px-2 pb-4">
+                    <div>
+                      <div
+                        class="relative flex items-center justify-center overflow-hidden rounded-full mr-2 h-7_5 w-7_5 min-w-7_5"
+                      >
+                        <div
+                          class="flex items-center align-middle cursor-pointer h-full w-full"
+                        >
+                          <div class="relative h-full w-full">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/10101-e095ea32.png"
+                                class="h-full w-full"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="space-y-2_5">
+                      <div class="flex items-end space-x-1">
+                        <div class="relative flex flex-col">
+                          <div class="mb-2 flex items-center">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/pill-3-06a3d785.png"
+                                alt="vip"
+                                class="mr-1_5 block h-3 w-5_5"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                            <div
+                              class="font-normal not-italic text-xs leading-4 text-primary-text"
+                            >
+                              skyler001
+                            </div>
+                          </div>
+                          <div
+                            class="bg-button-7 inline-block w-fit max-w-68_75 break-all rounded-16 p-2 cursor-pointer"
+                          >
+                            <div
+                              class="font-normal not-italic text-sm leading-4_5 text-text-2 select-none whitespace-pre-line"
+                            >
+                              4 nữa thôi home ko cần nhìu
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="opacity-100">
+                  <div data-msgid="3351405876921605" class="flex px-2 pb-4">
+                    <div>
+                      <div
+                        class="relative flex items-center justify-center overflow-hidden rounded-full mr-2 h-7_5 w-7_5 min-w-7_5"
+                      >
+                        <div
+                          class="flex items-center align-middle cursor-pointer h-full w-full"
+                        >
+                          <div class="relative h-full w-full">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/10121-6816b4a9.png"
+                                class="h-full w-full"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="space-y-2_5">
+                      <div class="flex items-end space-x-1">
+                        <div class="relative flex flex-col">
+                          <div class="mb-2 flex items-center">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/pill-2-ea8e0e92.png"
+                                alt="vip"
+                                class="mr-1_5 block h-3 w-5_5"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                            <div
+                              class="font-normal not-italic text-xs leading-4 text-primary-text"
+                            >
+                              Cr1z1
+                            </div>
+                          </div>
+                          <div
+                            class="bg-button-7 inline-block w-fit max-w-68_75 break-all rounded-16 p-2 cursor-pointer"
+                          >
+                            <div
+                              class="font-normal not-italic text-sm leading-4_5 text-text-2 select-none whitespace-pre-line"
+                            >
+                              3125 đi
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="opacity-100">
+                  <div data-msgid="3351406090601093" class="flex px-2 pb-4">
+                    <div>
+                      <div
+                        class="relative flex items-center justify-center overflow-hidden rounded-full mr-2 h-7_5 w-7_5 min-w-7_5"
+                      >
+                        <div
+                          class="flex items-center align-middle cursor-pointer h-full w-full"
+                        >
+                          <div class="relative h-full w-full">
+                            <div
+                              class="flex h-full w-full items-center justify-center rounded-[50%] bg-primary"
+                            >
+                              <span class="text-im-always-white">B</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="space-y-2_5">
+                      <div class="flex items-end space-x-1">
+                        <div class="relative flex flex-col">
+                          <div class="mb-2 flex items-center">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/pill-2-ea8e0e92.png"
+                                alt="vip"
+                                class="mr-1_5 block h-3 w-5_5"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                            <div
+                              class="font-normal not-italic text-xs leading-4 text-primary-text"
+                            >
+                              BeK*****
+                            </div>
+                          </div>
+                          <div
+                            class="bg-button-7 inline-block w-fit max-w-68_75 break-all rounded-16 p-2 cursor-pointer"
+                          >
+                            <div
+                              class="font-normal not-italic text-sm leading-4_5 text-text-2 select-none whitespace-pre-line"
+                            >
+                              2 dàn diễn viên này tốt vl
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="opacity-100">
+                  <div data-msgid="3351406096286853" class="flex px-2 pb-4">
+                    <div>
+                      <div
+                        class="relative flex items-center justify-center overflow-hidden rounded-full mr-2 h-7_5 w-7_5 min-w-7_5"
+                      >
+                        <div
+                          class="flex items-center align-middle cursor-pointer h-full w-full"
+                        >
+                          <div class="relative h-full w-full">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/10201-c6669d99.png"
+                                class="h-full w-full"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="space-y-2_5">
+                      <div class="flex items-end space-x-1">
+                        <div class="relative flex flex-col">
+                          <div class="mb-2 flex items-center">
+                            <picture class=""
+                              ><img
+                                src="https://gw-tiger-fluid.8xdfd3t6f.com/assets/pill-3-06a3d785.png"
+                                alt="vip"
+                                class="mr-1_5 block h-3 w-5_5"
+                                loading="eager"
+                                draggable="false"
+                            /></picture>
+                            <div
+                              class="font-normal not-italic text-xs leading-4 text-primary-text"
+                            >
+                              thanglonxx
+                            </div>
+                          </div>
+                          <div
+                            class="bg-button-7 inline-block w-fit max-w-68_75 break-all rounded-16 p-2 cursor-pointer"
+                          >
+                            <div
+                              class="font-normal not-italic text-sm leading-4_5 text-text-2 select-none whitespace-pre-line"
+                            >
+                              lên điểm đi home
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="relative mt-auto min-h-0 w-full flex-shrink-0">
+              <div
+                class="opacity-100 fixed bottom-0 right-0 xl:absolute"
+                style="left: 0px"
+              >
+                <div class="space-y-2 px-2" data-testid="chatroom-input-panel">
+                  <div
+                    class="absolute left-0 top-0 flex w-full -translate-y-full"
+                  ></div>
+                  <div
+                    class="relative flex items-center"
+                    style="
+                      padding-bottom: calc(8px + env(safe-area-inset-bottom));
+                    "
+                  >
+                    <div
+                      class="_input-liquid-glass_1jh2k_18 flex grow rounded-20 px-1 py-2_5 pr-3 transition-all duration-200 ease-in-out"
+                    >
+                      <textarea
+                        id="send-message-textarea"
+                        rows="1"
+                        class="font-normal not-italic text-sm leading-4_5 max-h-22_5 grow resize-none self-center bg-transparent px-2 focus:outline-none pointer-events-auto cursor-pointer"
+                        placeholder="Cần đạt cấp độ VIP1 mới có thể gửi tin nhắn"
+                        readonly=""
+                        aria-disabled="true"
+                        tabindex="-1"
+                        style="max-height: 90px; height: 36px"
+                      ></textarea>
+                      <div class="h-5 w-5"></div>
+                    </div>
+                    <div
+                      class="_btn-liquid-glass_1jh2k_5 ml-2 flex-shrink-0 overflow-hidden transition-all duration-200 ease-in-out basis-10"
+                    >
+                      <button>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="20"
+                          height="20"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          class="h-5 w-5"
+                        >
+                          <g clip-path="url(#clip0_2716_21280)">
+                            <path
+                              fill-rule="evenodd"
+                              clip-rule="evenodd"
+                              d="M11.858 0V0.013C12.1678 0.0463357 12.4027 0.307863 12.4027 0.6195C12.4027 0.931137 12.1678 1.19266 11.858 1.226V1.245H2.905C1.99022 1.24554 1.24785 1.98523 1.244 2.9V17.1C1.2462 18.0159 1.98905 18.7575 2.905 18.758H15.084C15.9996 18.7569 16.7418 18.0156 16.744 17.1V9.365H16.763C16.7635 9.02635 17.0374 8.75165 17.376 8.75C17.5395 8.75079 17.6961 8.81659 17.8111 8.93289C17.926 9.0492 17.9901 9.20645 17.989 9.37V17.1C17.9846 18.7017 16.6858 19.9984 15.084 20H2.905C1.30325 19.9984 0.00440563 18.7017 0 17.1V2.9C0.00440563 1.29825 1.30325 0.00164637 2.905 0H11.858ZM13.605 13.79C13.9482 13.79 14.2265 14.0683 14.2265 14.4115C14.2265 14.7547 13.9482 15.033 13.605 15.033H4.585C4.24176 15.033 3.9635 14.7547 3.9635 14.4115C3.9635 14.0683 4.24176 13.79 4.585 13.79H13.605ZM13.717 9.378C14.0602 9.378 14.3385 9.65626 14.3385 9.9995C14.3385 10.3427 14.0602 10.621 13.717 10.621H4.697C4.35375 10.621 4.0755 10.3427 4.0755 9.9995C4.0755 9.65626 4.35375 9.378 4.697 9.378H13.717ZM16.503 0L20 3.4L16.503 6.786V4.848C14.3797 4.68687 12.3162 5.5967 11.003 7.273C11.003 7.273 11.643 1.938 16.503 1.938V0ZM8.319 4.966C8.66224 4.966 8.9405 5.24426 8.9405 5.5875C8.9405 5.93075 8.66224 6.209 8.319 6.209H4.696C4.35276 6.209 4.0745 5.93075 4.0745 5.5875C4.0745 5.24426 4.35276 4.966 4.696 4.966H8.319Z"
+                              class="fill-icon-3"
+                            ></path>
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_2716_21280">
+                              <rect width="20" height="20" fill="white"></rect>
+                            </clipPath>
+                          </defs>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="pointer-events-auto absolute inset-0 z-cover-page backdrop-blur-8"
+    >
+      <div
+        class="absolute left-0 top-0 z-priority flex h-full w-full flex-col overflow-hidden rounded-12"
+      >
+        <div
+          data-testid="SportCart"
+          class="flex w-full flex-col bg-layer-16 relative backdrop-blur-8 h-full pt-0"
+        >
+          <div
+            class="mb-5 flex h-8 w-full items-center justify-between pt-3 px-3"
+          >
+            <span
+              class="font-semibold not-italic text-lg leading-5_5 text-text-2"
+              >Đặt Cược</span
+            ><button
+              type="button"
+              class="flex h-7_5 w-7_5 cursor-pointer items-center justify-center"
+            >
+              <svg
+                viewBox="0 0 20 20"
+                xmlns="http://www.w3.org/2000/svg"
+                width="20px"
+                height="20px"
+                class="h-3_5 w-3_5"
+              >
+                <g
+                  stroke="none"
+                  stroke-width="1"
+                  fill="none"
+                  fill-rule="evenodd"
+                >
+                  <g
+                    transform="translate(-920.000000, -197.000000)"
+                    class="fill-icon-2"
+                  >
+                    <g transform="translate(470.000000, 177.000000)">
+                      <g transform="translate(214.000000, 16.000000)">
+                        <g transform="translate(236.000000, 4.000000)">
+                          <path
+                            d="M17.7396505,2.26034953 C18.0600807,2.58077972 18.0847291,3.0849851 17.8135959,3.43368839 L17.7396505,3.51742825 L11.257,10 L17.7396505,16.4825718 C18.0867832,16.8297045 18.0867832,17.3925178 17.7396505,17.7396505 C17.4192203,18.0600807 16.9150149,18.0847291 16.5663116,17.8135959 L16.4825718,17.7396505 L10,11.257 L3.51742825,17.7396505 C3.17029555,18.0867832 2.60748223,18.0867832 2.26034953,17.7396505 C1.93991934,17.4192203 1.91527086,16.9150149 2.1864041,16.5663116 L2.26034953,16.4825718 L8.743,10 L2.26034953,3.51742825 C1.91321682,3.17029555 1.91321682,2.60748223 2.26034953,2.26034953 C2.58077972,1.93991934 3.0849851,1.91527086 3.43368839,2.1864041 L3.51742825,2.26034953 L10,8.743 L16.4825718,2.26034953 C16.8297045,1.91321682 17.3925178,1.91321682 17.7396505,2.26034953 Z"
+                          ></path>
+                        </g>
+                      </g>
+                    </g>
+                  </g>
+                </g>
+              </svg>
+            </button>
+          </div>
+          <div class="flex w-full items-center mb-3 h-8 space-x-2 px-3">
+            <div
+              data-testid="sport-cart-single-bet-tab"
+              class="flex h-full flex-1 items-center justify-center rounded-8 px-3 bg-primary"
+            >
+              <span
+                class="font-semibold not-italic text-sm leading-4_5 text-theme-tab-text"
+                >Cược Đơn</span
+              >
+            </div>
+            <div
+              data-testid="sport-cart-parlay-tab"
+              class="bg-layer-13 flex h-full flex-1 items-center justify-center rounded-8 px-3 relative"
+            >
+              <span
+                class="font-semibold not-italic text-sm leading-4_5 text-text-2"
+                >Cược Xâu</span
+              >
+            </div>
+            <div class="flex items-center">
+              <button
+                data-testid="sport-cart-clear-btn"
+                class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-layer-13"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-5 w-5"
+                >
+                  <path
+                    d="M3.75 4.16602V18.3327H16.25V4.16602H3.75Z"
+                    stroke-width="1.25"
+                    stroke-linejoin="round"
+                    class="stroke-text-4"
+                  ></path>
+                  <path
+                    d="M8.33203 8.33398V13.7507"
+                    stroke-width="1.25"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="stroke-text-4"
+                  ></path>
+                  <path
+                    d="M11.668 8.33398V13.7507"
+                    stroke-width="1.25"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="stroke-text-4"
+                  ></path>
+                  <path
+                    d="M1.66797 4.16602H18.3346"
+                    stroke-width="1.25"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="stroke-text-4"
+                  ></path>
+                  <path
+                    d="M6.66797 4.16602L8.03839 1.66602H11.9918L13.3346 4.16602H6.66797Z"
+                    stroke-width="1.25"
+                    stroke-linejoin="round"
+                    class="stroke-text-4"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div
+            class="no-scrollbar relative flex w-full flex-1 flex-col overflow-hidden"
+          >
+            <div
+              class="no-scrollbar w-full flex-1 space-y-7 overflow-y-auto overflow-x-hidden px-3"
+            >
+              <div class="w-full">
+                <div class="">
+                  <div
+                    class="w-full px-3 mb-2 rounded-12 pb-1 pt-3 bg-layer-13"
+                    data-testid="sport-cart-single-card"
+                  >
+                    <div
+                      data-testid="TicketInfoLayoutV4"
+                      class="middle-hyphen-font relative flex w-full flex-col"
+                    >
+                      <div
+                        class="mb-2 flex w-full items-start justify-between space-x-2"
+                      >
+                        <div
+                          class="flex items-start justify-between space-x-2 self-stretch"
+                        >
+                          <div
+                            class="flex items-start justify-between space-x-2 self-stretch"
+                          >
+                            <div class="mt-0_5">
+                              <div class="">
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 16 16"
+                                  fill="none"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  class="h-4 w-4"
+                                >
+                                  <path
+                                    d="M4.8 15.3443C4.152 15.0645 3.552 14.7046 3 14.2649C3.288 13.7371 3.63199 13.2494 4.03199 12.8016C5.25599 11.6582 6.032 10.1069 6.208 8.43578H7.56V16C6.608 15.952 5.672 15.7281 4.8 15.3443ZM8.512 8.43578H9.85601C10.04 10.1069 10.808 11.6502 12.04 12.7936C12.432 13.2254 12.768 13.7051 13.04 14.2089C11.752 15.2564 10.168 15.8721 8.512 15.984V8.42779V8.43578ZM0 8.43578H5.264C5.08 9.85907 4.392 11.1784 3.336 12.1539C2.936 12.6017 2.576 13.0895 2.28 13.6092C0.920005 12.2179 0.112 10.3788 0 8.43578ZM12.744 12.1539C11.688 11.1784 11 9.86707 10.816 8.43578H16C15.896 10.3548 15.104 12.1699 13.768 13.5612C13.48 13.0575 13.136 12.5857 12.744 12.1539ZM10.816 7.49225C11 6.06897 11.688 4.74963 12.744 3.78211C13.12 3.36632 13.456 2.91054 13.736 2.42279C15.064 3.7901 15.864 5.58921 15.992 7.49225H10.816ZM6.216 7.49225C6.04 5.82109 5.264 4.27786 4.04 3.12644C3.656 2.69465 3.32 2.22289 3.04 1.71914C4.336 0.695652 5.92001 0.103948 7.56801 0.007996V7.48426H6.216V7.49225ZM0 7.49225C0.128 5.56522 0.951999 3.74213 2.312 2.36682C2.6 2.87056 2.944 3.34233 3.336 3.77411C4.392 4.74962 5.08 6.06097 5.264 7.49225H0ZM8.52 7.49225V0C10.168 0.111944 11.744 0.727636 13.032 1.75912C12.76 2.24688 12.432 2.70265 12.056 3.11844C10.832 4.26187 10.056 5.8051 9.872 7.47626H8.52V7.49225Z"
+                                    fill="#333333"
+                                    class="fill-icon-2"
+                                  ></path>
+                                </svg>
+                              </div>
+                            </div>
+                            <div
+                              class="font-semibold not-italic text-sm leading-4_5 mt-0_25 text-text-2"
+                            >
+                              Johor State BA U21(W) -19.5
+                            </div>
+                            <div class="mt-0_25">
+                              <div
+                                class="flex flex-1 items-center justify-between"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-sm leading-4_5 text-red-22"
+                                  >@0.95</span
+                                >
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div
+                          class="ml-auto flex cursor-pointer items-center pt-0_75"
+                        >
+                          <svg
+                            width="1em"
+                            height="1em"
+                            viewBox="0 0 20 20"
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5"
+                          >
+                            <path
+                              d="M2.001 10.001a8 8 0 1116 0 8 8 0 01-16 0zm.842 0A7.161 7.161 0 0010 17.163a7.16 7.16 0 10-7.158-7.162h.001zm3.674.462a.43.43 0 01-.387-.462.429.429 0 01.387-.458h6.971a.427.427 0 01.387.458.428.428 0 01-.387.462H6.517z"
+                              fill-rule="evenodd"
+                              class="fill-icon-3"
+                            ></path>
+                          </svg>
+                        </div>
+                      </div>
+                      <span
+                        class="font-normal not-italic text-xs leading-4 mb-1 break-all"
+                      >
+                        Trong Trận Cược Chấp</span
+                      >
+                      <div class="">
+                        <div
+                          class="mb-1 flex w-full items-center break-words text-xs"
+                        >
+                          <div
+                            class="font-normal not-italic text-xs leading-4 text-text-2 break-words"
+                          >
+                            Johor State BA U21(W) VS Pulau Pinang U21(W)
+                          </div>
+                          <div
+                            class="font-normal not-italic text-xs leading-4 text-text-4 ml-2 shrink-0 break-words"
+                          >
+                            (31-23)
+                          </div>
+                        </div>
+                        <div class="flex items-center justify-between mb-1">
+                          <div
+                            class="ml-auto flex items-center space-x-2"
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex w-full flex-col">
+                      <div
+                        class="relative flex w-full items-center mb-2 justify-end"
+                      >
+                        <div class="flex items-center">
+                          <small
+                            data-testid="sport-cart-bet-limit-amount"
+                            class="font-normal not-italic text-xs leading-4 text-text-4"
+                          ></small>
+                        </div>
+                      </div>
+                      <div data-testid="SportCartBetInput" class="w-full mb-2">
+                        <div class="mb-2">
+                          <div
+                            class="flex w-full cursor-pointer items-center h-11"
+                          >
+                            <div
+                              class="flex h-full flex-1 items-center overflow-hidden rounded-8 border p-3 border-primary bg-layer-12"
+                            >
+                              <div class="mr-2">
+                                <div class="flex items-center">
+                                  <div
+                                    data-testid="sport-cart-currency-label"
+                                    class="inline items-center font-normal not-italic text-sm leading-4_5 text-text-4"
+                                  >
+                                    VND
+                                  </div>
+                                </div>
+                              </div>
+                              <div
+                                class="no-scrollbar overflow-x-auto flex h-9_25 flex-1 items-center justify-end"
+                              >
+                                <div
+                                  class="line-clamp-2 flex flex-col items-end"
+                                >
+                                  <div class="items-center hidden">
+                                    <span
+                                      class="mr-1 line-through font-semibold not-italic text-xxs leading-3_75 text-text-4"
+                                    ></span
+                                    ><svg
+                                      width="12"
+                                      height="10"
+                                      viewBox="0 0 12 10"
+                                      fill="none"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      class="h-2_5 w-3"
+                                    >
+                                      <g id="Group 427320786">
+                                        <path
+                                          id="è·¯å¾ 16790"
+                                          d="M0.217162 0.208218C0.527024 -0.0694059 0.976823 -0.0694059 1.28668 0.208218L5.78467 4.49473C6.03456 4.72793 6.07454 5.13881 5.86464 5.41644C5.84465 5.44975 5.81466 5.48307 5.78467 5.50528L1.28668 9.79178C0.976823 10.0694 0.527024 10.0694 0.217162 9.79178C-0.0327259 9.55858 -0.072708 9.1477 0.137198 8.87007C0.157189 8.83676 0.187176 8.80344 0.217162 8.78123L4.21537 5.00555L0.217162 1.22987C-0.0327259 1.00777 -0.0727077 0.585786 0.127203 0.308162C0.157189 0.274847 0.187176 0.241533 0.217162 0.208218Z"
+                                          fill="#999999"
+                                          class="fill-icon-4"
+                                        ></path>
+                                        <path
+                                          id="è·¯å¾ 16791"
+                                          d="M6.21716 0.208218C6.52702 -0.0694059 6.97682 -0.0694059 7.28668 0.208218L11.7847 4.49473C12.0346 4.72793 12.0745 5.13881 11.8646 5.41644C11.8446 5.44975 11.8147 5.48307 11.7847 5.50528L7.28668 9.79178C6.97682 10.0694 6.52702 10.0694 6.21716 9.79178C5.96727 9.55858 5.92729 9.1477 6.1372 8.87007C6.15719 8.83676 6.18718 8.80344 6.21716 8.78123L10.2154 5.00555L6.21716 1.22987C5.96727 1.00777 5.92729 0.585786 6.1272 0.308162C6.15719 0.274847 6.18718 0.241533 6.21716 0.208218Z"
+                                          fill="#999999"
+                                          class="fill-icon-4"
+                                        ></path>
+                                      </g>
+                                    </svg>
+                                  </div>
+                                  <div class="relative flex items-center">
+                                    <div
+                                      class="overflow-hidden flex h-5_5 items-center justify-end pr-1_25"
+                                      style="direction: rtl"
+                                    >
+                                      <span
+                                        data-testid="sport-cart-bet-amount-label"
+                                        class="whitespace-nowrap font-semibold not-italic text-lg leading-5_5 text-text-2 justify-end"
+                                        style="
+                                          direction: ltr;
+                                          display: inline-block;
+                                        "
+                                      ></span>
+                                    </div>
+                                    <div
+                                      class="flex items-center w-1_25 flex-shrink-0 cursor-text fill-red-1 text-red-1 absolute right-0 h-5_5"
+                                    >
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        xmlns:xlink="http://www.w3.org/1999/xlink"
+                                        viewBox="0 0 4 30"
+                                        width="4"
+                                        height="30"
+                                        preserveAspectRatio="xMidYMid meet"
+                                        style="
+                                          width: 100%;
+                                          height: 100%;
+                                          transform: translate3d(0px, 0px, 0px);
+                                          content-visibility: visible;
+                                        "
+                                      >
+                                        <defs>
+                                          <clipPath id="__lottie_element_5197">
+                                            <rect
+                                              width="4"
+                                              height="30"
+                                              x="0"
+                                              y="0"
+                                            ></rect>
+                                          </clipPath>
+                                        </defs>
+                                        <g
+                                          clip-path="url(#__lottie_element_5197)"
+                                        >
+                                          <g
+                                            transform="matrix(1,0,0,1,2,22.200000762939453)"
+                                            opacity="0.4458000000000049"
+                                            fill="rgb(51,51,51)"
+                                            font-size="20"
+                                            font-family="PingFang TC"
+                                            font-style="normal"
+                                            font-weight="500"
+                                            aria-label="|"
+                                            style="display: block"
+                                          >
+                                            <g
+                                              stroke-linecap="butt"
+                                              stroke-linejoin="round"
+                                              stroke-miterlimit="4"
+                                              transform="matrix(1,0,0,1,-2.0999999046325684,0)"
+                                              opacity="1"
+                                              style="display: inherit"
+                                            >
+                                              <g>
+                                                <g
+                                                  transform="matrix(1,0,0,1,0,0)"
+                                                  opacity="1"
+                                                  style="display: block"
+                                                >
+                                                  <path
+                                                    d=" M1.23,-17.32 C1.23,-17.32 1.23,2.82 1.23,2.82 C1.23,2.82 3,2.82 3,2.82 C3,2.82 3,-17.32 3,-17.32 C3,-17.32 1.23,-17.32 1.23,-17.32z"
+                                                  ></path>
+                                                  <g
+                                                    opacity="1"
+                                                    transform="matrix(0.20000000298023224,0,0,0.20000000298023224,0,0)"
+                                                  ></g>
+                                                </g>
+                                              </g>
+                                            </g>
+                                          </g>
+                                        </g>
+                                      </svg>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="border-layer-1 border-t-0 border-none">
+                          <div
+                            data-testid="SportCalculator"
+                            class="flex w-full flex-col mb-0 mt-0 gap-1_5 rounded-12 bg-layer-12 p-1_5 px-1_5"
+                          >
+                            <div
+                              class="grid grid-cols-4 last:mb-0 mb-0 space-x-1_5"
+                            >
+                              <button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >1</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >2</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >3</span
+                                >
+                              </button>
+                              <div
+                                class="flex cursor-pointer items-center justify-center last:mb-0 h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <div
+                                  data-testid="undefined-scale-container"
+                                  class="flex w-full justify-center text-button-8 font-semibold not-italic text-lg leading-5_5"
+                                >
+                                  <div
+                                    class="relative w-fit"
+                                    data-testid="undefined-scale-content"
+                                  >
+                                    <div
+                                      class="w-full select-none font-semibold text-sm text-button-8"
+                                      style="opacity: 1; font-size: 18px"
+                                    >
+                                      1,000k
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div
+                              class="grid grid-cols-4 last:mb-0 mb-0 space-x-1_5"
+                            >
+                              <button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >4</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >5</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >6</span
+                                >
+                              </button>
+                              <div
+                                class="flex cursor-pointer items-center justify-center last:mb-0 h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <div
+                                  data-testid="undefined-scale-container"
+                                  class="flex w-full justify-center text-button-8 font-semibold not-italic text-lg leading-5_5"
+                                >
+                                  <div
+                                    class="relative w-fit"
+                                    data-testid="undefined-scale-content"
+                                  >
+                                    <div
+                                      class="w-full select-none font-semibold text-sm text-button-8"
+                                      style="opacity: 1; font-size: 18px"
+                                    >
+                                      5,000k
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div
+                              class="grid grid-cols-4 last:mb-0 mb-0 space-x-1_5"
+                            >
+                              <button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >7</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >8</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >9</span
+                                >
+                              </button>
+                              <div
+                                class="flex cursor-pointer items-center justify-center last:mb-0 h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <div
+                                  data-testid="undefined-scale-container"
+                                  class="flex w-full justify-center text-button-8 font-semibold not-italic text-lg leading-5_5"
+                                >
+                                  <div
+                                    class="relative w-fit"
+                                    data-testid="undefined-scale-content"
+                                  >
+                                    <div
+                                      class="w-full select-none font-semibold text-sm text-button-8"
+                                      style="opacity: 1; font-size: 18px"
+                                    >
+                                      10,000k
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div
+                              class="grid grid-cols-4 last:mb-0 mb-0 space-x-1_5"
+                            >
+                              <button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >00</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <span
+                                  class="font-semibold not-italic text-lg leading-5_5 text-button-8"
+                                  >0</span
+                                ></button
+                              ><button
+                                class="flex cursor-pointer items-center justify-center border-none h-12_5 rounded-8 bg-button-1 text-button-8 font-semibold not-italic text-lg leading-5_5"
+                              >
+                                <svg
+                                  width="1em"
+                                  height="1em"
+                                  viewBox="0 0 20 20"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  class="fill-primary h-6 w-6"
+                                >
+                                  <path
+                                    d="M9.376 12.376a.431.431 0 00.624 0l1.871-1.871 1.871 1.871a.431.431 0 00.624 0 .431.431 0 000-.624l-1.871-1.871 1.871-1.871a.441.441 0 10-.624-.624l-1.871 1.871L10 7.386a.441.441 0 00-.624.624l1.871 1.871-1.871 1.871a.535.535 0 000 .624zM6.97 15.718h11.139c.491-.002.89-.4.891-.891V4.891A.894.894 0 0018.109 4H6.97c-.223 0-.446 0-5.837 5.614a.431.431 0 000 .624c5.436 5.48 5.615 5.48 5.837 5.48zm.134-10.827h11v9.936h-11c-.535-.4-2.851-2.718-4.99-4.946 2.139-2.228 4.5-4.589 4.99-4.99z"
+                                    fill="#666"
+                                    fill-rule="evenodd"
+                                    class="fill-black-1"
+                                  ></path>
+                                </svg>
+                              </button>
+                              <div
+                                data-testid="sport-cart-max-amount-btn"
+                                class="flex cursor-pointer items-center justify-center font-semibold not-italic text-lg leading-5_5 bg-primary text-button-8' h-12_5 rounded-8"
+                              >
+                                <span
+                                  class="select-none text-title-button-special font-semibold not-italic text-base leading-5"
+                                  >MAX</span
+                                >
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="relative w-full h-28">
+              <div class="h-full w-full pb-11_5 pt-3 px-3">
+                <div class="flex w-full items-center justify-between space-x-2">
+                  <div class="relative flex items-center">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked="false"
+                      data-testid="sport-cart-quick-bet-switch"
+                      class="relative flex items-center rounded-15 px-1_25 transition-all duration-200 ease-in-out cursor-pointer bg-primary px-auto h-8 w-13_5"
+                    >
+                      <div
+                        class="rounded-full transition-transform duration-200 ease-in-out translate-x-0 bg-theme-tab-text h-5 w-5 shadow-none"
+                      ></div>
+                      <div
+                        class="absolute flex h-5 w-5 items-center justify-center"
+                      >
+                        <svg
+                          width="10"
+                          height="12"
+                          viewBox="0 0 10 12"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M2 11.5C1.17157 11.5 0.5 10.8284 0.5 10V0.5H6.23149L9.5 3.55061V10C9.5 10.8284 8.82843 11.5 8 11.5H2Z"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            class="fill-primary stroke-theme-tab-text"
+                          ></path>
+                          <path
+                            d="M5.71436 0V4H10.0001"
+                            stroke-linejoin="round"
+                            class="fill-primary stroke-theme-tab-text"
+                          ></path>
+                          <path
+                            d="M2.85718 6.6665H7.14289"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            class="fill-primary stroke-theme-tab-text"
+                          ></path>
+                          <path
+                            d="M2.85718 9.3335H7.14289"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            class="fill-primary stroke-theme-tab-text"
+                          ></path>
+                        </svg>
+                      </div>
+                      <div
+                        class="absolute ml-0_5 h-5 w-5"
+                        style="transform: translateX(100%)"
+                      >
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <g id="Frame 2131327489">
+                            <path
+                              id="Vector 12"
+                              d="M7 11.2L11.0833 4V8.8H14L9.91667 16V11.2H7Z"
+                              fill="white"
+                              stroke="white"
+                              stroke-linejoin="round"
+                              class="fill-theme-tab-text stroke-theme-tab-text"
+                            ></path>
+                          </g>
+                        </svg>
+                      </div>
+                    </button>
+                  </div>
+                  <button
+                    data-testid="sport-cart-bet-button"
+                    type="button"
+                    class="flex-1 cursor-pointer bg-primary h-13_5 overflow-hidden rounded-12 disabled:opacity-100"
+                  >
+                    <div
+                      class="bg-primary flex h-full w-full items-center justify-center"
+                    >
+                      <span
+                        class="font-semibold not-italic text-base leading-5 text-title-button-special"
+                        >Chấp Nhận</span
+                      >
+                    </div>
+                  </button>
+                </div>
+                <div class="flex w-full items-center justify-end mt-2_5">
+                  <span
+                    class="font-normal not-italic text-[13px] leading-4_25 text-text-2 mr-2"
+                    >0 Cược</span
+                  ><span
+                    class="font-normal not-italic text-xs leading-4 text-text-2 mr-2"
+                    >Tiền Vốn 0</span
+                  >
+                </div>
+              </div>
+              <div
+                data-testid="WinnableTip"
+                class="absolute flex flex-col bottom-[118px] right-2 rounded-12 px-2 py-3 backdrop-blur-6 bg-layer-26"
+              >
+                <small
+                  class="font-semibold not-italic text-xs leading-4 text-icon-8"
+                  >Tỷ lệ, kèo đặt cược hoặc thời hạn đã thay đổi</small
+                >
+                <div
+                  class="absolute bottom-[-8px] right-8 h-0 w-0 border-l-1_5 border-r-1_5 border-t-2 border-l-transparent border-r-transparent border-t-layer-26"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>

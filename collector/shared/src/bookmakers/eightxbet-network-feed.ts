@@ -862,7 +862,7 @@ function buildHandicapSelections(
   const metadata = state.metadata!;
   const marketId = code === "ah" ? "hdp-ah" : "hdp-ah-1st";
   const result: OddsSelection[] = [];
-  for (const rawLine of lines) {
+  for (const [lineIndex, rawLine] of lines.entries()) {
     const line = objectValue(rawLine);
     const lineValue = normalizeAsianLine(String(line.k ?? ""));
     const homeRawOdds = parseRawFeedOdds(line.h);
@@ -875,8 +875,8 @@ function buildHandicapSelections(
     const homeOutcome = `${metadata.homeTeam} ${lineValue}`.trim();
     const awayOutcome = `${metadata.awayTeam} ${invertAsianLine(lineValue)}`.trim();
     result.push(
-      selectionOf(state, marketId, homeOutcome, homeOdds, homeRawOdds),
-      selectionOf(state, marketId, awayOutcome, awayOdds, awayRawOdds)
+      selectionOf(state, marketId, homeOutcome, homeOdds, homeRawOdds, `${metadata.fixtureId}|${code}|h|${lineIndex}`),
+      selectionOf(state, marketId, awayOutcome, awayOdds, awayRawOdds, `${metadata.fixtureId}|${code}|a|${lineIndex}`)
     );
   }
   return result;
@@ -889,7 +889,7 @@ function buildOverUnderSelections(
 ) {
   const marketId = code === "ou" ? "o-u-ou" : "o-u-ou-1st";
   const result: OddsSelection[] = [];
-  for (const rawLine of lines) {
+  for (const [lineIndex, rawLine] of lines.entries()) {
     const line = objectValue(rawLine);
     const lineValue = String(line.k ?? "").trim();
     const overRawOdds = parseRawFeedOdds(line.ov);
@@ -900,8 +900,8 @@ function buildOverUnderSelections(
       continue;
     }
     result.push(
-      selectionOf(state, marketId, `Over ${lineValue}`, overOdds, overRawOdds),
-      selectionOf(state, marketId, `Under ${lineValue}`, underOdds, underRawOdds)
+      selectionOf(state, marketId, `Over ${lineValue}`, overOdds, overRawOdds, `${state.metadata!.fixtureId}|${code}|ov|${lineIndex}`),
+      selectionOf(state, marketId, `Under ${lineValue}`, underOdds, underRawOdds, `${state.metadata!.fixtureId}|${code}|ud|${lineIndex}`)
     );
   }
   return result;
@@ -912,7 +912,8 @@ function selectionOf(
   marketId: string,
   outcomeName: string,
   odds: number,
-  rawOdds: number
+  rawOdds: number,
+  providerRef: string,
 ): OddsSelection {
   const metadata = state.metadata!;
   return {
@@ -931,7 +932,8 @@ function selectionOf(
     suspended: false,
     sourceEventId: state.sourceEventId,
     rawOdds,
-    oddsFormat: state.oddsFormat
+    oddsFormat: state.oddsFormat,
+    providerRef
   };
 }
 

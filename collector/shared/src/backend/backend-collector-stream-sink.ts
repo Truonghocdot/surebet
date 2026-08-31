@@ -1,17 +1,29 @@
 import crypto from "node:crypto";
 import type {
+  AccountBalanceObservation,
   BookmakerCode,
   CollectorHeartbeat,
   CollectorSink,
   FixtureMarketSnapshot,
+  LiveBetHandler,
+  LiveBetResult,
+  LiveCancelPreparedBetRequest,
+  LiveCommitBetRequest,
+  LivePrepareBetRequest,
+  LiveReconcileBetRequest,
   LobbyCode,
   OddsDelta,
   OddsSelection,
   OddsSnapshot,
   QuoteConfirmationHandler,
-  QuoteConfirmationRequest
+  QuoteConfirmationRequest,
+  SimulatedBetCommand,
+  SimulatedPlaceBetHandler,
+  SimulatedPlaceBetRequest
 } from "../contracts.js";
 import { normalizeSourceEventStartAt } from "./source-event-start-at.js";
+import { envString } from "../core/env.js";
+import { liveBetFeatureFlags } from "../live-actions.js";
 
 type CollectorSourceIdentity = {
   collectorId: string;
@@ -21,7 +33,14 @@ type CollectorSourceIdentity = {
 
 type HelloAckFrame = {
   type?: string;
+  protocol_version?: number;
   session_id?: string;
+  account_id?: string;
+  source?: {
+    collector_id?: string;
+    bookmaker_id?: string;
+    lobby_id?: string;
+  };
 };
 
 type ResyncFrame = {
@@ -44,11 +63,91 @@ type ConfirmQuoteFrame = {
   timeout_ms?: number;
 };
 
+type SimulateBetFrame = {
+  type?: string;
+  session_id?: string;
+  request_id?: string;
+  action_id?: string;
+  opportunity_id?: string;
+  leg_id?: string;
+  sequence?: number;
+  fixture_id?: string;
+  market_id?: string;
+  outcome_id?: string;
+  expected_odds?: number;
+  stake_vnd?: number;
+  expires_at?: string;
+  timeout_ms?: number;
+  idempotency_key?: string;
+};
+
+type LiveBetFrame = {
+  type?: string;
+  protocol_version?: number;
+  session_id?: string;
+  request_id?: string;
+  action_id?: string;
+  attempt_id?: string;
+  opportunity_id?: string;
+  leg_id?: string;
+  account_id?: string;
+  source?: {
+    collector_id?: string;
+    bookmaker_id?: string;
+    lobby_id?: string;
+  };
+  fixture_id?: string;
+  market_id?: string;
+  outcome_id?: string;
+  provider_ref?: string;
+  expected_odds?: number;
+  expected_raw_odds?: number;
+  odds_format?: string;
+  quote_revision?: string;
+  prepare_id?: string;
+  idempotency_key?: string;
+  stake_vnd?: number;
+  expires_at?: string;
+};
+
+type PreparedSimulatedSelection = {
+  actionId: string;
+  opportunityId: string;
+  legId: string;
+  sequence: 1 | 2;
+  fixtureId: string;
+  marketId: string;
+  outcomeId: string;
+  selectedOdds: number;
+};
+
+type CachedSimulatedPlacement = {
+  fingerprint: string;
+  response: Record<string, unknown>;
+};
+
+type ParsedSimulatedBetCommand = SimulatedBetCommand & {
+  sessionId: string;
+};
+
+type ParsedSimulatedPlaceBetRequest = ParsedSimulatedBetCommand & SimulatedPlaceBetRequest;
+
+type LiveBetCorrelationFields = {
+  requestId: string;
+  actionId: string;
+  attemptId: string;
+  opportunityId: string;
+  legId: string;
+};
+
 export class BackendCollectorStreamSink implements CollectorSink {
   private readonly startedAt = new Date().toISOString();
   private readonly streamURL: string;
   private latestBootstrap: OddsSnapshot | null = null;
   private readonly latestSelections = new Map<string, OddsSelection>();
+  private readonly latestSelectionObservedAt = new Map<string, string>();
+  private readonly preparedSimulatedSelections = new Map<string, PreparedSimulatedSelection>();
+  private readonly simulatedPlacementResults = new Map<string, CachedSimulatedPlacement>();
   private socket: WebSocket | null = null;
   private readyPromise: Promise<void> | null = null;
   private readyResolve: (() => void) | null = null;
@@ -58,15 +157,29 @@ export class BackendCollectorStreamSink implements CollectorSink {
   private sessionId = "";
   private seq = 0;
   private quoteConfirmationHandler: QuoteConfirmationHandler | null = null;
+  private simulatedPlaceBetHandler: SimulatedPlaceBetHandler | null = null;
+  private liveBetHandler: LiveBetHandler | null = null;
+  private readonly accountId: string;
+  private readonly accessToken: string;
+  private readonly streamProtocolVersion: 3 | 4;
   private batchCounter = 0;
   private readonly latestFixtureMetadata = new Map<string, OddsSelection>();
   private readonly latestFixtureBatches = new Map<string, { batchId: string; fingerprint: string }>();
+  private balanceProtocolWarningEmitted = false;
 
   constructor(
     backendURL: string,
     private readonly source: CollectorSourceIdentity
   ) {
-    this.streamURL = buildCollectorStreamURL(backendURL);
+    this.accountId = collectorAccountID(source);
+    this.accessToken = collectorAccessToken(source);
+    this.streamProtocolVersion = this.accountId && this.accessToken ? 4 : 3;
+    this.streamURL = buildCollectorStreamURL(
+      backendURL,
+      source,
+      this.streamProtocolVersion === 4 ? this.accountId : "",
+      this.streamProtocolVersion === 4 ? this.accessToken : "",
+    );
   }
 
   async pushBootstrap(snapshot: OddsSnapshot): Promise<void> {
@@ -126,6 +239,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
             ),
             outcome_name: delta.outcomeName,
             odds: delta.odds,
+            provider_ref: delta.providerRef ?? "",
             available_stake: delta.availableStake,
             suspended: delta.suspended
           }
@@ -213,6 +327,14 @@ export class BackendCollectorStreamSink implements CollectorSink {
     this.quoteConfirmationHandler = handler;
   }
 
+  setSimulatedPlaceBetHandler(handler: SimulatedPlaceBetHandler | null) {
+    this.simulatedPlaceBetHandler = handler;
+  }
+
+  setLiveBetHandler(handler: LiveBetHandler | null) {
+    this.liveBetHandler = handler;
+  }
+
   private enqueue(operation: () => Promise<void>) {
     const pending = this.sendQueue.catch(() => undefined).then(operation);
     this.sendQueue = pending.catch(() => undefined);
@@ -235,6 +357,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
     this.sessionId = crypto.randomUUID();
     this.seq = 0;
     this.pendingResync = true;
+    this.preparedSimulatedSelections.clear();
     this.socket = new WebSocket(this.streamURL);
     this.readyPromise = new Promise<void>((resolve, reject) => {
       this.readyResolve = () => {
@@ -255,13 +378,15 @@ export class BackendCollectorStreamSink implements CollectorSink {
     currentSocket.addEventListener("open", () => {
       void this.sendRawFrame({
         type: "hello",
-        protocol_version: 2,
+        protocol_version: this.streamProtocolVersion,
         session_id: this.sessionId,
         source: {
           collector_id: this.source.collectorId,
           bookmaker_id: this.source.bookmakerId,
           lobby_id: this.source.lobbyId
         },
+        account_id: this.streamProtocolVersion === 4 ? this.accountId : undefined,
+        capabilities: this.streamProtocolVersion === 4 ? this.liveCapabilities() : undefined,
         started_at: this.startedAt
       }).catch((error) => {
         this.readyReject?.(normalizeSocketError(error));
@@ -285,7 +410,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
   }
 
   private handleIncomingFrame(payload: string) {
-    let parsed: HelloAckFrame | ResyncFrame | ErrorFrame | ConfirmQuoteFrame;
+    let parsed: HelloAckFrame | ResyncFrame | ErrorFrame | ConfirmQuoteFrame | SimulateBetFrame | LiveBetFrame;
 
     try {
       parsed = JSON.parse(payload) as HelloAckFrame | ResyncFrame | ErrorFrame | ConfirmQuoteFrame;
@@ -294,6 +419,22 @@ export class BackendCollectorStreamSink implements CollectorSink {
     }
 
     if (parsed.type === "hello_ack" && "session_id" in parsed && parsed.session_id === this.sessionId) {
+      const ack = parsed as HelloAckFrame;
+      if (this.streamProtocolVersion === 4 && (
+        ack.protocol_version !== 4 || ack.account_id !== this.accountId ||
+        ack.source?.collector_id !== this.source.collectorId ||
+        ack.source?.bookmaker_id !== this.source.bookmakerId ||
+        ack.source?.lobby_id !== this.source.lobbyId
+      )) {
+        this.readyReject?.(new Error(
+          `collector stream v4 hello_ack identity does not match ` +
+          `(account=${ack.account_id ?? "missing"}/${this.accountId}, ` +
+          `source=${ack.source?.collector_id ?? "missing"}:${ack.source?.bookmaker_id ?? "missing"}:${ack.source?.lobby_id ?? "missing"}/` +
+          `${this.source.collectorId}:${this.source.bookmakerId}:${this.source.lobbyId})`
+        ));
+        this.socket?.close();
+        return;
+      }
       this.readyResolve?.();
       return;
     }
@@ -313,7 +454,45 @@ export class BackendCollectorStreamSink implements CollectorSink {
 
     if (parsed.type === "confirm_quote") {
       void this.handleQuoteConfirmation(parsed as ConfirmQuoteFrame);
+      return;
     }
+
+    if (parsed.type === "simulate_select_odds") {
+      void this.handleSimulatedSelectOdds(parsed as SimulateBetFrame);
+      return;
+    }
+
+    if (parsed.type === "simulate_place_bet") {
+      void this.handleSimulatedPlaceBet(parsed as SimulateBetFrame);
+      return;
+    }
+
+    if (parsed.type === "prepare_bet") {
+      void this.handleLivePrepare(parsed as LiveBetFrame);
+      return;
+    }
+    if (parsed.type === "commit_bet") {
+      void this.handleLiveCommit(parsed as LiveBetFrame);
+      return;
+    }
+    if (parsed.type === "cancel_prepared_bet") {
+      void this.handleLiveCancel(parsed as LiveBetFrame);
+      return;
+    }
+    if (parsed.type === "reconcile_bet") {
+      void this.handleLiveReconcile(parsed as LiveBetFrame);
+    }
+  }
+
+  private liveCapabilities() {
+    const capabilities = ["account_balance_v1"];
+    const flags = liveBetFeatureFlags();
+    if (!flags.enabled) return capabilities;
+    capabilities.push("bet_prepare_v1", "bet_reconcile_v1");
+    if (flags.commitEnabled) {
+      capabilities.push("bet_commit_v1");
+    }
+    return capabilities;
   }
 
   private async handleQuoteConfirmation(frame: ConfirmQuoteFrame) {
@@ -351,6 +530,417 @@ export class BackendCollectorStreamSink implements CollectorSink {
     });
   }
 
+  async pushAccountBalance(balance: AccountBalanceObservation): Promise<void> {
+    if (this.streamProtocolVersion !== 4) {
+      if (!this.balanceProtocolWarningEmitted) {
+        console.warn(
+          `[collector-stream] account balance telemetry disabled for ${this.source.collectorId}: ` +
+          "collector account credentials are not configured"
+        );
+        this.balanceProtocolWarningEmitted = true;
+      }
+      return;
+    }
+    if (!sameSource(balance.source, this.source)) {
+      throw new Error("account balance source does not match collector stream identity");
+    }
+    if (!Number.isFinite(balance.amount) || balance.amount < 0 ||
+      (balance.amountVnd !== undefined &&
+        (!Number.isFinite(balance.amountVnd) || balance.amountVnd < 0))) {
+      throw new Error("account balance amount must be finite and non-negative");
+    }
+
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.replayLatestBootstrapIfNeeded();
+      await this.sendFrame({
+        type: "account_balance",
+        protocol_version: 4,
+        session_id: this.sessionId,
+        seq: this.nextSeq(),
+        account_id: this.accountId,
+        observed_at: balance.observedAt,
+        source: serializeSource(balance.source),
+        balance: {
+          amount: balance.amount,
+          currency: balance.currency,
+          amount_vnd: balance.amountVnd,
+          display_text: balance.displayText
+        }
+      });
+    });
+  }
+
+  private async handleLivePrepare(frame: LiveBetFrame) {
+    if (!this.liveFrameTargetsCollector(frame)) return;
+    const request = parseLivePrepareBetRequest(frame);
+    if (!request) {
+      await this.sendInvalidLiveResponse(frame, "bet_prepared", "invalid prepare_bet command");
+      return;
+    }
+    let response: Record<string, unknown>;
+    try {
+      assertLiveCommandFresh(request.expiresAt);
+      if (!this.liveBetHandler) {
+        throw new Error("live bet preparation is disabled by this collector");
+      }
+      const result = await this.liveBetHandler.prepare(request);
+      response = result.result === "prepared"
+        ? {
+            result: result.result,
+            observed_at: result.observedAt,
+            prepare_id: result.prepareId,
+            slip_fingerprint: result.slipFingerprint,
+            displayed_odds: result.displayedOdds,
+            raw_odds: result.rawOdds,
+            odds_format: result.oddsFormat,
+            minimum_stake_vnd: result.minimumStakeVnd,
+            maximum_stake_vnd: result.maximumStakeVnd,
+            stake_increment_vnd: result.stakeIncrementVnd,
+            balance_vnd: result.balanceVnd,
+            session_generation: result.sessionGeneration,
+          }
+        : {
+            result: result.result,
+            observed_at: result.observedAt,
+            error: result.error,
+          };
+    } catch (cause) {
+      response = rejectedLivePayload(cause);
+    }
+    await this.sendLiveResponse("bet_prepared", request, response);
+  }
+
+  private async handleLiveCommit(frame: LiveBetFrame) {
+    if (!this.liveFrameTargetsCollector(frame)) return;
+    const request = parseLiveCommitBetRequest(frame);
+    if (!request) {
+      await this.sendInvalidLiveResponse(frame, "bet_result", "invalid commit_bet command");
+      return;
+    }
+    let result: LiveBetResult;
+    try {
+      assertLiveCommandFresh(request.expiresAt);
+      if (!this.liveBetHandler) {
+        throw new Error("live bet commit is disabled by this collector");
+      }
+      result = await this.liveBetHandler.commit(request);
+    } catch (cause) {
+      result = {
+        result: "rejected",
+        observedAt: new Date().toISOString(),
+        error: errorMessage(cause),
+      };
+    }
+    await this.sendLiveResponse("bet_result", request, serializeLiveBetResult(result), {
+      prepare_id: request.prepareId,
+      idempotency_key: request.idempotencyKey,
+    });
+  }
+
+  private async handleLiveCancel(frame: LiveBetFrame) {
+    if (!this.liveFrameTargetsCollector(frame)) return;
+    const request = parseLiveCancelPreparedBetRequest(frame);
+    if (!request) {
+      await this.sendInvalidLiveResponse(frame, "bet_cancelled", "invalid cancel_prepared_bet command");
+      return;
+    }
+    let response: Record<string, unknown>;
+    try {
+      assertLiveCommandFresh(request.expiresAt);
+      if (!this.liveBetHandler) {
+        throw new Error("live bet cancellation is disabled by this collector");
+      }
+      const result = await this.liveBetHandler.cancel(request);
+      response = {
+        result: result.result,
+        observed_at: result.observedAt,
+        error: result.error,
+      };
+    } catch (cause) {
+      response = rejectedLivePayload(cause);
+    }
+    await this.sendLiveResponse("bet_cancelled", request, response, {
+      prepare_id: request.prepareId,
+    });
+  }
+
+  private async handleLiveReconcile(frame: LiveBetFrame) {
+    if (!this.liveFrameTargetsCollector(frame)) return;
+    const request = parseLiveReconcileBetRequest(frame);
+    if (!request) {
+      await this.sendInvalidLiveResponse(frame, "bet_reconciled", "invalid reconcile_bet command");
+      return;
+    }
+    let result: LiveBetResult;
+    try {
+      assertLiveCommandFresh(request.expiresAt);
+      if (!this.liveBetHandler) {
+        throw new Error("live bet reconciliation is disabled by this collector");
+      }
+      result = await this.liveBetHandler.reconcile(request);
+    } catch (cause) {
+      result = {
+        result: "rejected",
+        observedAt: new Date().toISOString(),
+        error: errorMessage(cause),
+      };
+    }
+    await this.sendLiveResponse("bet_reconciled", request, serializeLiveBetResult(result), {
+      idempotency_key: request.idempotencyKey,
+    });
+  }
+
+  private liveFrameTargetsCollector(frame: LiveBetFrame) {
+    return this.streamProtocolVersion === 4 &&
+      frame.protocol_version === 4 &&
+      frame.session_id === this.sessionId &&
+      frame.account_id === this.accountId &&
+      frame.source?.collector_id === this.source.collectorId &&
+      frame.source?.bookmaker_id === this.source.bookmakerId &&
+      frame.source?.lobby_id === this.source.lobbyId;
+  }
+
+  private async sendInvalidLiveResponse(
+    frame: LiveBetFrame,
+    responseType: "bet_prepared" | "bet_result" | "bet_cancelled" | "bet_reconciled",
+    error: string,
+  ) {
+    if (!this.liveFrameTargetsCollector(frame)) return;
+    const correlation = parseLiveCorrelation(frame);
+    if (!correlation) return;
+    await this.sendLiveResponse(responseType, correlation, {
+      result: "rejected",
+      observed_at: new Date().toISOString(),
+      error,
+    }, {
+      prepare_id: cleanLiveString(frame.prepare_id),
+      idempotency_key: cleanLiveString(frame.idempotency_key),
+    });
+  }
+
+  private async sendLiveResponse(
+    responseType: "bet_prepared" | "bet_result" | "bet_cancelled" | "bet_reconciled",
+    request: LiveBetCorrelationFields,
+    response: Record<string, unknown>,
+    extra: Record<string, unknown> = {},
+  ) {
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.sendFrame({
+        type: responseType,
+        protocol_version: 4,
+        session_id: this.sessionId,
+        seq: this.nextSeq(),
+        request_id: request.requestId,
+        action_id: request.actionId,
+        attempt_id: request.attemptId,
+        opportunity_id: request.opportunityId,
+        leg_id: request.legId,
+        account_id: this.accountId,
+        source: serializeSource(this.source),
+        ...extra,
+        ...response,
+      });
+    });
+  }
+
+  private async handleSimulatedSelectOdds(frame: SimulateBetFrame) {
+    const request = parseSimulatedBetCommand(frame);
+    if (!request) {
+      await this.sendInvalidSimulatedResponse(frame, "simulate_select_odds_response", "invalid simulated select command");
+      return;
+    }
+    if (request.sessionId !== this.sessionId) return;
+
+    if (simulationCommandExpired(request.expiresAt)) {
+      await this.sendSimulatedResponse(request, "simulate_select_odds_response", {
+        result: "failed",
+        observed_at: new Date().toISOString(),
+        error: "simulated select command has expired",
+      });
+      return;
+    }
+
+    const cacheKey = selectionCacheKey(
+      request.fixtureId,
+      request.marketId,
+      request.outcomeId,
+    );
+    const selection = this.latestSelections.get(cacheKey);
+    const selectionObservedAt = this.latestSelectionObservedAt.get(cacheKey) ?? "";
+    const selected = selection && !selection.suspended &&
+      freshSimulationSelection(selectionObservedAt, request.timeoutMs)
+      ? selection
+      : null;
+    if (selected) {
+      setBoundedMap(this.preparedSimulatedSelections, simulatedLegKey(request), {
+        actionId: request.actionId,
+        opportunityId: request.opportunityId,
+        legId: request.legId,
+        sequence: request.sequence,
+        fixtureId: request.fixtureId,
+        marketId: request.marketId,
+        outcomeId: request.outcomeId,
+        selectedOdds: selected.odds,
+      });
+    }
+    await this.sendSimulatedResponse(request, "simulate_select_odds_response", {
+      result: selected ? "selected" : "unavailable",
+      observed_at: selected ? selectionObservedAt : new Date().toISOString(),
+      expected_odds: request.expectedOdds,
+      selected_odds: selected?.odds,
+      selection: selected ? serializeConfirmedSelection(selected) : undefined,
+      error: selected ? undefined : "selection is missing, suspended, or stale",
+    });
+  }
+
+  private async handleSimulatedPlaceBet(frame: SimulateBetFrame) {
+    const request = parseSimulatedPlaceBetRequest(frame);
+    if (!request) {
+      await this.sendInvalidSimulatedResponse(frame, "simulate_place_bet_response", "invalid simulated placement command");
+      return;
+    }
+    if (request.sessionId !== this.sessionId) return;
+
+    let response: Record<string, unknown>;
+    try {
+      const fingerprint = simulatedPlacementFingerprint(request);
+      const cached = this.simulatedPlacementResults.get(request.idempotencyKey);
+      if (cached) {
+        if (cached.fingerprint !== fingerprint) {
+          throw new Error("idempotency key was reused with a different simulated bet payload");
+        }
+        await this.sendSimulatedResponse(request, "simulate_place_bet_response", cached.response);
+        return;
+      }
+      if (simulationCommandExpired(request.expiresAt)) {
+        throw new Error("simulated placement command has expired");
+      }
+      const prepared = this.preparedSimulatedSelections.get(simulatedLegKey(request));
+      if (!prepared || !samePreparedSelection(prepared, request)) {
+        response = {
+          result: "rejected",
+          observed_at: new Date().toISOString(),
+          error: "simulated placement requires a matching select-odds phase",
+        };
+        await this.sendSimulatedResponse(request, "simulate_place_bet_response", response);
+        return;
+      }
+
+      const cacheKey = selectionCacheKey(request.fixtureId, request.marketId, request.outcomeId);
+      const current = this.latestSelections.get(cacheKey);
+      const currentObservedAt = this.latestSelectionObservedAt.get(cacheKey) ?? "";
+      if (!current || current.suspended ||
+        !freshSimulationSelection(currentObservedAt, request.timeoutMs)) {
+        response = {
+          result: "rejected",
+          observed_at: new Date().toISOString(),
+          error: "prepared simulated selection is no longer available",
+        };
+        await this.sendSimulatedResponse(request, "simulate_place_bet_response", response);
+        return;
+      }
+      if (Math.abs(current.odds - request.expectedOdds) > 0.001) {
+        response = {
+          result: "odds_changed",
+          observed_at: currentObservedAt,
+          submitted_odds: request.expectedOdds,
+          offered_odds: current.odds,
+          confirmation_required: true,
+        };
+        setBoundedMap(this.simulatedPlacementResults, request.idempotencyKey, {
+          fingerprint,
+          response,
+        });
+        this.preparedSimulatedSelections.delete(simulatedLegKey(request));
+        await this.sendSimulatedResponse(request, "simulate_place_bet_response", response);
+        return;
+      }
+      if (!this.simulatedPlaceBetHandler) {
+        throw new Error("simulated placement is not configured by this collector");
+      }
+      const result = await this.simulatedPlaceBetHandler(request);
+      response = result.result === "ticket_accepted"
+        ? {
+            result: result.result,
+            observed_at: result.observedAt,
+            ticket_id: result.ticketId,
+            accepted_odds: result.acceptedOdds,
+            stake_vnd: result.stakeVnd,
+          }
+        : {
+            result: result.result,
+            observed_at: result.observedAt,
+            submitted_odds: result.submittedOdds,
+            offered_odds: result.offeredOdds,
+            confirmation_required: result.confirmationRequired,
+          };
+      setBoundedMap(this.simulatedPlacementResults, request.idempotencyKey, {
+        fingerprint,
+        response,
+      });
+      this.preparedSimulatedSelections.delete(simulatedLegKey(request));
+    } catch (cause) {
+      response = {
+        result: "failed",
+        observed_at: new Date().toISOString(),
+        error: cause instanceof Error ? cause.message : String(cause),
+      };
+    }
+
+    await this.sendSimulatedResponse(request, "simulate_place_bet_response", response);
+  }
+
+  private async sendInvalidSimulatedResponse(
+    frame: SimulateBetFrame,
+    responseType: "simulate_select_odds_response" | "simulate_place_bet_response",
+    error: string,
+  ) {
+    const requestId = typeof frame.request_id === "string" ? frame.request_id.trim() : "";
+    const actionId = typeof frame.action_id === "string" ? frame.action_id.trim() : "";
+    if (!requestId || !actionId || frame.session_id !== this.sessionId) return;
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.sendFrame({
+        type: responseType,
+        session_id: this.sessionId,
+        seq: this.nextSeq(),
+        request_id: requestId,
+        action_id: actionId,
+        opportunity_id: typeof frame.opportunity_id === "string" ? frame.opportunity_id.trim() : "",
+        leg_id: typeof frame.leg_id === "string" ? frame.leg_id.trim() : "",
+        sequence: typeof frame.sequence === "number" ? frame.sequence : 0,
+        idempotency_key: typeof frame.idempotency_key === "string" ? frame.idempotency_key.trim() : undefined,
+        result: "failed",
+        observed_at: new Date().toISOString(),
+        error,
+      });
+    });
+  }
+
+  private async sendSimulatedResponse(
+    request: ParsedSimulatedBetCommand,
+    responseType: "simulate_select_odds_response" | "simulate_place_bet_response",
+    response: Record<string, unknown>,
+  ) {
+    await this.enqueue(async () => {
+      await this.ensureConnected();
+      await this.sendFrame({
+        type: responseType,
+        session_id: this.sessionId,
+        seq: this.nextSeq(),
+        request_id: request.requestId,
+        action_id: request.actionId,
+        opportunity_id: request.opportunityId,
+        leg_id: request.legId,
+        sequence: request.sequence,
+        idempotency_key: "idempotencyKey" in request ? request.idempotencyKey : undefined,
+        ...response,
+      });
+    });
+  }
+
   private async replayLatestBootstrapIfNeeded() {
     if (!this.pendingResync || !this.latestBootstrap) {
       return;
@@ -373,9 +963,19 @@ export class BackendCollectorStreamSink implements CollectorSink {
       selections: []
     };
     this.latestSelections.clear();
+    this.latestSelectionObservedAt.clear();
     this.latestFixtureMetadata.clear();
     for (const selection of snapshot.selections) {
-      this.latestSelections.set(selection.outcomeId, selection);
+      this.latestSelections.set(selectionCacheKey(
+        selection.fixtureId,
+        selection.marketId,
+        selection.outcomeId,
+      ), selection);
+      this.latestSelectionObservedAt.set(selectionCacheKey(
+        selection.fixtureId,
+        selection.marketId,
+        selection.outcomeId,
+      ), snapshot.collectedAt);
       this.latestFixtureMetadata.set(selection.fixtureId, selection);
     }
   }
@@ -390,9 +990,27 @@ export class BackendCollectorStreamSink implements CollectorSink {
     for (const delta of deltas) {
       this.latestFixtureMetadata.set(delta.fixtureId, selectionFromDelta(delta));
       if (delta.op === "remove") {
-        this.latestSelections.delete(delta.outcomeId);
+        this.latestSelections.delete(selectionCacheKey(
+          delta.fixtureId,
+          delta.marketId,
+          delta.outcomeId,
+        ));
+        this.latestSelectionObservedAt.delete(selectionCacheKey(
+          delta.fixtureId,
+          delta.marketId,
+          delta.outcomeId,
+        ));
       } else {
-        this.latestSelections.set(delta.outcomeId, selectionFromDelta(delta));
+        this.latestSelections.set(selectionCacheKey(
+          delta.fixtureId,
+          delta.marketId,
+          delta.outcomeId,
+        ), selectionFromDelta(delta));
+        this.latestSelectionObservedAt.set(selectionCacheKey(
+          delta.fixtureId,
+          delta.marketId,
+          delta.outcomeId,
+        ), delta.collectedAt);
       }
 
       const deltaAtMs = Date.parse(delta.collectedAt);
@@ -470,6 +1088,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
           odds: outcome.odds,
           raw_odds: outcome.rawOdds ?? 0,
           odds_format: outcome.oddsFormat ?? "",
+          provider_ref: outcome.providerRef ?? "",
           available_stake: outcome.availableStake,
           suspended: outcome.suspended
         }))
@@ -494,7 +1113,8 @@ export class BackendCollectorStreamSink implements CollectorSink {
       raw_ids: {
         fixture_id: selection.fixtureId,
         market_id: selection.marketId,
-        outcome_id: selection.outcomeId
+        outcome_id: selection.outcomeId,
+        provider_ref: selection.providerRef ?? ""
       },
       markers: serializeMarkers(selection),
       quote: {
@@ -510,6 +1130,7 @@ export class BackendCollectorStreamSink implements CollectorSink {
         ),
         outcome_name: selection.outcomeName,
         odds: selection.odds,
+        provider_ref: selection.providerRef ?? "",
         available_stake: selection.availableStake,
         suspended: selection.suspended
       }
@@ -578,6 +1199,249 @@ function parseQuoteConfirmationRequest(
   };
 }
 
+function parseLiveCorrelation(frame: LiveBetFrame): LiveBetCorrelationFields | null {
+  const requestId = cleanLiveString(frame.request_id);
+  const actionId = cleanLiveString(frame.action_id);
+  const attemptId = cleanLiveString(frame.attempt_id);
+  const opportunityId = cleanLiveString(frame.opportunity_id);
+  const legId = cleanLiveString(frame.leg_id);
+  if (!requestId || !actionId || !attemptId || !opportunityId || !legId) return null;
+  return { requestId, actionId, attemptId, opportunityId, legId };
+}
+
+function parseLivePrepareBetRequest(frame: LiveBetFrame): LivePrepareBetRequest | null {
+  const correlation = parseLiveCorrelation(frame);
+  const fixtureId = cleanLiveString(frame.fixture_id);
+  const marketId = cleanLiveString(frame.market_id);
+  const outcomeId = cleanLiveString(frame.outcome_id);
+  const providerRef = cleanLiveString(frame.provider_ref, 256);
+  const oddsFormat = frame.odds_format === "malay" || frame.odds_format === "indonesian"
+    ? frame.odds_format
+    : null;
+  const expectedOdds = frame.expected_odds;
+  const expectedRawOdds = frame.expected_raw_odds;
+  const expiresAt = cleanLiveString(frame.expires_at);
+  if (!correlation || !fixtureId || !marketId || !outcomeId || !providerRef ||
+    /^(?:javascript|data):/i.test(providerRef) || !oddsFormat ||
+    !validCanonicalOdds(expectedOdds) ||
+    (expectedRawOdds !== undefined && (!Number.isFinite(expectedRawOdds) || expectedRawOdds === 0)) ||
+    !validFutureTimestamp(expiresAt)) {
+    return null;
+  }
+  return {
+    ...correlation,
+    fixtureId,
+    marketId,
+    outcomeId,
+    providerRef,
+    expectedOdds,
+    expectedRawOdds,
+    oddsFormat,
+    quoteRevision: cleanLiveString(frame.quote_revision, 256) || undefined,
+    expiresAt,
+  };
+}
+
+function parseLiveCommitBetRequest(frame: LiveBetFrame): LiveCommitBetRequest | null {
+  const correlation = parseLiveCorrelation(frame);
+  const prepareId = cleanLiveString(frame.prepare_id, 256);
+  const idempotencyKey = cleanLiveString(frame.idempotency_key, 256);
+  const expiresAt = cleanLiveString(frame.expires_at);
+  if (!correlation || !prepareId || !idempotencyKey || !validCanonicalOdds(frame.expected_odds) ||
+    !Number.isSafeInteger(frame.stake_vnd) || Number(frame.stake_vnd) <= 0 ||
+    !validFutureTimestamp(expiresAt)) {
+    return null;
+  }
+  return {
+    ...correlation,
+    prepareId,
+    idempotencyKey,
+    stakeVnd: frame.stake_vnd as number,
+    expectedOdds: frame.expected_odds as number,
+    expiresAt,
+  };
+}
+
+function parseLiveCancelPreparedBetRequest(frame: LiveBetFrame): LiveCancelPreparedBetRequest | null {
+  const correlation = parseLiveCorrelation(frame);
+  const prepareId = cleanLiveString(frame.prepare_id, 256);
+  const expiresAt = cleanLiveString(frame.expires_at);
+  if (!correlation || !prepareId || !validFutureTimestamp(expiresAt)) return null;
+  return { ...correlation, prepareId, expiresAt };
+}
+
+function parseLiveReconcileBetRequest(frame: LiveBetFrame): LiveReconcileBetRequest | null {
+  const correlation = parseLiveCorrelation(frame);
+  const idempotencyKey = cleanLiveString(frame.idempotency_key, 256);
+  const expiresAt = cleanLiveString(frame.expires_at);
+  if (!correlation || !idempotencyKey || !validFutureTimestamp(expiresAt)) return null;
+  return { ...correlation, idempotencyKey, expiresAt };
+}
+
+function cleanLiveString(value: unknown, maximumLength = 512) {
+  const result = typeof value === "string" ? value.trim() : "";
+  return result.length <= maximumLength ? result : "";
+}
+
+function validCanonicalOdds(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value !== 0 && value >= -1 && value <= 1;
+}
+
+function validFutureTimestamp(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp > Date.now();
+}
+
+function assertLiveCommandFresh(expiresAt: string) {
+  if (!validFutureTimestamp(expiresAt)) throw new Error("live bet command has expired");
+}
+
+function rejectedLivePayload(cause: unknown) {
+  return {
+    result: "rejected",
+    observed_at: new Date().toISOString(),
+    error: errorMessage(cause),
+  };
+}
+
+function errorMessage(cause: unknown) {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+function serializeLiveBetResult(result: LiveBetResult): Record<string, unknown> {
+  if (result.result === "ticket_accepted") {
+    return {
+      result: result.result,
+      observed_at: result.observedAt,
+      ticket_id: result.ticketId,
+      accepted_odds: result.acceptedOdds,
+      stake_vnd: result.stakeVnd,
+    };
+  }
+  if (result.result === "odds_changed") {
+    return {
+      result: result.result,
+      observed_at: result.observedAt,
+      submitted_odds: result.submittedOdds,
+      offered_odds: result.offeredOdds,
+      confirmation_required: true,
+    };
+  }
+  return {
+    result: result.result,
+    observed_at: result.observedAt,
+    error: result.error,
+  };
+}
+
+function parseSimulatedBetCommand(frame: SimulateBetFrame): ParsedSimulatedBetCommand | null {
+  const sessionId = typeof frame.session_id === "string" ? frame.session_id.trim() : "";
+  const requestId = typeof frame.request_id === "string" ? frame.request_id.trim() : "";
+  const actionId = typeof frame.action_id === "string" ? frame.action_id.trim() : "";
+  const opportunityId = typeof frame.opportunity_id === "string" ? frame.opportunity_id.trim() : "";
+  const legId = typeof frame.leg_id === "string" ? frame.leg_id.trim() : "";
+  const fixtureId = typeof frame.fixture_id === "string" ? frame.fixture_id.trim() : "";
+  const marketId = typeof frame.market_id === "string" ? frame.market_id.trim() : "";
+  const outcomeId = typeof frame.outcome_id === "string" ? frame.outcome_id.trim() : "";
+  const expectedOdds = frame.expected_odds;
+  const stakeVnd = frame.stake_vnd;
+  const sequence = frame.sequence;
+  const expiresAt = typeof frame.expires_at === "string" ? frame.expires_at.trim() : "";
+  const timeoutMs = frame.timeout_ms === undefined ? 2_000 : frame.timeout_ms;
+  if (!sessionId || !requestId || !actionId || !opportunityId || !legId || !fixtureId ||
+    !marketId || !outcomeId || typeof expectedOdds !== "number" ||
+    !Number.isFinite(expectedOdds) || expectedOdds === 0 || typeof stakeVnd !== "number" ||
+    !Number.isSafeInteger(stakeVnd) || stakeVnd <= 0 || typeof sequence !== "number" ||
+    (sequence !== 1 && sequence !== 2) || !Number.isFinite(Date.parse(expiresAt)) ||
+    typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) {
+    return null;
+  }
+  return {
+    sessionId,
+    requestId,
+    actionId,
+    opportunityId,
+    legId,
+    sequence: sequence as 1 | 2,
+    fixtureId,
+    marketId,
+    outcomeId,
+    expectedOdds,
+    stakeVnd,
+    expiresAt,
+    timeoutMs: Math.max(Math.min(timeoutMs || 2_000, 3_000), 250),
+  };
+}
+
+function parseSimulatedPlaceBetRequest(frame: SimulateBetFrame): ParsedSimulatedPlaceBetRequest | null {
+  const command = parseSimulatedBetCommand(frame);
+  const idempotencyKey = typeof frame.idempotency_key === "string"
+    ? frame.idempotency_key.trim()
+    : "";
+  if (!command || !idempotencyKey) return null;
+  return { ...command, idempotencyKey };
+}
+
+function selectionCacheKey(fixtureId: string, marketId: string, outcomeId: string) {
+  return `${fixtureId}\u0000${marketId}\u0000${outcomeId}`;
+}
+
+function simulatedLegKey(request: {
+  actionId: string;
+  legId: string;
+}) {
+  return `${request.actionId}\u0000${request.legId}`;
+}
+
+function samePreparedSelection(
+  prepared: PreparedSimulatedSelection,
+  request: ParsedSimulatedBetCommand,
+) {
+  return prepared.actionId === request.actionId &&
+    prepared.opportunityId === request.opportunityId &&
+    prepared.legId === request.legId &&
+    prepared.sequence === request.sequence &&
+    prepared.fixtureId === request.fixtureId &&
+    prepared.marketId === request.marketId &&
+    prepared.outcomeId === request.outcomeId &&
+    Math.abs(prepared.selectedOdds - request.expectedOdds) <= 0.001;
+}
+
+function simulationCommandExpired(expiresAt: string) {
+  return Date.parse(expiresAt) <= Date.now();
+}
+
+function freshSimulationSelection(observedAt: string, maxAgeMs: number) {
+  const observedAtMs = Date.parse(observedAt);
+  if (!Number.isFinite(observedAtMs)) return false;
+  const ageMs = Date.now() - observedAtMs;
+  return ageMs >= -1_000 && ageMs <= maxAgeMs;
+}
+
+function simulatedPlacementFingerprint(
+  request: SimulatedPlaceBetRequest,
+) {
+  return JSON.stringify({
+    actionId: request.actionId,
+    opportunityId: request.opportunityId,
+    legId: request.legId,
+    sequence: request.sequence,
+    fixtureId: request.fixtureId,
+    marketId: request.marketId,
+    outcomeId: request.outcomeId,
+    expectedOdds: request.expectedOdds,
+    stakeVnd: request.stakeVnd,
+  });
+}
+
+function setBoundedMap<K, V>(target: Map<K, V>, key: K, value: V) {
+  if (!target.has(key) && target.size >= 10_000) {
+    const oldest = target.keys().next().value as K | undefined;
+    if (oldest !== undefined) target.delete(oldest);
+  }
+  target.set(key, value);
+}
+
 function serializeConfirmedSelection(selection: OddsSelection) {
   return {
     fixture_id: selection.fixtureId,
@@ -595,17 +1459,45 @@ function serializeConfirmedSelection(selection: OddsSelection) {
     suspended: selection.suspended,
     source_event_id: selection.sourceEventId ?? "",
     raw_odds: selection.rawOdds ?? 0,
-    odds_format: selection.oddsFormat ?? ""
+    odds_format: selection.oddsFormat ?? "",
+    provider_ref: selection.providerRef ?? ""
   };
 }
 
-function buildCollectorStreamURL(backendURL: string) {
+function buildCollectorStreamURL(
+  backendURL: string,
+  source: CollectorSourceIdentity,
+  accountId: string,
+  accessToken: string,
+) {
   const target = new URL(backendURL);
   target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
   target.pathname = "/v2/collector/stream";
   target.search = "";
+  if (accountId && accessToken) {
+    target.searchParams.set("collector_id", source.collectorId);
+    target.searchParams.set("bookmaker_id", source.bookmakerId);
+    target.searchParams.set("lobby_id", source.lobbyId);
+    target.searchParams.set("account_id", accountId);
+    target.searchParams.set("access_token", accessToken);
+  }
   target.hash = "";
   return target.toString();
+}
+
+function collectorAccountID(source: CollectorSourceIdentity) {
+  return collectorEnvValue(source, "COLLECTOR_ACCOUNT_ID");
+}
+
+function collectorAccessToken(source: CollectorSourceIdentity) {
+  return collectorEnvValue(source, "COLLECTOR_STREAM_TOKEN");
+}
+
+function collectorEnvValue(source: CollectorSourceIdentity, suffix: string) {
+  const prefix = `${source.bookmakerId}_${source.lobbyId}`
+    .replace(/[^a-z0-9]+/gi, "_")
+    .toUpperCase();
+  return envString(`${prefix}_${suffix}`, envString(suffix, "")).trim();
 }
 
 function serializeSource(source: CollectorSourceIdentity | OddsSnapshot["source"] | OddsDelta["source"]) {
@@ -616,11 +1508,21 @@ function serializeSource(source: CollectorSourceIdentity | OddsSnapshot["source"
   };
 }
 
+function sameSource(
+  left: CollectorSourceIdentity | OddsSnapshot["source"],
+  right: CollectorSourceIdentity
+) {
+  return left.collectorId === right.collectorId &&
+    left.bookmakerId === right.bookmakerId &&
+    left.lobbyId === right.lobbyId;
+}
+
 function serializeRawIDs(delta: OddsDelta) {
   return {
     fixture_id: delta.fixtureId,
     market_id: delta.marketId,
-    outcome_id: delta.outcomeId
+    outcome_id: delta.outcomeId,
+    provider_ref: delta.providerRef ?? ""
   };
 }
 
@@ -676,7 +1578,8 @@ function selectionFromDelta(delta: OddsDelta): OddsSelection {
     suspended: delta.suspended,
     sourceEventId: delta.sourceEventId,
     rawOdds: delta.rawOdds,
-    oddsFormat: delta.oddsFormat
+    oddsFormat: delta.oddsFormat,
+    providerRef: delta.providerRef
   };
 }
 
@@ -709,6 +1612,7 @@ function fixtureMarketSnapshotFromSelections(
       odds: selection.odds,
       rawOdds: selection.rawOdds,
       oddsFormat: selection.oddsFormat,
+      providerRef: selection.providerRef,
       availableStake: selection.availableStake,
       suspended: selection.suspended
     });
@@ -830,6 +1734,7 @@ function fixtureMarketFingerprint(snapshot: FixtureMarketSnapshot) {
           odds: outcome.odds,
           rawOdds: outcome.rawOdds ?? 0,
           oddsFormat: outcome.oddsFormat ?? "",
+          providerRef: outcome.providerRef ?? "",
           suspended: outcome.suspended
         }))
         .sort((left, right) => left.side.localeCompare(right.side))

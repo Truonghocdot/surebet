@@ -1,5 +1,6 @@
 import {
   EightXBetRuntime,
+  configuredSimulatedPlaceBetHandler,
   heartbeatIntervalMs,
   heartbeatOf,
   resolveEightXBetInplayPageURL,
@@ -16,6 +17,7 @@ export class EightXBetCollector {
     let currentSnapshot: OddsSnapshot | null = null;
     let bootstrapSent = false;
     let lastHeartbeatAt = 0;
+    let balanceUnavailableLogged = false;
 
     const flushSnapshot = async (
       snapshot: OddsSnapshot,
@@ -56,8 +58,27 @@ export class EightXBetCollector {
         return;
       }
 
+      await reportAccountBalance(snapshot);
       await sink.heartbeat(heartbeatOf(snapshot.source));
       lastHeartbeatAt = Date.now();
+    };
+
+    const reportAccountBalance = async (snapshot: OddsSnapshot) => {
+      if (!sink.pushAccountBalance) return;
+      const balance = await this.inplayRuntime.readAccountBalance();
+      if (!balance) {
+        if (!balanceUnavailableLogged) {
+          console.warn("[8xbet-worker] account balance is not visible on the authenticated page");
+          balanceUnavailableLogged = true;
+        }
+        return;
+      }
+      balanceUnavailableLogged = false;
+      await sink.pushAccountBalance({
+        source: snapshot.source,
+        observedAt: new Date().toISOString(),
+        ...balance
+      });
     };
 
     const heartbeatTimer = setInterval(() => {
@@ -69,7 +90,10 @@ export class EightXBetCollector {
         return;
       }
 
-      void sink.heartbeat(heartbeatOf(currentSnapshot.source)).then(() => {
+      const snapshot = currentSnapshot;
+      void reportAccountBalance(snapshot).then(() =>
+        sink.heartbeat(heartbeatOf(snapshot.source))
+      ).then(() => {
         lastHeartbeatAt = Date.now();
       }).catch((error) => {
         console.warn("[8xbet-worker] heartbeat failed:", error);
@@ -77,6 +101,7 @@ export class EightXBetCollector {
     }, Math.max(Math.floor(heartbeatIntervalMs() / 2), 1_000));
 
     sink.setQuoteConfirmationHandler?.((request) => this.inplayRuntime.confirmQuote(request));
+    sink.setSimulatedPlaceBetHandler?.(configuredSimulatedPlaceBetHandler("8xbet"));
     const inplayTask = this.inplayRuntime.streamSnapshots(
       {
         pageURL: this.inplayPageURL
@@ -86,13 +111,15 @@ export class EightXBetCollector {
       },
       async (deltas, fixtureId, observedAt) => {
         await flushFixtureDeltas(deltas, fixtureId, observedAt);
-      }
+      },
+      sink
     );
 
     try {
       await inplayTask;
     } finally {
       sink.setQuoteConfirmationHandler?.(null);
+      sink.setSimulatedPlaceBetHandler?.(null);
       clearInterval(heartbeatTimer);
       await this.inplayRuntime.close();
     }

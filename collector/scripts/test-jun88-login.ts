@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { chromium } from "playwright";
 import {
   findJun88LoginSubmitButton,
+  waitForJun88DirectLoginForm,
   waitForJun88LoginForm,
   withJun88BookmakerPage
 } from "../shared/src/bookmakers/jun88-bookmaker-page.js";
@@ -18,6 +19,7 @@ async function main() {
       <main id="app"></main>
       <div class="announcement-overlay">
         <div class="multi-announcement-close">close</div>
+        <div class="announcement-click-shield"></div>
       </div>
       <style>
         .announcement-overlay {
@@ -25,6 +27,18 @@ async function main() {
           inset: 0;
           z-index: 10;
           background: white;
+        }
+        .multi-announcement-close {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          width: 50px;
+          height: 50px;
+        }
+        .announcement-click-shield {
+          position: fixed;
+          inset: 0;
+          z-index: 11;
         }
       </style>
       <script>
@@ -85,6 +99,25 @@ async function main() {
       /after waiting .*url=about:blank ready_state=complete/
     );
 
+    await page.setContent(`
+      <button id="home-login">Login</button>
+      <main id="app"></main>
+      <script>
+        document.querySelector("#home-login").addEventListener("click", () => {
+          document.querySelector("#app").innerHTML = '<input type="password">';
+        });
+      </script>
+    `);
+    await assert.rejects(
+      () => waitForJun88DirectLoginForm(page, 250),
+      /Jun88 direct login form was not rendered/
+    );
+    assert.equal(
+      await page.locator('input[type="password"]').count(),
+      0,
+      "direct login flow must not click a Home-page login entry button"
+    );
+
     await testAuthenticatedTabIsReused();
     console.log("Jun88 delayed login render tests passed");
   } finally {
@@ -93,8 +126,31 @@ async function main() {
 }
 
 async function testAuthenticatedTabIsReused() {
+  const requestedPaths: string[] = [];
   const server = createServer((request, response) => {
+    const requestURL = new URL(request.url || "/", "http://127.0.0.1");
+    requestedPaths.push(requestURL.pathname);
     response.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (requestURL.pathname === "/login") {
+      response.end(`
+        <form id="login-form">
+          <input name="username" type="text">
+          <input name="password" type="password">
+          <button type="submit">Login</button>
+        </form>
+        <script>
+          document.querySelector("#login-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            document.querySelector("#login-form").remove();
+            history.replaceState({}, "", "/authenticated");
+            setTimeout(() => {
+              sessionStorage.setItem("jun88-session", "authenticated");
+            }, 150);
+          });
+        </script>
+      `);
+      return;
+    }
     if (request.url === "/home") {
       response.end(`
         <button id="open-login">Đăng Nhập</button>
@@ -133,18 +189,16 @@ async function testAuthenticatedTabIsReused() {
     username: process.env.JUN88_LOGIN_USERNAME,
     password: process.env.JUN88_LOGIN_PASSWORD,
     settleMs: process.env.COLLECTOR_LOGIN_SETTLE_MS,
-    pageSettleMs: process.env.COLLECT_PAGE_SETTLE_MS,
-    proxyMode: process.env.COLLECTOR_PROXY_MODE
+    pageSettleMs: process.env.COLLECT_PAGE_SETTLE_MS
   };
 
   Object.assign(process.env, {
     JUN88_LOGIN_ENABLED: "true",
-    JUN88_LOGIN_URL: `${baseURL}/home`,
+    JUN88_LOGIN_URL: `${baseURL}/login`,
     JUN88_LOGIN_USERNAME: "test-user",
     JUN88_LOGIN_PASSWORD: "test-password",
     COLLECTOR_LOGIN_SETTLE_MS: "250",
-    COLLECT_PAGE_SETTLE_MS: "0",
-    COLLECTOR_PROXY_MODE: "off"
+    COLLECT_PAGE_SETTLE_MS: "0"
   });
 
   try {
@@ -152,7 +206,7 @@ async function testAuthenticatedTabIsReused() {
       {
         lobbyId: "cmd",
         launchURL: `${baseURL}/sports-landing/cmd`,
-        loginURL: `${baseURL}/home`,
+        loginURL: `${baseURL}/login`,
         expectedOriginPatterns: [`127.0.0.1:${address.port}`]
       },
       `${baseURL}/sports-landing/cmd`,
@@ -162,7 +216,23 @@ async function testAuthenticatedTabIsReused() {
           "authenticated",
           "Jun88 CMD must continue in the authenticated tab so sessionStorage survives"
         );
+        assert.equal(new URL(page.url()).pathname, "/sports-landing/cmd");
       }
+    );
+    assert.equal(
+      requestedPaths.filter((path) => path === "/login").length,
+      1,
+      "Jun88 must open the direct login route exactly once"
+    );
+    assert.equal(
+      requestedPaths.includes("/home"),
+      false,
+      "Jun88 must not visit Home before login"
+    );
+    assert.equal(
+      requestedPaths.includes("/sports-landing/cmd"),
+      true,
+      "Jun88 must open the CMD bookmaker after authentication"
     );
   } finally {
     restoreEnv("JUN88_LOGIN_ENABLED", previousEnv.enabled);
@@ -171,7 +241,6 @@ async function testAuthenticatedTabIsReused() {
     restoreEnv("JUN88_LOGIN_PASSWORD", previousEnv.password);
     restoreEnv("COLLECTOR_LOGIN_SETTLE_MS", previousEnv.settleMs);
     restoreEnv("COLLECT_PAGE_SETTLE_MS", previousEnv.pageSettleMs);
-    restoreEnv("COLLECTOR_PROXY_MODE", previousEnv.proxyMode);
     await new Promise<void>((resolvePromise, reject) => {
       server.close((error) => error ? reject(error) : resolvePromise());
     });

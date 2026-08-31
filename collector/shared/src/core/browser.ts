@@ -1,11 +1,9 @@
 import type { LaunchOptions } from "playwright";
 import { envBool, envInt } from "./env.js";
-import { resolveCollectorProxy } from "./proxy.js";
 
-export async function collectorLaunchOptions(defaultHeadless = true): Promise<LaunchOptions> {
+export function collectorLaunchOptions(defaultHeadless = true): LaunchOptions {
   const headless = envBool("COLLECTOR_HEADLESS", defaultHeadless);
   const slowMo = envInt("COLLECTOR_SLOWMO", headless ? 0 : 150);
-  const proxy = await resolveCollectorProxy();
   const args = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -22,7 +20,6 @@ export async function collectorLaunchOptions(defaultHeadless = true): Promise<La
   return {
     headless,
     slowMo,
-    proxy,
     args
   };
 }

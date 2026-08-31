@@ -384,6 +384,9 @@ function wordsMatch(left: string, right: string) {
   if (left === right) {
     return true;
   }
+  if (left.startsWith("nation-") || right.startsWith("nation-")) {
+    return false;
+  }
   const leftChars = Array.from(left);
   const rightChars = Array.from(right);
   if (leftChars.length < 4 || rightChars.length < 4) {

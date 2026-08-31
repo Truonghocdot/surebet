@@ -10,11 +10,14 @@ import type {
 } from "../contracts.js";
 import { formatError, writeDebugArtifacts } from "../core/debug.js";
 import { envInt } from "../core/env.js";
+import { liveBetFeatureFlags } from "../live-actions.js";
 import { updateCollectorResourceTelemetry } from "../core/resource-telemetry.js";
 import { JUN88_LOBBIES } from "./jun88-lobbies.js";
 import { withJun88BookmakerPage } from "./jun88-bookmaker-page.js";
 import { CMD_AVAILABILITY_CONFIG } from "./cmd-availability.js";
 import { parseJun88CmdSnapshot } from "./parsers/jun88-cmd-parser.js";
+import { Jun88CmdLiveBetActions } from "./jun88-cmd-live-actions.js";
+import { readJun88CmdAccountBalance } from "./account-balance.js";
 import {
   buildDeltas,
   heartbeatIntervalMs,
@@ -32,6 +35,10 @@ export class Jun88CmdRuntime {
   async stream(context: CollectContext, sink: CollectorSink): Promise<void> {
     const lobby = requireLobbyConfig("cmd");
     return withJun88BookmakerPage(lobby, context.pageURL, async (page) => {
+      const liveActions = liveBetFeatureFlags().enabled
+        ? new Jun88CmdLiveBetActions(page)
+        : null;
+      sink.setLiveBetHandler?.(liveActions);
       try {
         let target = await resolveCmdContentTarget(page);
         await configureCmdUpstreamRefresh(target);
@@ -53,6 +60,24 @@ export class Jun88CmdRuntime {
           throw new Error("Jun88 CMD initial page did not expose parseable market selections");
         }
         const initialSnapshot = initialRead.snapshot;
+        let balanceUnavailableLogged = false;
+        const reportAccountBalance = async () => {
+          if (!sink.pushAccountBalance) return;
+          const balance = await readJun88CmdAccountBalance(page);
+          if (!balance) {
+            if (!balanceUnavailableLogged) {
+              console.warn("[jun88-cmd] account balance is not visible in the bookmaker frame");
+              balanceUnavailableLogged = true;
+            }
+            return;
+          }
+          balanceUnavailableLogged = false;
+          await sink.pushAccountBalance({
+            source: initialSnapshot.source,
+            observedAt: new Date().toISOString(),
+            ...balance
+          });
+        };
         let activeSnapshot: OddsSnapshot = {
           ...initialSnapshot,
           selections: []
@@ -105,6 +130,7 @@ export class Jun88CmdRuntime {
         });
         await installCmdObserver(target, initialSnapshot);
         await sink.pushBootstrap(initialSnapshot);
+        await reportAccountBalance();
         await sink.heartbeat(heartbeatOf(initialSnapshot.source));
         let lastHeartbeatAt = Date.now();
         let lastReconcileAt = Date.now();
@@ -186,6 +212,7 @@ export class Jun88CmdRuntime {
           }
 
           if (Date.now() - lastHeartbeatAt >= heartbeatMs) {
+            await reportAccountBalance();
             await sink.heartbeat(heartbeatOf(activeSnapshot.source));
             lastHeartbeatAt = Date.now();
           }
@@ -197,6 +224,7 @@ export class Jun88CmdRuntime {
         throw new Error(`[${this.collectorId}] stream failed: ${formatError(error)}`);
       } finally {
         sink.setQuoteConfirmationHandler?.(null);
+        sink.setLiveBetHandler?.(null);
       }
     });
   }
@@ -530,6 +558,8 @@ export async function installCmdObserver(
         return false;
       };
       const quoteId = (fixtureId, marketId, outcomeName) => fixtureId + ":" + marketId + ":" + normalizeToken(outcomeName);
+      const providerRef = (node) => String(node?.getAttribute("href") || "")
+        .match(/\\bOddsClick\\s*\\(\\s*this\\s*,\\s*['"]([A-Za-z0-9_-]{1,128})['"]\\s*\\)/i)?.[1] || "";
       const normalizeHandicapLine = (line, side, givingSide) => {
         if (!line) return "";
         const absoluteLine = line.replace(/^[+-]/, "");
@@ -595,6 +625,7 @@ export async function installCmdObserver(
           odds: hasOdds ? odds : 0,
           rawOdds: hasOdds ? odds : 0,
           oddsFormat: "malay",
+          providerRef: providerRef(node),
           availableStake: 0,
           suspended: !hasOdds || isUnavailable(node)
         };
@@ -737,6 +768,7 @@ export async function installCmdObserver(
                 sourceEventId,
                 rawOdds: item.rawOdds,
                 oddsFormat: item.oddsFormat,
+                providerRef: item.providerRef,
                 op: "upsert"
               });
             }
@@ -762,6 +794,7 @@ export async function installCmdObserver(
                   sourceEventId,
                   rawOdds: item.rawOdds,
                   oddsFormat: item.oddsFormat,
+                  providerRef: item.providerRef,
                   op: "remove"
                 });
               }
@@ -893,6 +926,7 @@ export async function installCmdObserver(
                     sourceEventId: "cmd:" + new Date().toISOString(),
                     rawOdds: item.rawOdds,
                     oddsFormat: item.oddsFormat,
+                    providerRef: item.providerRef,
                     op: "remove"
                   });
                 }
@@ -1689,6 +1723,7 @@ function applyDeltasToSelectionMap(
       odds: delta.odds,
       rawOdds: delta.rawOdds,
       oddsFormat: delta.oddsFormat,
+      providerRef: delta.providerRef,
       sourceEventId: delta.sourceEventId,
       availableStake: delta.availableStake,
       suspended: delta.suspended

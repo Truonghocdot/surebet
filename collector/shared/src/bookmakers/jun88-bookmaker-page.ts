@@ -22,10 +22,12 @@ export async function withJun88BookmakerPage<T>(
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
       }
     });
-    await installCollectorResourceBlocking(context);
     const authenticatedPage = await ensureJun88Login(context, lobby);
 
     const page = await openLobby(context, lobby, targetURL, authenticatedPage);
+    // Login and lobby bootstrap need the bookmaker's styles/scripts. Apply the
+    // lightweight resource policy only after the authenticated page is ready.
+    await installCollectorResourceBlocking(context);
     try {
       return await run(page);
     } catch (error) {
@@ -50,12 +52,12 @@ async function ensureJun88Login(
   context: BrowserContext,
   lobby: Jun88LobbyAccess
 ): Promise<Page | undefined> {
-  if (!envBool("JUN88_LOGIN_ENABLED", false)) {
-    return undefined;
-  }
-
   const username = envString("JUN88_LOGIN_USERNAME", "").trim();
   const password = envString("JUN88_LOGIN_PASSWORD", "").trim();
+  const loginEnabled = envBool("JUN88_LOGIN_ENABLED", Boolean(username && password));
+  if (!loginEnabled) {
+    return undefined;
+  }
   if (!username || !password) {
     throw new Error(
       "JUN88_LOGIN_ENABLED=true requires JUN88_LOGIN_USERNAME and JUN88_LOGIN_PASSWORD"
@@ -64,7 +66,7 @@ async function ensureJun88Login(
 
   const loginURL = envString(
     "JUN88_LOGIN_URL",
-    lobby.loginURL || "https://www.jun88b5.net/vi-vn/home"
+    lobby.loginURL || "https://www.junn8811.cc/vi-vn/login"
   ).trim();
   const page = await context.newPage();
   const timeoutMs = Math.max(envInt("COLLECTOR_LOGIN_TIMEOUT_MS", 20_000), 5_000);
@@ -74,12 +76,13 @@ async function ensureJun88Login(
   );
 
   try {
+    console.log(`[jun88-auth] opening direct login url=${loginURL}`);
     await page.goto(loginURL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     await waitForStablePage(page);
     await page.waitForTimeout(settleMs);
 
     const loginFormStartedAt = Date.now();
-    const resolvedPasswordField = await waitForJun88LoginForm(page, timeoutMs);
+    const resolvedPasswordField = await waitForJun88DirectLoginForm(page, timeoutMs);
     const usernameField = await waitForVisibleLocator(
       page,
       () => findJun88UsernameField(page, resolvedPasswordField),
@@ -99,7 +102,9 @@ async function ensureJun88Login(
       timeoutMs,
       "Jun88 login submit button was not rendered"
     );
-    await dismissJun88Announcement(page, timeoutMs);
+    if (!(await dismissJun88Announcement(page, timeoutMs))) {
+      throw new Error("Jun88 announcement remained visible before login submission");
+    }
     await submitButton.click({ timeout: timeoutMs });
     await waitForLoginFormToClose(page, resolvedPasswordField, timeoutMs);
 
@@ -118,6 +123,18 @@ async function ensureJun88Login(
   }
 }
 
+export async function waitForJun88DirectLoginForm(
+  page: Page,
+  timeoutMs: number
+): Promise<Locator> {
+  return waitForVisibleLocator(
+    page,
+    () => firstVisibleLocator(page.locator('input[type="password"]')),
+    timeoutMs,
+    "Jun88 direct login form was not rendered"
+  );
+}
+
 export async function waitForJun88LoginForm(
   page: Page,
   timeoutMs: number
@@ -127,7 +144,9 @@ export async function waitForJun88LoginForm(
     return surface.passwordField;
   }
 
-  await dismissJun88Announcement(page, timeoutMs);
+  if (!(await dismissJun88Announcement(page, timeoutMs))) {
+    throw new Error("Jun88 announcement remained visible before opening the login form");
+  }
   await surface.entryButton.click({ timeout: timeoutMs });
   return waitForVisibleLocator(
     page,
@@ -149,7 +168,15 @@ async function waitForJun88LoginSurface(
   const deadline = startedAt + timeoutMs;
 
   while (Date.now() <= deadline) {
-    await dismissJun88Announcement(page, timeoutMs);
+    const announcementCleared = await dismissJun88Announcement(page, timeoutMs);
+    if (!announcementCleared) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        break;
+      }
+      await page.waitForTimeout(Math.min(200, remainingMs));
+      continue;
+    }
 
     const passwordField = await firstVisibleLocator(page.locator('input[type="password"]'));
     if (passwordField) {
@@ -241,20 +268,95 @@ export async function findJun88LoginSubmitButton(passwordField: Locator) {
 }
 
 async function dismissJun88Announcement(page: Page, timeoutMs: number) {
-  const closeButton = await firstVisibleLocator(
-    page.locator(".multi-announcement-close")
-  );
-  if (!closeButton) {
+  const deadline = Date.now() + Math.min(Math.max(timeoutMs, 250), 3_000);
+  let dismissed = 0;
+  const methods = new Set<string>();
+
+  while (Date.now() < deadline) {
+    const closeButton = await firstVisibleLocator(
+      page.locator(".multi-announcement-close")
+    );
+    if (!closeButton) {
+      if (dismissed > 0) {
+        console.log(
+          `[jun88-auth] announcement dismissed count=${dismissed} methods=${[...methods].join(",")}`
+        );
+      }
+      return true;
+    }
+
+    const normalClick = await closeButton
+      .click({ timeout: Math.min(Math.max(deadline - Date.now(), 100), 500) })
+      .then(() => true)
+      .catch(() => false);
+    if (await waitForJun88AnnouncementToClear(page, 250)) {
+      methods.add("locator");
+      dismissed += 1;
+      continue;
+    }
+
+    const forcedClick = await closeButton
+      .click({ force: true, timeout: Math.min(Math.max(deadline - Date.now(), 100), 300) })
+      .then(() => true)
+      .catch(() => false);
+    if (await waitForJun88AnnouncementToClear(page, 250)) {
+      methods.add("force");
+      dismissed += 1;
+      continue;
+    }
+
+    const domClick = await page.evaluate(() => {
+      const candidates = document.querySelectorAll<HTMLElement>(
+        ".multi-announcement-close"
+      );
+      for (const candidate of candidates) {
+        const style = window.getComputedStyle(candidate);
+        const rect = candidate.getBoundingClientRect();
+        if (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          rect.width > 0 &&
+          rect.height > 0
+        ) {
+          candidate.click();
+          return true;
+        }
+      }
+      return false;
+    }).catch(() => false);
+    if (await waitForJun88AnnouncementToClear(page, Math.min(deadline - Date.now(), 750))) {
+      methods.add("dom");
+      dismissed += 1;
+      continue;
+    }
+
+    console.warn(
+      `[jun88-auth] announcement close did not clear overlay ` +
+      `normal_click=${normalClick} force_click=${forcedClick} dom_click=${domClick}`
+    );
     return false;
   }
 
-  await closeButton.click({ timeout: Math.min(timeoutMs, 5_000) });
-  await closeButton.waitFor({
-    state: "hidden",
-    timeout: Math.min(timeoutMs, 3_000)
-  }).catch(() => undefined);
-  console.log("[jun88-auth] announcement dismissed");
-  return true;
+  return !(await hasVisibleJun88Announcement(page));
+}
+
+async function waitForJun88AnnouncementToClear(page: Page, timeoutMs: number) {
+  const deadline = Date.now() + Math.max(timeoutMs, 0);
+  do {
+    if (!(await hasVisibleJun88Announcement(page))) {
+      return true;
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return false;
+    }
+    await page.waitForTimeout(Math.min(50, remainingMs));
+  } while (Date.now() <= deadline);
+  return false;
+}
+
+async function hasVisibleJun88Announcement(page: Page) {
+  return (await firstVisibleLocator(page.locator(".multi-announcement-close"))) !== null;
 }
 
 async function waitForVisibleLocator(
@@ -344,6 +446,7 @@ async function openLobby(
     : await context.newPage();
 
   try {
+    console.log(`[jun88-auth] opening CMD lobby in authenticated tab target=${targetURL}`);
     await landingPage.goto(targetURL, { waitUntil: "domcontentloaded" });
     await waitForStablePage(landingPage);
 

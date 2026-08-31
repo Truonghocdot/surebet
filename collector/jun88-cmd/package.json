@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@surebet/collector-shared": "0.1.0"
+    "@surebet/collector-shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

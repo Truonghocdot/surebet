@@ -18,7 +18,9 @@ export function useDashboardSnapshotQuery() {
   return useQuery({
     queryKey: crmQueryKeys.dashboard,
     queryFn: fetchDashboardSnapshot,
-    refetchInterval: 5_000,
+    // Realtime websocket invalidates this query on odds changes. The interval
+    // is only a fallback when the socket is unavailable.
+    refetchInterval: 15_000,
     refetchIntervalInBackground: false
   });
 }
@@ -103,6 +105,12 @@ export function useRealtimeWebSocket() {
               pushNotification(opportunityNotification("candidate", candidate));
             }
             scheduleDashboardRefresh();
+            setStatus("live");
+          }
+          if (
+            message.type === "auto_bet_live_updated" ||
+            message.type === "bet_exposure_updated"
+          ) {
             setStatus("live");
           }
         } catch {

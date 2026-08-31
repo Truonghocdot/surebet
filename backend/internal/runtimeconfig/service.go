@@ -13,11 +13,10 @@ import (
 const collectorSettingPrefix = "collector."
 
 const (
-	keyEightXBetBaseURL        = collectorSettingPrefix + "eightxbet_base_url"
-	keyEightXBetInplayPageURL  = collectorSettingPrefix + "eightxbet_inplay_page_url"
-	keyJun88BaseURL            = collectorSettingPrefix + "jun88_base_url"
-	keyJun88CmdPageURL         = collectorSettingPrefix + "jun88_cmd_page_url"
-	keyCollectorProxyXoayToken = collectorSettingPrefix + "proxyxoay_token"
+	keyEightXBetBaseURL       = collectorSettingPrefix + "eightxbet_base_url"
+	keyEightXBetInplayPageURL = collectorSettingPrefix + "eightxbet_inplay_page_url"
+	keyJun88BaseURL           = collectorSettingPrefix + "jun88_base_url"
+	keyJun88CmdPageURL        = collectorSettingPrefix + "jun88_cmd_page_url"
 )
 
 type SettingReaderWriter interface {
@@ -76,11 +75,10 @@ func (s *Service) UpdateCollectorConfig(
 	request dto.UpdateCollectorRuntimeConfigRequest,
 ) (dto.CollectorRuntimeConfigView, error) {
 	configValue := dto.CollectorRuntimeConfigView{
-		EightXBetBaseURL:        strings.TrimSpace(request.EightXBetBaseURL),
-		EightXBetInplayPageURL:  strings.TrimSpace(request.EightXBetInplayPageURL),
-		Jun88BaseURL:            strings.TrimSpace(request.Jun88BaseURL),
-		Jun88CmdPageURL:         strings.TrimSpace(request.Jun88CmdPageURL),
-		CollectorProxyXoayToken: strings.TrimSpace(request.CollectorProxyXoayToken),
+		EightXBetBaseURL:       strings.TrimSpace(request.EightXBetBaseURL),
+		EightXBetInplayPageURL: strings.TrimSpace(request.EightXBetInplayPageURL),
+		Jun88BaseURL:           strings.TrimSpace(request.Jun88BaseURL),
+		Jun88CmdPageURL:        strings.TrimSpace(request.Jun88CmdPageURL),
 	}
 
 	if err := s.repo.UpsertMany(ctx, toSettings(configValue)); err != nil {
@@ -104,11 +102,10 @@ func (s *Service) loadCollectorConfig(
 	}
 
 	result := dto.CollectorRuntimeConfigView{
-		EightXBetBaseURL:        strings.TrimSpace(s.defaults.EightXBetBaseURL),
-		EightXBetInplayPageURL:  strings.TrimSpace(s.defaults.EightXBetInplayPageURL),
-		Jun88BaseURL:            strings.TrimSpace(s.defaults.Jun88BaseURL),
-		Jun88CmdPageURL:         strings.TrimSpace(s.defaults.Jun88CmdPageURL),
-		CollectorProxyXoayToken: strings.TrimSpace(s.defaults.CollectorProxyXoayToken),
+		EightXBetBaseURL:       strings.TrimSpace(s.defaults.EightXBetBaseURL),
+		EightXBetInplayPageURL: strings.TrimSpace(s.defaults.EightXBetInplayPageURL),
+		Jun88BaseURL:           strings.TrimSpace(s.defaults.Jun88BaseURL),
+		Jun88CmdPageURL:        strings.TrimSpace(s.defaults.Jun88CmdPageURL),
 	}
 
 	for _, item := range items {
@@ -121,8 +118,6 @@ func (s *Service) loadCollectorConfig(
 			result.Jun88BaseURL = strings.TrimSpace(item.Value)
 		case keyJun88CmdPageURL:
 			result.Jun88CmdPageURL = strings.TrimSpace(item.Value)
-		case keyCollectorProxyXoayToken:
-			result.CollectorProxyXoayToken = strings.TrimSpace(item.Value)
 		}
 	}
 
@@ -135,6 +130,5 @@ func toSettings(configValue dto.CollectorRuntimeConfigView) []models.RuntimeSett
 		{Key: keyEightXBetInplayPageURL, Value: configValue.EightXBetInplayPageURL},
 		{Key: keyJun88BaseURL, Value: configValue.Jun88BaseURL},
 		{Key: keyJun88CmdPageURL, Value: configValue.Jun88CmdPageURL},
-		{Key: keyCollectorProxyXoayToken, Value: configValue.CollectorProxyXoayToken},
 	}
 }

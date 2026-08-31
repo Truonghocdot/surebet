@@ -1,7 +1,9 @@
 "use client";
 
 import { DashboardOverviewScreen } from "@/features/dashboard/components/dashboard-overview-screen";
+import { FixtureMatchingScreen } from "@/features/dashboard/components/fixture-matching-screen";
 import { CollectorConfigScreen } from "@/features/admin/components/collector-config-screen";
+import { AutoBetMonitorScreen } from "@/features/auto-bet/components/auto-bet-monitor-screen";
 import type { DashboardHref } from "@/lib/dashboard-spa";
 
 const views: Array<{
@@ -11,6 +13,14 @@ const views: Array<{
   {
     href: "/dashboard",
     screen: <DashboardOverviewScreen />
+  },
+  {
+    href: "/matching",
+    screen: <FixtureMatchingScreen />
+  },
+  {
+    href: "/auto-bet",
+    screen: <AutoBetMonitorScreen />
   },
   {
     href: "/collector-config",

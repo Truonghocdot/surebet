@@ -1,5 +1,7 @@
 export const dashboardHrefs = [
   "/dashboard",
+  "/matching",
+  "/auto-bet",
   "/collector-config"
 ] as const;
 

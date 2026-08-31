@@ -1,0 +1,152 @@
+<div class="PlaceBetLeft">
+                    <h1 id="BetWindowTitle">
+                        <span id="hidplacebet" style="display: none">
+                            </span>
+                        <span id="lbPlaceBet">bóng đá</span>
+                        <span>-</span>
+                        <span id="lb_title">Cược chấp</span>
+                        <span id="lb_parlay" style="display: none; float: right; margin-right: 6px; font-size: 11px;"><span id="lb_parlaytitle" style="display: none;">Cược hỗn hợp</span> <span id="lb_count" style="padding: 1px 5px; border-radius: 3px;">12</span></span>
+                    </h1>
+                    <table cellspacing="0" cellpadding="1" border="0" style="width: 100%; background: #eeedeb;" id="BetWindow">
+                        <tbody>
+                            <tr>
+                                <td id="td_tbg" class="betWindowBg_R">
+                                    <span class="BetChoice" id="lb_bet_team">FC Orenburg</span>
+                                    <br>
+                                    <b class="disin" id="lb_hdpball" style="color: rgb(181, 0, 0);">-0.25</b>
+                                    <span class="disin" id="lb_hdpscore">[0-1]</span>
+                                    <span class="disin">@</span>
+                                    <span id="lb_bet_odds" style="margin-right: 2px; color: rgb(181, 0, 0);">-0.93</span>
+                                    <div id="pl_autorefresh">
+                                        <label for="chkAutoRefresh">
+                                            Tự Động Tải Lại<span id="spautorefreshcount"></span></label><input id="chkAutoRefresh" style="vertical-align: middle" type="checkbox">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr id="pnNormal">
+                                <td>
+                                    <div class="aosbox" style="display: none;">Ngoại trừ: <span class="aosbox-content" id="aosbox-content"></span></div>
+                                    <div class="PlaceBetLeft_3" id="pn_title">
+                                        <span class="PlaveBet_blue" id="lb_league" style="text-decoration: none;">RUSSIA PREMIER LEAGUE</span>
+                                        <span id="lb_home_team" style="display: block;">FC Orenburg</span>
+                                        <span id="lb_away_team" style="display: block;">Lokomotiv Moscow</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr id="pnParlay" style="display: none;">
+                                <td id="pnParlayC"></td>
+                            </tr>
+                            <tr id="tr_stake">
+                                <td class="PlaceBetLeft_4">
+                                    <b id="lb_stake">
+                                        VD:</b>
+                                    <input type="text" onclick="this.select();" onkeyup="onStakeChanged();" oncut="return false;" onpaste="return false;" oncopy="return false;" oncontextmenu="return false;" onkeydown="return KeyDownHandler(event);" tabindex="1" id="tx_stake" name="tx_stake" autocomplete="off">
+                                    <input type="hidden" id="tx_min_bet" value="20">
+                                    <input type="hidden" id="tx_max_bet" value="229166">
+                                    <input type="hidden" id="tx_ran_code" value="[redacted]">
+                                    <input type="hidden" id="tx_bet_type" value="Hdp">
+                                    <input type="hidden" id="tx_bet_odds" value="-0.93">
+                                    <input type="hidden" id="tx_bet_oddsType" value="MY">
+                                    <input type="hidden" id="tx_ismr" value="0">
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style="width: 100%;" id="pn_details">
+                                        <table cellspacing="0" cellpadding="0" border="0" class="PlaceBetLeft_5" style="width: 100%; clip: rect(auto, auto, auto, 2px);">
+                                            <tbody>
+                                                <tr id="tr_parlay_combo" style="display: none">
+                                                    <th>
+                                                        <span id="spanMixCombo">Kết hợp</span>
+                                                    </th>
+                                                    <td>
+                                                        <select id="selMixCombo" onchange="onCheckMaxBetMatch();" style="font-size: 12px; width: 86px;"></select>
+                                                    </td>
+                                                </tr>
+                                                <tr id="tr_parlay_odds" style="display: none">
+                                                    <th style="width: 50%">
+                                                        <span id="Span1">Odds</span>
+                                                    </th>
+                                                    <td>
+                                                        <span id="lb_parlay_odds" style="color: rgb(181, 0, 0);">-0.93</span>
+                                                    </td>
+                                                </tr>
+                                                <tr id="tr_parlay_stake" style="display: none">
+                                                    <th>
+                                                        <span id="Span2">Tiền Cược</span>
+                                                    </th>
+                                                    <td class="PlaceBetLeft_4">
+                                                        <b id="B1" style="color: #003399">
+                                                            VD</b>
+                                                        <input type="text" onclick="this.select();" onkeyup="onStakeChanged();" oncut="return false;" onpaste="return false;" oncopy="return false;" oncontextmenu="return false;" onkeydown="return KeyDownHandler(event);" tabindex="1" id="tx_stake_parlay" name="tx_stake" autocomplete="off">
+                                                    </td>
+                                                </tr>
+                                                <tr id="trComboStake" style="display: none">
+                                                    <th>
+                                                        <span>Tổng số tiền cọc</span>
+                                                    </th>
+                                                    <td>
+                                                        <b id="lb_ComboStake">0</b>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <th>
+                                                        <span id="lb_estPay">
+                                                            Thanh Toán Tối Đa</span>
+                                                    </th>
+                                                    <td>
+                                                        <b id="lb_estPayVal">20</b>
+                                                    </td>
+                                                </tr>
+                                                <tr id="trComboPayout" style="display: none">
+                                                    <th>
+                                                        <span>Kết hợp.chi</span>
+                                                    </th>
+                                                    <td>
+                                                        <b id="lb_ComboPayout">0</b>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <th>
+                                                        <span id="lb_bet_limit">
+                                                            Giới hạn đặt cược</span>
+                                                    </th>
+                                                    <td>
+                                                        <span style="color: rgb(0, 83, 185);" id="lb_bet_limit_val">20 / 229,166</span>
+                                                    </td>
+                                                </tr>
+                                                <tr id="tr_chk_auto" style="display: none;">
+                                                    <td style="padding-left: 5px; border-top: 1px dotted #ccc" colspan="2">
+                                                        <label for="chk_auto">
+                                                            </label>
+                                                        <input type="checkbox" name="chk_auto" id="chk_auto" style="vertical-align: middle">
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="PlaceBetLeft_6" align="center">
+                                    <input type="button" tabindex="2" value="đặt cược" class="btnbet" id="btnBet" name="btnBet" onclick="onBet();">
+                                    <input type="button" tabindex="3" value="hủy bỏ" class="btnbet" id="btnCancel" name="btnCancel" onclick="onCancel();">
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <table width="190" cellspacing="0" cellpadding="0" border="0" id="BetErrorMessage" style="display: none;">
+                        <tbody>
+                            <tr>
+                                <td align="center">
+                                    <span style="color: Black;" class="fs" id="lb_msg">Match closed</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td valign="middle" align="center">
+                                    <input type="button" value="OK" class="btnbet" id="imgbtnOK" onclick="onErrorOk();" tabindex="5">
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>

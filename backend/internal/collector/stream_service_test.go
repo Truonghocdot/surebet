@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"surebet/backend/internal/config"
 	"surebet/backend/internal/dto"
 	"surebet/backend/internal/eventbus"
 	"surebet/backend/internal/models"
@@ -54,6 +56,137 @@ func TestStreamServiceKeepsProtocolV1DuringRollout(t *testing.T) {
 	}
 	if ack.ProtocolVersion != 1 {
 		t.Fatalf("expected negotiated v1 ack, got %+v", ack)
+	}
+}
+
+func TestStreamServiceRejectsUnauthenticatedProtocolV4(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+
+	hello := testHello("session-live-unauthenticated")
+	hello.ProtocolVersion = 4
+	hello.AccountID = "account-1"
+	hello.Capabilities = []string{CapabilityBetPrepare}
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write live hello: %v", err)
+	}
+	var response dto.CollectorStreamError
+	if err := conn.ReadJSON(&response); err != nil {
+		t.Fatalf("read live auth error: %v", err)
+	}
+	if response.Code != "live_auth_required" {
+		t.Fatalf("expected live_auth_required, got %+v", response)
+	}
+}
+
+func TestStreamServiceAuthenticatesAndCorrelatesLivePrepare(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	service.SetCollectorStreamAuth(config.CollectorStreamAuthConfig{
+		Required: true,
+		Credentials: []config.CollectorStreamCredential{{
+			CollectorID: "jun88-cmd", BookmakerID: "jun88", LobbyID: "cmd",
+			AccountID: "account-1", Token: "collector-secret",
+		}},
+	})
+
+	server := httptest.NewServer(service)
+	defer server.Close()
+	url := "ws" + strings.TrimPrefix(server.URL, "http") +
+		"?collector_id=jun88-cmd&bookmaker_id=jun88&lobby_id=cmd&account_id=account-1&access_token=collector-secret"
+	conn, response, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		if response != nil {
+			t.Fatalf("dial authenticated collector stream: %v status=%d", err, response.StatusCode)
+		}
+		t.Fatalf("dial authenticated collector stream: %v", err)
+	}
+	defer conn.Close()
+
+	hello := testHello("session-live")
+	hello.ProtocolVersion = 4
+	hello.AccountID = "account-1"
+	hello.Capabilities = []string{CapabilityBetPrepare, CapabilityBetCommit, CapabilityBetReconcile}
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write live hello: %v", err)
+	}
+	var ack dto.CollectorStreamHelloAck
+	if err := conn.ReadJSON(&ack); err != nil {
+		t.Fatalf("read live hello ack: %v", err)
+	}
+	if ack.ProtocolVersion != 4 || ack.AccountID != "account-1" {
+		t.Fatalf("unexpected live hello ack: %+v", ack)
+	}
+
+	type result struct {
+		response dto.CollectorLiveBetResponse
+		sent     bool
+		err      error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		liveResponse, sent, executeErr := service.ExecuteLiveBet(
+			context.Background(),
+			hello.Source,
+			dto.CollectorLiveBetRequest{
+				Type: "prepare_bet", ActionID: "action-1", AttemptID: "attempt-1",
+				OpportunityID: "opportunity-1", LegID: "leg-jun88", AccountID: "account-1",
+				FixtureID: "fixture-1", MarketID: "market-1", OutcomeID: "outcome-1",
+				ProviderRef: "25212060_Hdp_Home", ExpectedOdds: -0.92, OddsFormat: "malay",
+				ExpiresAt: time.Now().UTC().Add(time.Minute),
+			},
+		)
+		resultCh <- result{response: liveResponse, sent: sent, err: executeErr}
+	}()
+
+	var request dto.CollectorLiveBetRequest
+	if err := conn.ReadJSON(&request); err != nil {
+		t.Fatalf("read live prepare: %v", err)
+	}
+	if request.Type != "prepare_bet" || request.ProtocolVersion != 4 ||
+		request.SessionID != hello.SessionID || request.Source != hello.Source {
+		t.Fatalf("unexpected live prepare: %+v", request)
+	}
+	if err := conn.WriteJSON(dto.CollectorLiveBetResponse{
+		Type: "bet_prepared", ProtocolVersion: 4, SessionID: hello.SessionID, Seq: 1,
+		RequestID: request.RequestID, ActionID: request.ActionID, AttemptID: request.AttemptID,
+		OpportunityID: request.OpportunityID, LegID: request.LegID, AccountID: request.AccountID,
+		Source: hello.Source, Result: "prepared", ObservedAt: time.Now().UTC(),
+		PrepareID: "prepare-1", SlipFingerprint: "fingerprint-1", DisplayedOdds: -0.92,
+		RawOdds: -0.92, OddsFormat: "malay", MinimumStakeVND: 20_000,
+		MaximumStakeVND: 500_000, StakeIncrementVND: 1_000, BalanceVND: 1_000_000,
+		SessionGeneration: "generation-1",
+	}); err != nil {
+		t.Fatalf("write live prepare response: %v", err)
+	}
+
+	select {
+	case got := <-resultCh:
+		if got.err != nil || !got.sent || got.response.Result != "prepared" || got.response.PrepareID != "prepare-1" {
+			t.Fatalf("unexpected live prepare result: %+v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for live prepare result")
+	}
+}
+
+func TestStreamServiceRejectsInvalidCollectorCredentialBeforeUpgrade(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	service.SetCollectorStreamAuth(config.CollectorStreamAuthConfig{
+		Required: true,
+		Credentials: []config.CollectorStreamCredential{{
+			CollectorID: "jun88-cmd", BookmakerID: "jun88", LobbyID: "cmd",
+			AccountID: "account-1", Token: "collector-secret",
+		}},
+	})
+	request := httptest.NewRequest(http.MethodGet,
+		"http://example.test?collector_id=jun88-cmd&bookmaker_id=jun88&lobby_id=cmd&account_id=account-1&access_token=wrong",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	service.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized before upgrade, got %d", response.Code)
 	}
 }
 
@@ -225,6 +358,114 @@ func TestStreamServiceConfirmsQuoteThroughActiveCollector(t *testing.T) {
 	}
 }
 
+func TestStreamServiceCorrelatesSimulationOnlyPlacement(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+
+	hello := testHello("session-simulation")
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read hello_ack: %v", err)
+	}
+
+	type simulationResult struct {
+		response dto.CollectorSimulatedBetResponse
+		err      error
+	}
+	resultChannel := make(chan simulationResult, 1)
+	go func() {
+		response, err := service.SimulateBet(
+			context.Background(),
+			hello.Source,
+			dto.CollectorSimulatedBetRequest{
+				Type: "simulate_place_bet", ActionID: "action-1", OpportunityID: "opportunity-1",
+				LegID: "jun88-leg", Sequence: 1, FixtureID: "fixture-a", MarketID: "hdp-ah",
+				OutcomeID: "home-plus-0.5", ExpectedOdds: -0.92, StakeVND: 50_000,
+				ExpiresAt: time.Now().UTC().Add(time.Minute), TimeoutMS: 2_000,
+				IdempotencyKey: "action-1:jun88:place",
+			},
+		)
+		resultChannel <- simulationResult{response: response, err: err}
+	}()
+
+	var request dto.CollectorSimulatedBetRequest
+	if err := conn.ReadJSON(&request); err != nil {
+		t.Fatalf("read simulated placement: %v", err)
+	}
+	if request.Type != "simulate_place_bet" || request.ActionID != "action-1" ||
+		request.IdempotencyKey != "action-1:jun88:place" || request.Sequence != 1 {
+		t.Fatalf("unexpected simulated placement request: %+v", request)
+	}
+
+	if err := conn.WriteJSON(dto.CollectorSimulatedBetResponse{
+		Type: "simulate_place_bet_response", SessionID: hello.SessionID, Seq: 1,
+		RequestID: request.RequestID, ActionID: request.ActionID,
+		OpportunityID: request.OpportunityID, LegID: request.LegID, Sequence: request.Sequence,
+		IdempotencyKey: request.IdempotencyKey, Result: "ticket_accepted",
+		ObservedAt: time.Now().UTC(), TicketID: "SIM-J88-1", AcceptedOdds: -0.92, StakeVND: 50_000,
+	}); err != nil {
+		t.Fatalf("write simulated placement response: %v", err)
+	}
+
+	select {
+	case result := <-resultChannel:
+		if result.err != nil || result.response.TicketID != "SIM-J88-1" {
+			t.Fatalf("unexpected simulated placement result: response=%+v err=%v", result.response, result.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for simulated placement")
+	}
+}
+
+func TestStreamServiceRejectsSimulationForLegacyCollectorProtocol(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	conn := openCollectorStreamConnection(t, service)
+	defer conn.Close()
+
+	hello := testHello("session-legacy-simulation")
+	hello.ProtocolVersion = 2
+	if err := conn.WriteJSON(hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read hello_ack: %v", err)
+	}
+
+	_, err := service.SimulateBet(context.Background(), hello.Source, dto.CollectorSimulatedBetRequest{
+		Type: "simulate_select_odds", ActionID: "action-1", OpportunityID: "opportunity-1",
+		LegID: "leg-1", Sequence: 1, FixtureID: "fixture-a", MarketID: "hdp-ah",
+		OutcomeID: "home-plus-0.5", ExpectedOdds: -0.92, StakeVND: 50_000,
+		ExpiresAt: time.Now().UTC().Add(time.Minute), TimeoutMS: 2_000,
+	})
+	if err == nil || !strings.Contains(err.Error(), "protocol v3") {
+		t.Fatalf("expected a simulation protocol error, got %v", err)
+	}
+}
+
+func TestStreamServiceRejectsMismatchedSimulationResponseIdentity(t *testing.T) {
+	service := NewStreamService(streamStoreStub{}, &recordingEventPublisher{}, nil, nil)
+	responses := make(chan dto.CollectorSimulatedBetResponse, 1)
+	source := dto.CollectorSource{CollectorID: "jun88-cmd", BookmakerID: "jun88", LobbyID: "cmd"}
+	service.simulations["request-1"] = pendingSimulationRequest{
+		responses: responses, source: source, sessionID: "session-1",
+		responseType: "simulate_place_bet_response", actionID: "action-1",
+		opportunityID: "opportunity-1", legID: "leg-1", sequence: 1,
+		idempotencyKey: "action-1:jun88:place",
+	}
+	service.deliverSimulatedBetResponse(source, dto.CollectorSimulatedBetResponse{
+		Type: "simulate_place_bet_response", SessionID: "session-1", RequestID: "request-1",
+		ActionID: "action-1", OpportunityID: "opportunity-1", LegID: "wrong-leg",
+		Sequence: 1, IdempotencyKey: "action-1:jun88:place", Result: "ticket_accepted",
+	})
+	response := <-responses
+	if response.Result != "failed" || !strings.Contains(response.Error, "correlation mismatch") {
+		t.Fatalf("mismatched response was not rejected: %+v", response)
+	}
+}
+
 func TestStreamServicePublishesBufferedSnapshotOnceOnCommit(t *testing.T) {
 	publisher := &recordingEventPublisher{}
 	service := NewStreamService(
@@ -345,7 +586,7 @@ func TestStreamServiceCoalescesDirectQuotePublishes(t *testing.T) {
 
 	hello := dto.CollectorStreamHello{
 		Type:            "hello",
-		ProtocolVersion: dto.CollectorStreamProtocolVersion,
+		ProtocolVersion: 3,
 		SessionID:       "session-1",
 		Source: dto.CollectorSource{
 			CollectorID: "8xbet",
@@ -432,7 +673,7 @@ func openCollectorStreamConnection(t *testing.T, service *StreamService) *websoc
 func testHello(sessionID string) dto.CollectorStreamHello {
 	return dto.CollectorStreamHello{
 		Type:            "hello",
-		ProtocolVersion: dto.CollectorStreamProtocolVersion,
+		ProtocolVersion: 3,
 		SessionID:       sessionID,
 		Source: dto.CollectorSource{
 			CollectorID: "jun88-cmd",

@@ -431,6 +431,45 @@ func normalizeMalayOdds(value float64) (float64, bool) {
 	}
 }
 
+func ValidateTwoNegativeSurebetOdds(left, right float64) (float64, bool) {
+	if left >= 0 || right >= 0 {
+		return 0, false
+	}
+	leftDecimal, leftOK := normalizeMalayOdds(left)
+	rightDecimal, rightOK := normalizeMalayOdds(right)
+	if !leftOK || !rightOK {
+		return 0, false
+	}
+	combinedProbability := (1 / leftDecimal) + (1 / rightDecimal)
+	if combinedProbability >= 1-arbitrageTolerance {
+		return 0, false
+	}
+	return round((1 / combinedProbability) - 1), true
+}
+
+func AllocateTwoWayStakeVND(total int64, leftOdds, rightOdds float64) (int64, int64, bool) {
+	if total < 2 {
+		return 0, 0, false
+	}
+	if _, ok := ValidateTwoNegativeSurebetOdds(leftOdds, rightOdds); !ok {
+		return 0, 0, false
+	}
+	leftDecimal, _ := normalizeMalayOdds(leftOdds)
+	rightDecimal, _ := normalizeMalayOdds(rightOdds)
+	combinedProbability := (1 / leftDecimal) + (1 / rightDecimal)
+	leftStake := int64(math.Round(float64(total) * (1 / leftDecimal) / combinedProbability))
+	rightStake := total - leftStake
+	if leftStake <= 0 || rightStake <= 0 {
+		return 0, 0, false
+	}
+	leftProfit := float64(leftStake)*leftDecimal - float64(total)
+	rightProfit := float64(rightStake)*rightDecimal - float64(total)
+	if leftProfit <= 0 || rightProfit <= 0 {
+		return 0, 0, false
+	}
+	return leftStake, rightStake, true
+}
+
 func normalizeQuote(
 	quote models.OddsQuote,
 	event eventIdentity,

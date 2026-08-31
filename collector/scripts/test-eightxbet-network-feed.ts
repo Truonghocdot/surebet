@@ -1,15 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import { deliverEightXBetSnapshot } from "../eightxbet/src/index.js";
 import {
   EightXBetNetworkFeed,
   buildEightXBetNetworkFixtureSnapshot,
-  collectorProxyFailureKind,
-  collectorProxyRetryDelayMs,
-  discardFailedCollectorProxy,
-  isCollectorProxyNetworkError,
   isEightXBetBootstrapReady,
   normalizeIndonesianToMalayOdds,
   observeStableSignature,
@@ -23,31 +16,6 @@ import {
 import type { OddsDelta } from "@surebet/collector-shared";
 
 const occurredAt = "2026-07-16T21:39:09.520Z";
-
-assert.equal(
-  isCollectorProxyNetworkError(new Error("page.goto: net::ERR_CONNECTION_RESET")),
-  true
-);
-assert.equal(
-  isCollectorProxyNetworkError(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
-  true
-);
-assert.equal(
-  isCollectorProxyNetworkError(new Error("ERR_WEBSOCKET_CONNECTION_FAILED: pd1 destination=none")),
-  true
-);
-assert.equal(isCollectorProxyNetworkError(new Error("incomplete fixture coverage")), false);
-assert.equal(collectorProxyFailureKind(new Error("net::ERR_PROXY_CONNECTION_FAILED")), "network");
-assert.equal(
-  collectorProxyFailureKind(new Error("ProxyXoay acquisition failed: Con 42s moi co the doi proxy")),
-  "cooldown"
-);
-assert.equal(collectorProxyFailureKind(new Error("incomplete fixture coverage")), "other");
-assert.equal(
-  collectorProxyRetryDelayMs(new Error("Con 24s moi co the doi proxy"), 2_000),
-  26_000
-);
-assert.equal(collectorProxyRetryDelayMs(new Error("other failure"), 8_000), 8_000);
 
 const emptyBootstrapSnapshot = { selections: [] };
 assert.equal(
@@ -251,6 +219,19 @@ assert.equal(normalizeIndonesianToMalayOdds(0.91), 0.91);
 assert.equal(normalizeIndonesianToMalayOdds(1.13), -0.88);
 assert.equal(snapshot.selections[1].rawOdds, 1.25);
 assert.equal(snapshot.selections[1].oddsFormat, "indonesian");
+assert.deepEqual(
+  snapshot.selections.map((item) => item.providerRef),
+  [
+    "4824992|ah|h|0",
+    "4824992|ah|a|0",
+    "4824992|ah_1st|h|0",
+    "4824992|ah_1st|a|0",
+    "4824992|ou|ov|0",
+    "4824992|ou|ud|0",
+    "4824992|ou_1st|ov|0",
+    "4824992|ou_1st|ud|0"
+  ]
+);
 assert.deepEqual(
   snapshot.selections.map((item) => [item.marketId, item.outcomeName, item.odds]),
   [
@@ -633,48 +614,11 @@ async function testOddsFormatLabelUsesLocatorAPI() {
   );
 }
 
-async function testFailedProxyIsDiscarded() {
-  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "surebet-8xbet-proxy-"));
-  const cacheFile = path.join(tempDirectory, "proxy-cache.json");
-  const environment = {
-    mode: process.env.COLLECTOR_PROXY_MODE,
-    cacheEnabled: process.env.COLLECTOR_PROXY_CACHE_ENABLED,
-    cacheFile: process.env.COLLECTOR_PROXY_CACHE_FILE
-  };
-
-  process.env.COLLECTOR_PROXY_MODE = "proxyxoay";
-  process.env.COLLECTOR_PROXY_CACHE_ENABLED = "true";
-  process.env.COLLECTOR_PROXY_CACHE_FILE = cacheFile;
-  await writeFile(cacheFile, JSON.stringify({ version: 1, settings: { server: "http://127.0.0.1:1" } }));
-
-  try {
-    assert.equal(
-      await discardFailedCollectorProxy(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
-      true
-    );
-    await assert.rejects(readFile(cacheFile));
-    assert.equal(
-      await discardFailedCollectorProxy(new Error("page.goto: net::ERR_PROXY_CONNECTION_FAILED")),
-      false,
-      "a missing cache must not be reported as a second discard"
-    );
-  } finally {
-    if (environment.mode === undefined) delete process.env.COLLECTOR_PROXY_MODE;
-    else process.env.COLLECTOR_PROXY_MODE = environment.mode;
-    if (environment.cacheEnabled === undefined) delete process.env.COLLECTOR_PROXY_CACHE_ENABLED;
-    else process.env.COLLECTOR_PROXY_CACHE_ENABLED = environment.cacheEnabled;
-    if (environment.cacheFile === undefined) delete process.env.COLLECTOR_PROXY_CACHE_FILE;
-    else process.env.COLLECTOR_PROXY_CACHE_FILE = environment.cacheFile;
-    await rm(tempDirectory, { recursive: true, force: true });
-  }
-}
-
 Promise.all([
   testSnapshotDeliveryModes(),
   testMarketDeltaDelivery(),
   testOddsFormatGateRejectsUnexpectedFeed(),
-  testOddsFormatLabelUsesLocatorAPI(),
-  testFailedProxyIsDiscarded()
+  testOddsFormatLabelUsesLocatorAPI()
 ])
   .then(() => console.log("8xbet network feed parser tests passed"))
   .catch((error) => {

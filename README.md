@@ -13,8 +13,8 @@ Hệ thống theo dõi kèo realtime từ `8xbet/default` và `jun88/cmd`, xác 
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d postgres redis backend-api
-cd collector && npm run run:8xbet-worker
-cd collector && npm run run:jun88-cmd-worker
+cd collector && pnpm run run:8xbet-worker
+cd collector && pnpm run run:jun88-cmd-worker
 cd frontend && npm run dev
 ```
 
@@ -22,7 +22,7 @@ cd frontend && npm run dev
 
 ```bash
 cd backend && go test ./...
-cd collector && npm run typecheck && npm run test:eightxbet-network-feed
+cd collector && pnpm run typecheck && pnpm run test:eightxbet-network-feed
 cd frontend && npm run build
 ```
 

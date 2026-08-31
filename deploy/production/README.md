@@ -33,10 +33,13 @@ Can doi toi thieu:
 - `POSTGRES_PASSWORD`
 - `AUTH_TOKEN_SECRET`
 - `INTERNAL_API_TOKEN`
+- `COLLECTOR_STREAM_JUN88_TOKEN` va `COLLECTOR_STREAM_EIGHTXBET_TOKEN` bang hai secret khac nhau
 - `SEED_FRONTEND_USER_PASSWORD`
 - `SEED_SUPER_ADMIN_PASSWORD`
-- `COLLECTOR_PROXY_*` neu collector can proxy
 - `CMD_RECONCILE_SETTLE_MS=1500` de reconcile cho DOM render on dinh truoc khi doc lai
+- `AUTO_BET_MODE=off` de tat, `simulation` de mo phong, `dry-run` de chi chuan bi betslip, `live` de cho phep luong that.
+- `AUTO_BET_TOTAL_STAKE_VND` la tong von toi da cho mot cap cuoc.
+- Jun88 co dinh `1 VD = 1.000 VND`; 8xbet dung truc tiep gia tri VND tren site.
 
 ## Build va chay
 
@@ -57,6 +60,10 @@ Chay migrate va seed Laravel:
 ```bash
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env --profile tools run --rm laravel-cli php artisan migrate --seed --force
 ```
+
+Migration `2026_08_14_000011_create_live_bet_execution_tables.php` tao `bet_attempts`, `bet_exposures`, event journal va nang cap `bet_actions` theo cach idempotent.
+
+Muc theo doi van han nam tai `/auto-bet`. BFF frontend dung `INTERNAL_API_TOKEN` server-side; khong dua token nay vao bien `NEXT_PUBLIC_*`.
 
 Sau rollout nay, `--remove-orphans` se dung va xoa container `laravel-admin` cu.
 Neu Caddy dang chay tu deploy truoc, recreate de nap Caddyfile khong con domain admin:
@@ -81,14 +88,14 @@ docker compose -f deploy/production/docker-compose.yml --env-file deploy/product
 
 ## Jun88 CMD network
 
-Jun88 CMD luon chay direct va khong nhan proxy profile tu backend. ProxyXoay chi ap dung cho collector 8xbet; worker CMD ep `COLLECTOR_PROXY_MODE=off` sau moi lan dong bo runtime config.
+Ca hai collector ket noi truc tiep den bookmaker.
 
 Sau moi lan doi, chi restart collector CMD va theo doi cung mot khoang thoi gian:
 
 ```bash
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env restart collector-jun88-cmd
 docker compose -f deploy/production/docker-compose.yml --env-file deploy/production/.env logs --since=10m collector-jun88-cmd \
-  | grep -E 'proxy debug|snapshot mode=|timing reconcile_ms'
+  | grep -E 'snapshot mode=|timing reconcile_ms'
 ```
 
 So sanh `status`, ty le `fixtures=stable/observed`, `elapsed_ms`, `fingerprint_ms`, `parse_ms`, `settle_ms` va `source_lag_ms` de phat hien DOM parse bi block.

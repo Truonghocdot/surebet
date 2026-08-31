@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"math"
 	"net/http"
 	"strings"
 	"surebet/backend/internal/dto"
@@ -53,20 +54,57 @@ func (n multiSurebetNotifier) Trigger(quotes []models.OddsQuote) {
 }
 
 type StreamService struct {
-	store          StreamOddsStateStore
-	publisher      EventPublisher
-	notifier       SurebetNotifier
-	log            logger.Logger
-	upgrader       websocket.Upgrader
-	sessions       collectorSessionRegistry
-	connections    collectorConnectionRegistry
-	writeMu        sync.Mutex
-	confirmMu      sync.Mutex
-	confirmations  map[string]chan dto.CollectorConfirmQuoteResponse
-	batchMu        sync.Mutex
-	batches        map[string]*pendingSourcePublish
-	debounce       time.Duration
-	coherentActive bool
+	store              StreamOddsStateStore
+	publisher          EventPublisher
+	notifier           SurebetNotifier
+	log                logger.Logger
+	upgrader           websocket.Upgrader
+	sessions           collectorSessionRegistry
+	connections        collectorConnectionRegistry
+	writeMu            sync.Mutex
+	confirmMu          sync.Mutex
+	confirmations      map[string]chan dto.CollectorConfirmQuoteResponse
+	simulationMu       sync.Mutex
+	simulations        map[string]pendingSimulationRequest
+	liveMu             sync.Mutex
+	liveRequests       map[string]pendingLiveBetRequest
+	authMu             sync.RWMutex
+	authRequired       bool
+	credentials        map[string]collectorStreamCredential
+	batchMu            sync.Mutex
+	batches            map[string]*pendingSourcePublish
+	debounce           time.Duration
+	coherentActive     bool
+	balanceMu          sync.RWMutex
+	accountBalances    map[string]dto.CollectorAccountBalanceView
+	balanceBroadcaster RealtimeBroadcaster
+	balanceStaleAfter  time.Duration
+}
+
+type pendingSimulationRequest struct {
+	responses      chan dto.CollectorSimulatedBetResponse
+	source         dto.CollectorSource
+	sessionID      string
+	responseType   string
+	actionID       string
+	opportunityID  string
+	legID          string
+	sequence       int
+	idempotencyKey string
+}
+
+type pendingLiveBetRequest struct {
+	responses      chan dto.CollectorLiveBetResponse
+	source         dto.CollectorSource
+	sessionID      string
+	responseType   string
+	actionID       string
+	attemptID      string
+	opportunityID  string
+	legID          string
+	accountID      string
+	prepareID      string
+	idempotencyKey string
 }
 
 func NewStreamService(
@@ -82,7 +120,7 @@ func NewStreamService(
 		log:       log,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return true
+				return strings.TrimSpace(r.Header.Get("Origin")) == ""
 			},
 		},
 		sessions: collectorSessionRegistry{
@@ -91,9 +129,14 @@ func NewStreamService(
 		connections: collectorConnectionRegistry{
 			active: make(map[string]activeCollectorConnection),
 		},
-		confirmations: make(map[string]chan dto.CollectorConfirmQuoteResponse),
-		batches:       make(map[string]*pendingSourcePublish),
-		debounce:      250 * time.Millisecond,
+		confirmations:     make(map[string]chan dto.CollectorConfirmQuoteResponse),
+		simulations:       make(map[string]pendingSimulationRequest),
+		liveRequests:      make(map[string]pendingLiveBetRequest),
+		credentials:       make(map[string]collectorStreamCredential),
+		batches:           make(map[string]*pendingSourcePublish),
+		debounce:          250 * time.Millisecond,
+		accountBalances:   make(map[string]dto.CollectorAccountBalanceView),
+		balanceStaleAfter: 45 * time.Second,
 	}
 }
 
@@ -106,6 +149,11 @@ func (s *StreamService) SetStateProtocol(protocol string) {
 }
 
 func (s *StreamService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	authorized, status, authErr := s.authorizeUpgrade(r)
+	if authErr != nil {
+		http.Error(w, authErr.Error(), status)
+		return
+	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		if s.log != nil {
@@ -117,6 +165,7 @@ func (s *StreamService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	state := collectorStreamConnectionState{
 		pendingSnapshots: make(map[string][]models.OddsQuote),
+		authorized:       authorized,
 	}
 	defer func() {
 		if state.hello != nil {
@@ -365,6 +414,17 @@ func (s *StreamService) handleMessage(
 			return err
 		}
 		return s.store.ObserveSource(ctx, state.hello.Source, event.SentAt)
+	case "account_balance":
+		var event dto.CollectorStreamAccountBalance
+		if err := json.Unmarshal(payload, &event); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_account_balance",
+				Message:   "account_balance frame is invalid",
+			})
+		}
+		return s.handleAccountBalance(conn, state, event)
 	case "confirm_quote_response":
 		var response dto.CollectorConfirmQuoteResponse
 		if err := json.Unmarshal(payload, &response); err != nil {
@@ -379,6 +439,36 @@ func (s *StreamService) handleMessage(
 			return err
 		}
 		s.deliverQuoteConfirmation(response)
+		return nil
+	case "simulate_select_odds_response", "simulate_place_bet_response":
+		var response dto.CollectorSimulatedBetResponse
+		if err := json.Unmarshal(payload, &response); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_simulated_bet_response",
+				Message:   "collector simulated bet response is invalid",
+			})
+		}
+		if err := s.requireActiveSession(conn, state, response.SessionID); err != nil {
+			return err
+		}
+		s.deliverSimulatedBetResponse(state.hello.Source, response)
+		return nil
+	case "bet_prepared", "bet_result", "bet_cancelled", "bet_reconciled":
+		var response dto.CollectorLiveBetResponse
+		if err := json.Unmarshal(payload, &response); err != nil {
+			return s.writeFrame(conn, dto.CollectorStreamError{
+				Type:      "error",
+				SessionID: state.sessionID(),
+				Code:      "invalid_live_bet_response",
+				Message:   "collector live bet response is invalid",
+			})
+		}
+		if err := s.requireActiveSession(conn, state, response.SessionID); err != nil {
+			return err
+		}
+		s.deliverLiveBetResponse(state.hello.Source, response)
 		return nil
 	default:
 		return s.writeFrame(conn, dto.CollectorStreamError{
@@ -416,16 +506,43 @@ func (s *StreamService) handleHello(
 			Message:   "collector hello frame is missing required fields or protocol version",
 		})
 	}
+	if state.authorized != nil &&
+		(state.authorized.source != hello.Source || state.authorized.accountID != strings.TrimSpace(hello.AccountID)) {
+		return s.writeFrame(conn, dto.CollectorStreamError{
+			Type:      "error",
+			SessionID: hello.SessionID,
+			Code:      "unauthorized_source",
+			Message:   "collector hello identity does not match its credential",
+		})
+	}
+	if hello.ProtocolVersion >= 4 && (state.authorized == nil || strings.TrimSpace(hello.AccountID) == "") {
+		return s.writeFrame(conn, dto.CollectorStreamError{
+			Type:      "error",
+			SessionID: hello.SessionID,
+			Code:      "live_auth_required",
+			Message:   "collector protocol v4 requires a source-bound credential and account",
+		})
+	}
 
 	state.hello = &hello
 	s.sessions.Register(hello.Source, hello.SessionID)
-	s.connections.Register(hello.Source, hello.SessionID, conn)
+	s.connections.Register(
+		hello.Source,
+		hello.SessionID,
+		hello.ProtocolVersion,
+		hello.AccountID,
+		hello.Capabilities,
+		state.authorized != nil,
+		conn,
+	)
 
 	return s.writeFrame(conn, dto.CollectorStreamHelloAck{
 		Type:            "hello_ack",
 		ProtocolVersion: hello.ProtocolVersion,
 		SessionID:       hello.SessionID,
 		Source:          hello.Source,
+		AccountID:       hello.AccountID,
+		Capabilities:    hello.Capabilities,
 		ServerTime:      time.Now().UTC(),
 	})
 }
@@ -461,12 +578,15 @@ func (s *StreamService) requireActiveSession(
 	sessionID string,
 ) error {
 	if state.hello == nil || state.hello.SessionID != sessionID {
-		return s.writeFrame(conn, dto.CollectorStreamError{
+		if err := s.writeFrame(conn, dto.CollectorStreamError{
 			Type:      "error",
 			SessionID: sessionID,
 			Code:      "invalid_session",
 			Message:   "collector stream session does not match this connection",
-		})
+		}); err != nil {
+			return err
+		}
+		return errors.New("invalid collector stream session")
 	}
 	if !s.sessions.IsActive(state.hello.Source, sessionID) {
 		_ = s.writeFrame(conn, dto.CollectorStreamError{
@@ -491,12 +611,15 @@ func (s *StreamService) requireEventSource(
 		return err
 	}
 	if source != state.hello.Source {
-		return s.writeFrame(conn, dto.CollectorStreamError{
+		if err := s.writeFrame(conn, dto.CollectorStreamError{
 			Type:      "error",
 			SessionID: sessionID,
 			Code:      "source_mismatch",
 			Message:   "collector stream source does not match hello source",
-		})
+		}); err != nil {
+			return err
+		}
+		return errors.New("collector stream source mismatch")
 	}
 	return nil
 }
@@ -602,6 +725,76 @@ func (s *StreamService) ConfirmQuote(
 	}
 }
 
+func (s *StreamService) SimulateBet(
+	ctx context.Context,
+	source dto.CollectorSource,
+	command dto.CollectorSimulatedBetRequest,
+) (dto.CollectorSimulatedBetResponse, error) {
+	if command.Type != "simulate_select_odds" && command.Type != "simulate_place_bet" {
+		return dto.CollectorSimulatedBetResponse{}, errors.New("unsupported simulated bet command")
+	}
+	if strings.TrimSpace(command.ActionID) == "" || strings.TrimSpace(command.OpportunityID) == "" ||
+		strings.TrimSpace(command.LegID) == "" || strings.TrimSpace(command.FixtureID) == "" ||
+		strings.TrimSpace(command.MarketID) == "" || strings.TrimSpace(command.OutcomeID) == "" ||
+		(command.Sequence != 1 && command.Sequence != 2) || command.StakeVND <= 0 ||
+		math.IsNaN(command.ExpectedOdds) || math.IsInf(command.ExpectedOdds, 0) || command.ExpectedOdds == 0 ||
+		command.ExpiresAt.IsZero() || !command.ExpiresAt.After(time.Now().UTC()) {
+		return dto.CollectorSimulatedBetResponse{}, errors.New("simulated bet command is invalid or expired")
+	}
+	if command.Type == "simulate_place_bet" && strings.TrimSpace(command.IdempotencyKey) == "" {
+		return dto.CollectorSimulatedBetResponse{}, errors.New("simulated placement requires an idempotency key")
+	}
+	connection, ok := s.connections.Get(source)
+	if !ok || !s.sessions.IsActive(source, connection.sessionID) {
+		return dto.CollectorSimulatedBetResponse{}, errors.New("collector source is not connected")
+	}
+	if connection.protocolVersion < 3 {
+		return dto.CollectorSimulatedBetResponse{}, errors.New("collector source does not support simulation protocol v3")
+	}
+
+	requestID := uuid.NewString()
+	responseChannel := make(chan dto.CollectorSimulatedBetResponse, 1)
+	s.simulationMu.Lock()
+	s.simulations[requestID] = pendingSimulationRequest{
+		responses: responseChannel, source: source, sessionID: connection.sessionID,
+		responseType: command.Type + "_response", actionID: command.ActionID,
+		opportunityID: command.OpportunityID, legID: command.LegID, sequence: command.Sequence,
+		idempotencyKey: command.IdempotencyKey,
+	}
+	s.simulationMu.Unlock()
+	defer func() {
+		s.simulationMu.Lock()
+		delete(s.simulations, requestID)
+		s.simulationMu.Unlock()
+	}()
+
+	command.SessionID = connection.sessionID
+	command.RequestID = requestID
+	command.RequestedAt = time.Now().UTC()
+	if command.TimeoutMS <= 0 {
+		command.TimeoutMS = 2000
+	}
+	if err := s.writeFrame(connection.conn, command); err != nil {
+		return dto.CollectorSimulatedBetResponse{}, err
+	}
+
+	select {
+	case <-ctx.Done():
+		return dto.CollectorSimulatedBetResponse{}, ctx.Err()
+	case response := <-responseChannel:
+		if response.Result == "failed" {
+			if response.Error == "" {
+				response.Error = "collector simulated bet command failed"
+			}
+			return response, errors.New(response.Error)
+		}
+		if !validSimulationResult(command.Type, response.Result) {
+			return response, errors.New("collector returned an unsupported simulated bet result")
+		}
+		return response, nil
+	}
+}
+
 func (s *StreamService) RequiredSourcesConnected() bool {
 	now := time.Now().UTC()
 	required := []dto.CollectorSource{
@@ -631,9 +824,44 @@ func (s *StreamService) deliverQuoteConfirmation(response dto.CollectorConfirmQu
 	}
 }
 
+func (s *StreamService) deliverSimulatedBetResponse(
+	source dto.CollectorSource,
+	response dto.CollectorSimulatedBetResponse,
+) {
+	s.simulationMu.Lock()
+	pending, ok := s.simulations[response.RequestID]
+	s.simulationMu.Unlock()
+	if !ok {
+		return
+	}
+	if pending.source != source || pending.sessionID != response.SessionID ||
+		pending.responseType != response.Type || pending.actionID != response.ActionID ||
+		pending.opportunityID != response.OpportunityID || pending.legID != response.LegID ||
+		pending.sequence != response.Sequence || pending.idempotencyKey != response.IdempotencyKey {
+		response.Result = "failed"
+		response.Error = "collector simulated bet response correlation mismatch"
+	}
+	select {
+	case pending.responses <- response:
+	default:
+	}
+}
+
+func validSimulationResult(commandType, result string) bool {
+	switch commandType {
+	case "simulate_select_odds":
+		return result == "selected" || result == "unavailable"
+	case "simulate_place_bet":
+		return result == "ticket_accepted" || result == "odds_changed" || result == "rejected"
+	default:
+		return false
+	}
+}
+
 type collectorStreamConnectionState struct {
 	hello            *dto.CollectorStreamHello
 	pendingSnapshots map[string][]models.OddsQuote
+	authorized       *authorizedCollectorIdentity
 }
 
 func (s *collectorStreamConnectionState) sessionID() string {
@@ -649,9 +877,13 @@ type collectorSessionRegistry struct {
 }
 
 type activeCollectorConnection struct {
-	sessionID  string
-	conn       *websocket.Conn
-	lastSeenAt time.Time
+	sessionID       string
+	protocolVersion int
+	accountID       string
+	capabilities    map[string]struct{}
+	authenticated   bool
+	conn            *websocket.Conn
+	lastSeenAt      time.Time
 }
 
 type collectorConnectionRegistry struct {
@@ -662,14 +894,22 @@ type collectorConnectionRegistry struct {
 func (r *collectorConnectionRegistry) Register(
 	source dto.CollectorSource,
 	sessionID string,
+	protocolVersion int,
+	accountID string,
+	capabilities []string,
+	authenticated bool,
 	conn *websocket.Conn,
 ) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.active[repository.OddsSourceKey(source.BookmakerID, source.LobbyID)] = activeCollectorConnection{
-		sessionID:  sessionID,
-		conn:       conn,
-		lastSeenAt: time.Now().UTC(),
+		sessionID:       sessionID,
+		protocolVersion: protocolVersion,
+		accountID:       strings.TrimSpace(accountID),
+		capabilities:    capabilitySet(capabilities),
+		authenticated:   authenticated,
+		conn:            conn,
+		lastSeenAt:      time.Now().UTC(),
 	}
 }
 

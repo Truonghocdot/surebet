@@ -33,6 +33,7 @@ export function buildDeltas(
       prev.odds !== selection.odds ||
       prev.rawOdds !== selection.rawOdds ||
       prev.oddsFormat !== selection.oddsFormat ||
+      prev.providerRef !== selection.providerRef ||
       prev.outcomeName !== selection.outcomeName ||
       prev.availableStake !== selection.availableStake ||
       prev.suspended !== selection.suspended
@@ -56,6 +57,7 @@ export function buildDeltas(
         sourceEventId: selection.sourceEventId,
         rawOdds: selection.rawOdds,
         oddsFormat: selection.oddsFormat,
+        providerRef: selection.providerRef,
         op: "upsert"
       });
     }
@@ -85,6 +87,7 @@ export function buildDeltas(
       sourceEventId: selection.sourceEventId,
       rawOdds: selection.rawOdds,
       oddsFormat: selection.oddsFormat,
+      providerRef: selection.providerRef,
       op: "remove"
     });
   }

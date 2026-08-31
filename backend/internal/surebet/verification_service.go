@@ -42,6 +42,10 @@ type CollectorConnectionHealth interface {
 	RequiredSourcesConnected() bool
 }
 
+type AutoBetSimulationTrigger interface {
+	Trigger(item dto.SurebetView)
+}
+
 type VerificationService struct {
 	cfg         config.SurebetConfig
 	candidates  CurrentSurebetReader
@@ -49,6 +53,7 @@ type VerificationService struct {
 	store       VerificationStore
 	broadcaster VerificationBroadcaster
 	health      CollectorConnectionHealth
+	simulation  AutoBetSimulationTrigger
 	log         logger.Logger
 
 	mu                  sync.Mutex
@@ -60,6 +65,10 @@ type VerificationService struct {
 	running             bool
 	timer               *time.Timer
 	lastSummaryAt       time.Time
+}
+
+func (s *VerificationService) SetAutoBetSimulation(simulation AutoBetSimulationTrigger) {
+	s.simulation = simulation
 }
 
 type verificationAttempt struct {
@@ -263,6 +272,9 @@ func (s *VerificationService) verifyCandidate(
 	})
 	s.scheduleExpiry(item)
 	s.invalidationMu.Unlock()
+	if s.simulation != nil {
+		s.simulation.Trigger(item)
+	}
 }
 
 // invalidateFixtures runs on the verification worker, never on the collector

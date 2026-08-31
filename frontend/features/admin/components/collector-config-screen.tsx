@@ -15,8 +15,7 @@ const emptyConfig: CollectorConfig = {
   eightxbet_base_url: "",
   eightxbet_inplay_page_url: "",
   jun88_base_url: "",
-  jun88_cmd_page_url: "",
-  collector_proxyxoay_token: ""
+  jun88_cmd_page_url: ""
 };
 
 export function CollectorConfigScreen() {
@@ -80,14 +79,14 @@ export function CollectorConfigScreen() {
       <SectionHeader
         eyebrow="Super Admin"
         title="Cấu hình URL scrape collector"
-        description="Các collector sẽ lấy cấu hình URL và token proxy xoay từ backend cache thay vì đọc trực tiếp từ env cục bộ."
+        description="Các collector lấy URL bookmaker từ backend để hai worker luôn dùng cùng một cấu hình."
       />
 
       <QueryShell<CollectorConfig> {...query}>
         {() => (
           <DataPanel
             title="Biến cấu hình collector"
-            description="Lưu xong ở đây, worker collector sẽ dùng backend làm nguồn cấu hình tập trung. Với proxy xoay, collector sẽ recycle browser mỗi 60 giây để lấy proxy mới từ cache/API."
+            description="Lưu xong ở đây, worker collector dùng backend làm nguồn URL tập trung. Mọi kết nối bookmaker đều chạy trực tiếp."
           >
             <form className="grid gap-5" onSubmit={handleSubmit}>
               <section className="grid gap-4">
@@ -134,25 +133,6 @@ export function CollectorConfigScreen() {
                     }
                   />
                 </div>
-              </section>
-
-              <section className="grid gap-4">
-                <div>
-                  <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
-                    Proxy xoay mặc định
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-                    Áp dụng cho eightxbet. Jun88 CMD luôn chạy direct và không dùng proxy này. Collector sẽ gọi ProxyXoay tối đa mỗi 60 giây, ghi vào cache, rồi dùng cache đó ở lần recycle browser kế tiếp.
-                  </p>
-                </div>
-
-                <ConfigField
-                  label="COLLECTOR_PROXYXOAY_KEY"
-                  value={form.collector_proxyxoay_token}
-                  onChange={(value) =>
-                    setForm((current) => ({ ...current, collector_proxyxoay_token: value }))
-                  }
-                />
               </section>
 
               {message ? <p className="text-sm text-[var(--accent)]">{message}</p> : null}

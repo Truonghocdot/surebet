@@ -10,7 +10,9 @@ const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
 
 async function main() {
   process.env.EIGHTXBET_TRAFFIC_RECORDER = "true";
-  await syncCollectorRuntimeConfig(backendURL).catch(() => undefined);
+  await syncCollectorRuntimeConfig(backendURL, {
+    source: { collectorId: "8xbet", bookmakerId: "8xbet", lobbyId: "default" }
+  }).catch(() => undefined);
 
   const runtime = new EightXBetRuntime("8xbet-traffic-recorder");
   const durationMs = Math.max(envInt("EIGHTXBET_TRAFFIC_DURATION_MS", 5 * 60_000), 10_000);

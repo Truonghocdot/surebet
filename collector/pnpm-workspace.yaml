@@ -1,0 +1,7 @@
+packages:
+  - "shared"
+  - "eightxbet"
+  - "jun88-cmd"
+
+allowBuilds:
+  esbuild: false

@@ -296,9 +296,15 @@ function createSelection(
     odds: hasOdds ? oddsValue : 0,
     rawOdds: hasOdds ? oddsValue : 0,
     oddsFormat: "malay",
+    providerRef: jun88ProviderRef(node),
     availableStake: 0,
     suspended: !hasOdds || isCmdOutcomeUnavailable(node),
   };
+}
+
+export function jun88ProviderRef(node: Element | null) {
+  const href = node?.getAttribute("href") ?? "";
+  return href.match(/\bOddsClick\s*\(\s*this\s*,\s*['\"]([A-Za-z0-9_-]{1,128})['\"]\s*\)/i)?.[1] ?? "";
 }
 
 function detectCmdMatchState(matchNode: HTMLElement) {

@@ -9,9 +9,12 @@ import (
 
 	"surebet/backend/internal/api"
 	"surebet/backend/internal/auth"
+	"surebet/backend/internal/autobet"
+	"surebet/backend/internal/betaction"
 	"surebet/backend/internal/calculator"
 	"surebet/backend/internal/collector"
 	"surebet/backend/internal/config"
+	"surebet/backend/internal/dto"
 	"surebet/backend/internal/logger"
 	"surebet/backend/internal/odds"
 	"surebet/backend/internal/realtime"
@@ -52,6 +55,10 @@ func main() {
 	}
 	warmCancel()
 	runtimeSettingRepository := gormstore.NewRuntimeSettingRepository(db)
+	betActionRepository := gormstore.NewBetActionRepository(db)
+	betAttemptRepository := gormstore.NewBetAttemptRepository(db)
+	betExposureRepository := gormstore.NewBetExposureRepository(db)
+	betActionEventRepository := gormstore.NewBetActionEventRepository(db)
 	realtimeHub := realtime.NewHub(log)
 	go realtimeHub.Run()
 	go func() {
@@ -74,7 +81,9 @@ func main() {
 		nil,
 		log,
 	)
+	collectorStream.SetCollectorStreamAuth(cfg.CollectorStream)
 	collectorStream.SetStateProtocol(cfg.Odds.StateProtocol)
+	collectorStream.SetAccountBalanceBroadcaster(realtimeHub)
 	confirmationService := surebet.NewConfirmationServiceWithConfig(
 		surebetQuery,
 		collectorStream,
@@ -91,9 +100,48 @@ func main() {
 		collectorStream,
 		log,
 	)
-	collectorStream.SetNotifier(
-		collector.NewMultiSurebetNotifier(surebetQuery, verificationService),
+	betActionService := betaction.NewService(
+		betActionRepository,
+		collectorStream,
+		cfg.AutoBetSimulation,
+		realtimeHub,
+		log,
 	)
+	autoBetControl := autobet.NewControl(
+		cfg.AutoBetSimulation.Enabled || cfg.AutoBetLive.Enabled,
+		cfg.AutoBetLive.TotalStakeVND,
+	)
+	betActionService.SetRuntimeControl(autoBetControl)
+	liveExecutionService := betaction.NewLiveExecutionService(
+		betActionRepository,
+		betAttemptRepository,
+		betExposureRepository,
+		betActionEventRepository,
+		collectorStream,
+		cfg.AutoBetLive,
+		realtimeHub,
+		log,
+	)
+	liveExecutionService.SetRuntimeControl(autoBetControl)
+	liveBetQueries := betaction.NewLiveQueryService(
+		betExposureRepository,
+		betAttemptRepository,
+		betActionEventRepository,
+	)
+	verificationService.SetAutoBetSimulation(autoBetTriggerFanout{
+		betActionService,
+		liveExecutionService,
+	})
+	collectorStream.SetNotifier(
+		collector.NewMultiSurebetNotifier(
+			surebetQuery,
+			verificationService,
+			betaction.NewExposureHedgeNotifier(liveExecutionService),
+		),
+	)
+	if cfg.AutoBetLive.Enabled && cfg.AutoBetLive.CommitEnabled {
+		go runLiveBetReconciliation(liveExecutionService, cfg.AutoBetLive.CommandTimeout, log)
+	}
 	verifiedSurebetQuery := surebet.NewVerifiedQueryService(
 		surebetQuery,
 		verifiedSurebetRepository,
@@ -107,14 +155,18 @@ func main() {
 			passwordHasher,
 			tokenManager,
 		),
-		AuthTokens:      tokenManager,
-		CollectorConfig: collectorConfigService,
-		OddsQuery:       odds.NewQueryService(oddsStateRepository),
-		CollectorStream: collectorStream,
-		SurebetConfirm:  confirmationService,
-		InternalToken:   cfg.InternalToken,
-		Realtime:        realtimeHub,
-		SurebetQuery:    verifiedSurebetQuery,
+		AuthTokens:        tokenManager,
+		CollectorConfig:   collectorConfigService,
+		OddsQuery:         odds.NewQueryService(oddsStateRepository),
+		CollectorStream:   collectorStream,
+		SurebetConfirm:    confirmationService,
+		InternalToken:     cfg.InternalToken,
+		Realtime:          realtimeHub,
+		SurebetQuery:      verifiedSurebetQuery,
+		BetActions:        betActionService,
+		LiveBetQueries:    liveBetQueries,
+		LiveBetOperations: liveExecutionService,
+		AutoBetControl:    autoBetControl,
 	})
 
 	log.Info("api service configured", "service", cfg.App.Name, "env", cfg.App.Env, "addr", server.Addr())
@@ -122,5 +174,40 @@ func main() {
 	if err := server.Run(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("api service exited", "error", err.Error())
 		os.Exit(1)
+	}
+}
+
+type autoBetTrigger interface {
+	Trigger(dto.SurebetView)
+}
+
+type autoBetTriggerFanout []autoBetTrigger
+
+func (triggers autoBetTriggerFanout) Trigger(item dto.SurebetView) {
+	for _, trigger := range triggers {
+		if trigger != nil {
+			trigger.Trigger(item)
+		}
+	}
+}
+
+func runLiveBetReconciliation(
+	service *betaction.LiveExecutionService,
+	commandTimeout time.Duration,
+	log logger.Logger,
+) {
+	if commandTimeout <= 0 {
+		commandTimeout = 5 * time.Second
+	}
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*commandTimeout)
+		err := service.ReconcilePending(ctx)
+		cancel()
+		if err != nil && !errors.Is(err, betaction.ErrLiveExecutionDisabled) && log != nil {
+			log.Warn("live bet reconciliation pass failed", "error", err.Error())
+		}
+		<-ticker.C
 	}
 }

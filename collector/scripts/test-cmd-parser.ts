@@ -56,9 +56,13 @@ function assertHandicapLinePlacementAndButtonIdentity() {
   );
 
   assert.equal(byOutcome.get("Home Gives -0.5")?.odds, 0.75);
+  assert.equal(byOutcome.get("Home Gives -0.5")?.providerRef, "home-gives_Hdp_Home");
   assert.equal(byOutcome.get("Away Receives +0.5")?.odds, -0.87);
+  assert.equal(byOutcome.get("Away Receives +0.5")?.providerRef, "home-gives_Hdp_Away");
   assert.equal(byOutcome.get("Home Receives +0.5")?.odds, -0.84);
+  assert.equal(byOutcome.get("Home Receives +0.5")?.providerRef, "away-gives_Hdp_Home");
   assert.equal(byOutcome.get("Away Gives -0.5")?.odds, 0.72);
+  assert.equal(byOutcome.get("Away Gives -0.5")?.providerRef, "away-gives_Hdp_Away");
 }
 
 function cmdHandicapFixture(

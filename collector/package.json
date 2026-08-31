@@ -2,22 +2,22 @@
   "name": "@surebet/collector-workspace",
   "private": true,
   "version": "0.1.0",
-  "workspaces": [
-    "shared",
-    "eightxbet",
-    "jun88-cmd"
-  ],
+  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "run:8xbet-worker": "tsx scripts/run-eightxbet-worker.ts",
     "record:8xbet-traffic": "tsx scripts/record-eightxbet-traffic.ts",
+    "capture:bet-slips": "tsx scripts/capture-live-bet-slips.ts",
     "run:jun88-cmd-worker": "tsx scripts/run-jun88-cmd-worker.ts",
     "test:jun88-login": "tsx scripts/test-jun88-login.ts",
     "test:cmd-parser": "tsx scripts/test-cmd-parser.ts",
     "test:cmd-observer": "tsx scripts/test-cmd-observer.ts",
+    "test:eightxbet-login": "tsx scripts/test-eightxbet-login.ts",
     "test:eightxbet-network-feed": "tsx scripts/test-eightxbet-network-feed.ts",
-    "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces",
-    "typecheck": "tsc -p tsconfig.scripts.json --noEmit && npm run typecheck --workspaces"
+    "test:bet-action": "node scripts/test-bet-action.mjs",
+    "test:live-bet-dom": "tsx scripts/test-live-bet-dom.ts",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "tsc -p tsconfig.scripts.json --noEmit && pnpm -r run typecheck"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
@@ -25,9 +25,11 @@
     "@types/ws": "^8.18.1",
     "jsdom": "^26.1.0",
     "playwright": "1.61.1",
-    "tsx": "^4.20.5"
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   },
   "dependencies": {
+    "@surebet/collector-shared": "workspace:*",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "ws": "^8.18.3"

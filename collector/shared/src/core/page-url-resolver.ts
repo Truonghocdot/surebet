@@ -4,23 +4,20 @@ import { envString } from "./env.js";
 const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 
 export function resolveEightXBetInplayPageURL() {
-  const directURL = envString("EIGHTXBET_INPLAY_PAGE_URL", "").trim();
+  const directURL = envString(
+    "EIGHTXBET_INPLAY_PAGE_URL",
+    "https://8x2000.com/sportEvents/inplay/football"
+  ).trim();
   if (directURL !== "") {
     return directURL;
   }
 
-  const baseURL = envString("EIGHTXBET_BASE_URL", "").trim();
+  const baseURL = envString("EIGHTXBET_BASE_URL", "https://8x2000.com").trim();
   if (baseURL !== "") {
     return new URL(EIGHTXBET_INPLAY_PATH, ensureTrailingSlash(baseURL)).toString();
   }
 
-  throw new Error(
-    [
-      "Missing 8xbet inplay page URL.",
-      "Set EIGHTXBET_INPLAY_PAGE_URL to the direct inplay scrape page,",
-      `or set EIGHTXBET_BASE_URL so the collector can derive ${EIGHTXBET_INPLAY_PATH}.`
-    ].join(" ")
-  );
+  throw new Error("Unable to resolve the 8xbet in-play page URL.");
 }
 
 export function resolveJun88CmdPageURL() {
@@ -29,7 +26,7 @@ export function resolveJun88CmdPageURL() {
     return directURL;
   }
 
-  const baseURL = envString("JUN88_BASE_URL", "").trim();
+  const baseURL = envString("JUN88_BASE_URL", "https://www.junn8811.cc").trim();
   if (baseURL !== "") {
     return new URL("/vi-vn/sports-landing/cmd", ensureTrailingSlash(baseURL)).toString();
   }

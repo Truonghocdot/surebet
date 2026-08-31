@@ -1,5 +1,6 @@
 import type {
   CollectContext,
+  CollectorSink,
   OddsDelta,
   OddsSnapshot,
   QuoteConfirmationRequest,
@@ -14,8 +15,14 @@ import {
   type EightXBetOddsFormatDiagnostics
 } from "./eightxbet-network-feed.js";
 import { EightXBetTrafficRecorder } from "./eightxbet-traffic-recorder.js";
+import {
+  readEightXBetAccountBalance,
+  type BookmakerAccountBalance
+} from "./account-balance.js";
 import { streamPollIntervalMs } from "./streaming-utils.js";
-import type { Browser, BrowserContext, Page } from "playwright";
+import { liveBetFeatureFlags } from "../live-actions.js";
+import { EightXBetLiveBetActions } from "./eightxbet-live-actions.js";
+import type { Browser, BrowserContext, Locator, Page } from "playwright";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 
@@ -23,6 +30,18 @@ const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
 const EIGHTXBET_READY_SELECTOR = '[data-testid^="simple-handicap-layout-football-"]';
 const EIGHTXBET_GAME_SETTINGS_SELECTOR =
   '[data-testid="component-card-mine-gameSetting"]';
+const EIGHTXBET_AUTHENTICATED_SELECTORS = [
+  '[data-testid="user-now-balance-btn"]',
+  '[data-testid="balance-text"]'
+];
+const EIGHTXBET_QUICK_PASSWORD_CANCEL_PATTERN = /^(?:H\u1ee7y|Cancel)$/i;
+const EIGHTXBET_ANNOUNCEMENT_CLOSE_SELECTOR =
+  '[data-testid="announcement-close-button"]';
+const EIGHTXBET_QUICK_PASSWORD_CONTAINER_SELECTOR =
+  'section[data-overlay-container="true"][data-overlay-type="2"]';
+const EIGHTXBET_QUICK_PASSWORD_CONTENT_SELECTOR =
+  'section[data-overlay-part="content"][data-overlay-type="2"]';
+const EIGHTXBET_POST_LOGIN_OVERLAY_QUIET_MS = 300;
 const EIGHTXBET_HARD_RECYCLE_DEFAULT_MS = 30 * 60 * 1_000;
 const EIGHTXBET_HARD_RECYCLE_MIN_MS = EIGHTXBET_HARD_RECYCLE_DEFAULT_MS;
 
@@ -34,6 +53,11 @@ let sharedBrowserPromise: Promise<Browser> | null = null;
 export type StableSignatureState = {
   signature: string | null;
   since: number;
+};
+
+export type EightXBetLoginOptions = {
+  inplayURL?: string;
+  beforeInplayNavigation?: () => Promise<void> | void;
 };
 
 export function observeStableSignature(
@@ -102,11 +126,30 @@ export class EightXBetRuntime {
       deltas: OddsDelta[],
       fixtureId: string,
       observedAt: string
-    ) => Promise<void>
+    ) => Promise<void>,
+    liveSink?: Pick<CollectorSink, "setLiveBetHandler" | "pushAccountBalance">
   ) {
     this.shutdownRequested = false;
     const targetURL = resolveEightXBetTargetURL(context.pageURL);
     const page = await this.ensurePage(targetURL);
+    const liveActions = liveBetFeatureFlags().enabled && this.context
+      ? new EightXBetLiveBetActions(this.context)
+      : null;
+    liveSink?.setLiveBetHandler?.(liveActions);
+    if (liveSink?.pushAccountBalance) {
+      const balance = await this.readAccountBalance();
+      if (balance) {
+        await liveSink.pushAccountBalance({
+          source: {
+            collectorId: this.collectorId,
+            bookmakerId: "8xbet",
+            lobbyId: "default"
+          },
+          observedAt: new Date().toISOString(),
+          ...balance
+        });
+      }
+    }
 
     try {
       await this.prepareNetworkFeed(page);
@@ -197,6 +240,8 @@ export class EightXBetRuntime {
       await this.resetPage(true);
       throw error;
     } finally {
+      liveSink?.setLiveBetHandler?.(null);
+      await liveActions?.close();
       this.networkFeed.deactivate();
       await this.networkFeed.flush();
     }
@@ -205,6 +250,14 @@ export class EightXBetRuntime {
   async close() {
     this.shutdownRequested = true;
     await this.resetPage(true);
+  }
+
+  async readAccountBalance(): Promise<BookmakerAccountBalance | null> {
+    const page = this.page;
+    if (!page || page.isClosed()) {
+      return null;
+    }
+    return readEightXBetAccountBalance(page);
   }
 
   async confirmQuote(request: QuoteConfirmationRequest): Promise<QuoteConfirmationResult> {
@@ -301,7 +354,6 @@ export class EightXBetRuntime {
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
       }
     });
-    await installCollectorResourceBlocking(context);
     await installEightXBetLocale(context);
     await installEightXBetSocketSubscriptionBridge(context);
 
@@ -311,11 +363,20 @@ export class EightXBetRuntime {
     this.targetURL = targetURL;
 
     try {
-      await ensureEightXBetLogin(page);
-      this.detachNetworkFeed = this.networkFeed.attach(page);
-      this.detachTrafficRecorder = this.trafficRecorder.attach(page);
+      const attachSportsObservers = () => {
+        this.detachNetworkFeed ??= this.networkFeed.attach(page);
+        this.detachTrafficRecorder ??= this.trafficRecorder.attach(page);
+      };
+      await ensureEightXBetLogin(page, {
+        inplayURL: targetURL,
+        beforeInplayNavigation: attachSportsObservers
+      });
+      attachSportsObservers();
       await waitForEightXBetReady(page, targetURL, this.networkFeed);
       await this.captureOddsFormatLabel(page);
+      // Do not interfere with login or the first authenticated navigation. The
+      // route is installed only once the in-play page is ready for streaming.
+      await installCollectorResourceBlocking(context);
       return page;
     } catch (error) {
       await page.getByTestId("login-field-password").fill("").catch(() => undefined);
@@ -455,21 +516,24 @@ export class EightXBetRuntime {
   }
 }
 
-async function ensureEightXBetLogin(page: Page) {
-  if (!envBool("EIGHTXBET_LOGIN_ENABLED", false)) {
-    return;
-  }
-
+export async function ensureEightXBetLogin(
+  page: Page,
+  options: EightXBetLoginOptions = {}
+) {
   const username = envString("EIGHTXBET_LOGIN_USERNAME", "").trim();
   const password = envString("EIGHTXBET_LOGIN_PASSWORD", "").trim();
+  const loginEnabled = envBool("EIGHTXBET_LOGIN_ENABLED", Boolean(username && password));
+  if (!loginEnabled) {
+    return;
+  }
   if (!username || !password) {
     throw new Error(
       "EIGHTXBET_LOGIN_ENABLED=true requires EIGHTXBET_LOGIN_USERNAME and EIGHTXBET_LOGIN_PASSWORD"
     );
   }
 
-  const loginURL = envString("EIGHTXBET_LOGIN_URL", "https://8x4455.com/login").trim();
-  const timeoutMs = Math.max(envInt("COLLECTOR_LOGIN_TIMEOUT_MS", 20_000), 5_000);
+  const loginURL = envString("EIGHTXBET_LOGIN_URL", "https://8x2000.com/login").trim();
+  const timeoutMs = Math.max(envInt("EIGHTXBET_LOGIN_TIMEOUT_MS", 60_000), 5_000);
   await page.goto(loginURL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForTimeout(Math.min(Math.max(envInt("COLLECTOR_LOGIN_SETTLE_MS", 1_000), 250), 5_000));
 
@@ -478,48 +542,375 @@ async function ensureEightXBetLogin(page: Page) {
   if (!(await passwordField.isVisible().catch(() => false))) {
     const entryButton = page
       .getByTestId("submit-btn")
-      .filter({ hasText: /đăng nhập|login/i })
+      .filter({ hasText: /\u0111\u0103ng nh\u1eadp|login/i })
       .first();
     await entryButton.waitFor({ state: "visible", timeout: timeoutMs });
-    await entryButton.click();
+    await performHumanLoginClick(page, entryButton);
   }
 
   await accountField.waitFor({ state: "visible", timeout: timeoutMs });
   await passwordField.waitFor({ state: "visible", timeout: timeoutMs });
-  await accountField.fill(username);
-  await passwordField.fill(password);
+  await enterHumanLoginValue(page, accountField, username);
+  await enterHumanLoginValue(page, passwordField, password);
 
   const submitButton = page
     .getByTestId("submit-btn")
-    .filter({ hasText: /đăng nhập|login/i })
+    .filter({ hasText: /\u0111\u0103ng nh\u1eadp|login/i })
     .last();
   await submitButton.waitFor({ state: "visible", timeout: timeoutMs });
-  await submitButton.click();
-  await waitForLoginFormToClose(page, passwordField, timeoutMs);
-
-  if (await passwordField.isVisible().catch(() => false)) {
-    const errorText = await readEightXBetLoginError(page);
-    throw new Error(`8xbet login did not complete${errorText ? `: ${errorText}` : ""}`);
-  }
+  await performHumanLoginClick(page, submitButton);
+  await waitForEightXBetAuthenticated(page, passwordField, timeoutMs);
+  await redirectEightXBetSportsHomeToInplay(page, options, timeoutMs);
+  await dismissEightXBetPostLoginOverlays(page, timeoutMs);
 
   console.log(`[8xbet-auth] login succeeded path=${safeEightXBetPathname(page.url())}`);
 }
 
-async function waitForLoginFormToClose(
+export async function redirectEightXBetSportsHomeToInplay(
+  page: Page,
+  options: EightXBetLoginOptions,
+  timeoutMs: number
+) {
+  const targetURL = options.inplayURL?.trim();
+  if (!targetURL || !isEightXBetSportsHomeURL(page.url())) {
+    return false;
+  }
+
+  const currentURL = new URL(page.url());
+  const target = new URL(targetURL, currentURL);
+  if (target.origin !== currentURL.origin || !isEightXBetInplayURL(target.toString())) {
+    throw new Error(
+      `8xbet refused invalid post-login in-play target ${JSON.stringify(target.toString())}`
+    );
+  }
+
+  await options.beforeInplayNavigation?.();
+  console.log(
+    `[8xbet-auth] authenticated sports home reached; navigating directly to ${target.pathname}`
+  );
+  await page.goto(target.toString(), {
+    waitUntil: "domcontentloaded",
+    timeout: timeoutMs
+  });
+  return true;
+}
+
+async function enterHumanLoginValue(
+  page: Page,
+  field: Locator,
+  value: string
+) {
+  await field.scrollIntoViewIfNeeded();
+  await field.hover();
+  await waitForHumanLoginPause(page);
+  await field.click({ delay: randomLoginDelay(45, 110) });
+  await field.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await page.waitForTimeout(randomLoginDelay(80, 180));
+  await field.press("Backspace");
+  await field.pressSequentially(value, {
+    delay: humanLoginTypingDelay()
+  });
+}
+
+async function performHumanLoginClick(page: Page, target: Locator) {
+  await target.scrollIntoViewIfNeeded();
+  await target.hover();
+  await waitForHumanLoginPause(page);
+  await target.click({ delay: randomLoginDelay(45, 110) });
+}
+
+async function waitForHumanLoginPause(page: Page) {
+  const minimum = Math.min(
+    Math.max(envInt("EIGHTXBET_LOGIN_ACTION_DELAY_MIN_MS", 450), 0),
+    5_000
+  );
+  const maximum = Math.min(
+    Math.max(envInt("EIGHTXBET_LOGIN_ACTION_DELAY_MAX_MS", 1_100), minimum),
+    5_000
+  );
+  await page.waitForTimeout(randomLoginDelay(minimum, maximum));
+}
+
+function humanLoginTypingDelay() {
+  const minimum = Math.min(
+    Math.max(envInt("EIGHTXBET_LOGIN_KEYSTROKE_MIN_MS", 65), 0),
+    1_000
+  );
+  const maximum = Math.min(
+    Math.max(envInt("EIGHTXBET_LOGIN_KEYSTROKE_MAX_MS", 135), minimum),
+    1_000
+  );
+  return randomLoginDelay(minimum, maximum);
+}
+
+function randomLoginDelay(minimum: number, maximum: number) {
+  if (maximum <= minimum) {
+    return minimum;
+  }
+  return minimum + Math.floor(Math.random() * (maximum - minimum + 1));
+}
+
+export async function waitForEightXBetAuthenticated(
   page: Page,
   passwordField: ReturnType<Page["getByTestId"]>,
   timeoutMs: number
 ) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!(await passwordField.isVisible().catch(() => false))) {
-      return;
+  const authenticationDeadline = Date.now() + timeoutMs;
+  const stableMs = Math.min(
+    Math.max(envInt("EIGHTXBET_LOGIN_STABLE_MS", 500), 200),
+    2_000
+  );
+  let authenticatedSince = 0;
+
+  while (true) {
+    const state = await readEightXBetLoginState(page, passwordField);
+    if (state.onLoginPage && state.loginFormVisible) {
+      const errorText = await readEightXBetLoginError(page);
+      if (errorText) {
+        throw new Error(`8xbet login did not complete: ${errorText}`);
+      }
     }
-    if (!/\/login(?:[/?#]|$)/i.test(page.url())) {
-      return;
+
+    if (
+      !state.onLoginPage &&
+      !state.loginFormVisible &&
+      state.authenticatedSignalVisible
+    ) {
+      if (authenticatedSince === 0) {
+        authenticatedSince = Date.now();
+      }
+      if (Date.now() - authenticatedSince >= stableMs) {
+        return;
+      }
+    } else {
+      authenticatedSince = 0;
     }
-    await page.waitForTimeout(200);
+
+    const currentDeadline = authenticatedSince > 0
+      ? authenticatedSince + stableMs + 100
+      : authenticationDeadline;
+    const remainingMs = currentDeadline - Date.now();
+    if (remainingMs <= 0) {
+      break;
+    }
+    await page.waitForTimeout(Math.min(100, remainingMs));
   }
+
+  let state = await readEightXBetLoginState(page, passwordField);
+  if (
+    !state.onLoginPage &&
+    !state.loginFormVisible &&
+    state.authenticatedSignalVisible
+  ) {
+    const finalStabilityDeadline = Date.now() + stableMs;
+    while (Date.now() < finalStabilityDeadline) {
+      await page.waitForTimeout(Math.min(100, finalStabilityDeadline - Date.now()));
+      state = await readEightXBetLoginState(page, passwordField);
+      if (
+        state.onLoginPage ||
+        state.loginFormVisible ||
+        !state.authenticatedSignalVisible
+      ) {
+        break;
+      }
+    }
+    if (
+      !state.onLoginPage &&
+      !state.loginFormVisible &&
+      state.authenticatedSignalVisible
+    ) {
+      return;
+    }
+  }
+  if (state.onLoginPage && state.loginFormVisible) {
+    const errorText = await readEightXBetLoginError(page);
+    throw new Error(`8xbet login did not complete${errorText ? `: ${errorText}` : ""}`);
+  }
+
+  throw new Error(
+    `8xbet authenticated state did not stabilize ` +
+      `(path=${safeEightXBetPathname(page.url())}` +
+      ` login_form_visible=${state.loginFormVisible}` +
+      ` account_visible=${state.authenticatedSignalVisible})`
+  );
+}
+
+export async function dismissEightXBetPostLoginOverlays(
+  page: Page,
+  timeoutMs: number
+) {
+  const popupWaitMs = Math.min(
+    Math.max(envInt("EIGHTXBET_POST_LOGIN_POPUP_MS", 10_000), 0),
+    timeoutMs
+  );
+  if (popupWaitMs <= 0) {
+    return;
+  }
+
+  const absoluteDeadline = Date.now() + timeoutMs;
+  let deadline = Math.min(Date.now() + popupWaitMs, absoluteDeadline);
+  let lastDismissedAt = 0;
+  const handledTaskIds = new Set<string>();
+  let announcementHandled = false;
+  while (Date.now() < deadline && Date.now() < absoluteDeadline) {
+    const announcement = await findVisibleEightXBetAnnouncement(page);
+    if (announcement && !handledTaskIds.has(announcement.taskId)) {
+      if (await dismissEightXBetAnnouncementPopup(announcement.closeButton, timeoutMs)) {
+        handledTaskIds.add(announcement.taskId);
+        announcementHandled = true;
+        lastDismissedAt = Date.now();
+        deadline = Math.min(lastDismissedAt + popupWaitMs, absoluteDeadline);
+        continue;
+      }
+    }
+
+    const quickPassword = await findVisibleEightXBetQuickPasswordOverlay(page);
+    if (quickPassword && !handledTaskIds.has(quickPassword.taskId)) {
+      if (await dismissEightXBetQuickPasswordPopup(quickPassword.locator, timeoutMs)) {
+        handledTaskIds.add(quickPassword.taskId);
+        lastDismissedAt = Date.now();
+        deadline = Math.min(lastDismissedAt + popupWaitMs, absoluteDeadline);
+        continue;
+      }
+    }
+    if (
+      announcementHandled &&
+      lastDismissedAt > 0 &&
+      Date.now() - lastDismissedAt >= EIGHTXBET_POST_LOGIN_OVERLAY_QUIET_MS
+    ) {
+      return;
+    }
+    await page
+      .waitForTimeout(Math.min(100, Math.max(deadline - Date.now(), 0)))
+      .catch(() => undefined);
+  }
+}
+
+async function dismissEightXBetQuickPasswordPopup(
+  overlay: Locator,
+  timeoutMs: number
+) {
+  const cancelButton = overlay
+    .getByRole("button", { name: EIGHTXBET_QUICK_PASSWORD_CANCEL_PATTERN })
+    .first();
+  if (!(await cancelButton.isVisible().catch(() => false))) {
+    return false;
+  }
+  const clicked = await cancelButton
+    .evaluate((element) => (element as HTMLElement).click(), undefined, {
+      timeout: postLoginActionTimeout(timeoutMs)
+    })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) {
+    return false;
+  }
+  console.log("[8xbet-auth] dismissed quick-password prompt");
+  return true;
+}
+
+async function dismissEightXBetAnnouncementPopup(
+  closeButton: Locator,
+  timeoutMs: number
+) {
+  if (!(await closeButton.isVisible().catch(() => false))) {
+    return false;
+  }
+  const clicked = await closeButton
+    .evaluate((element) => (element as HTMLElement).click(), undefined, {
+      timeout: postLoginActionTimeout(timeoutMs)
+    })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) {
+    return false;
+  }
+  console.log("[8xbet-auth] dismissed announcement popup");
+  return true;
+}
+
+async function findVisibleEightXBetQuickPasswordOverlay(page: Page) {
+  const container = await findLastVisibleLocator(
+    page.locator(EIGHTXBET_QUICK_PASSWORD_CONTAINER_SELECTOR)
+  );
+  const locator =
+    container ??
+    (await findLastVisibleLocator(
+      page.locator(EIGHTXBET_QUICK_PASSWORD_CONTENT_SELECTOR)
+    ));
+  if (!locator) {
+    return null;
+  }
+
+  const taskId =
+    (await readLocatorAttribute(locator, "data-overlay-task-id")) ??
+    `2:${await readLocatorAttribute(locator, "data-testid")}`;
+  if (!(await locator.isVisible().catch(() => false))) {
+    return null;
+  }
+  return { locator, taskId };
+}
+
+async function findVisibleEightXBetAnnouncement(page: Page) {
+  const closeButton = await findLastVisibleLocator(
+    page.locator(EIGHTXBET_ANNOUNCEMENT_CLOSE_SELECTOR)
+  );
+  if (!closeButton) {
+    return null;
+  }
+  const content = closeButton.locator(
+    'xpath=ancestor::section[@data-overlay-part="content"][1]'
+  );
+  const taskId =
+    (await readLocatorAttribute(content, "data-overlay-task-id")) ??
+    `3:${await readLocatorAttribute(content, "data-testid")}`;
+  if (!(await closeButton.isVisible().catch(() => false))) {
+    return null;
+  }
+  return { closeButton, taskId };
+}
+
+async function readLocatorAttribute(locator: Locator, name: string) {
+  return locator.getAttribute(name, { timeout: 250 }).catch(() => null);
+}
+
+async function findLastVisibleLocator(locators: Locator) {
+  const count = await locators.count().catch(() => 0);
+  for (let index = count - 1; index >= 0; index -= 1) {
+    const locator = locators.nth(index);
+    if (await locator.isVisible().catch(() => false)) {
+      return locator;
+    }
+  }
+  return null;
+}
+
+function postLoginActionTimeout(timeoutMs: number) {
+  return Math.min(Math.max(timeoutMs, 1_000), 5_000);
+}
+
+async function readEightXBetLoginState(
+  page: Page,
+  passwordField: ReturnType<Page["getByTestId"]>
+) {
+  return {
+    onLoginPage: /\/login(?:[/?#]|$)/i.test(page.url()),
+    loginFormVisible: await passwordField.isVisible().catch(() => false),
+    authenticatedSignalVisible: await anyEightXBetAuthenticatedSignalVisible(page)
+  };
+}
+
+async function anyEightXBetAuthenticatedSignalVisible(page: Page) {
+  for (const selector of EIGHTXBET_AUTHENTICATED_SELECTORS) {
+    const signals = page.locator(selector);
+    const count = await signals.count().catch(() => 0);
+    for (let index = 0; index < count; index += 1) {
+      if (await signals.nth(index).isVisible().catch(() => false)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 async function readEightXBetLoginError(page: Page) {
@@ -687,6 +1078,14 @@ function isEightXBetInplayURL(value: string) {
     return new URL(value)
       .pathname.toLowerCase()
       .includes(EIGHTXBET_INPLAY_PATH.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function isEightXBetSportsHomeURL(value: string) {
+  try {
+    return new URL(value).pathname.replace(/\/+$/, "").toLowerCase() === "/sportevents";
   } catch {
     return false;
   }

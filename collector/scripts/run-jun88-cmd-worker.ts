@@ -1,24 +1,20 @@
 import {
   BackendCollectorStreamSink,
   envString,
-  logCollectorProxyDebug,
   startCollectorResourceTelemetry,
   syncCollectorRuntimeConfig
 } from "@surebet/collector-shared";
 import { Jun88CmdCollector } from "../jun88-cmd/src/index.js";
 
 const backendURL = envString("BACKEND_API_URL", "http://127.0.0.1:8080");
+const source = { collectorId: "jun88-cmd", bookmakerId: "jun88", lobbyId: "cmd" } as const;
 
 installTimestampedConsole();
-process.env.COLLECTOR_PROXY_MODE = "off";
 
 async function main() {
   const sink = new BackendCollectorStreamSink(backendURL, {
-    collectorId: "jun88-cmd",
-    bookmakerId: "jun88",
-    lobbyId: "cmd"
+    ...source
   });
-  logCollectorProxyDebug("jun88-cmd");
   startCollectorResourceTelemetry("jun88-cmd");
 
   while (true) {
@@ -32,7 +28,7 @@ async function main() {
 }
 
 async function runWorker(sink: BackendCollectorStreamSink) {
-  await syncCollectorRuntimeConfig(backendURL, { applyProxy: false }).catch((error) => {
+  await syncCollectorRuntimeConfig(backendURL, { source }).catch((error) => {
     console.warn("[jun88-cmd-worker] collector runtime config sync failed:", error);
   });
 

@@ -5,6 +5,7 @@ import {
   createDashboardOpportunityStabilizer
 } from "@/lib/dashboard-opportunities";
 import { filterOpportunitiesForRole } from "@/lib/opportunity-visibility";
+import { buildFixtureMatchingMonitor } from "@/lib/fixture-matching-monitor";
 import {
   fetchBackendOdds,
   fetchBackendOpportunities
@@ -33,6 +34,7 @@ export async function GET() {
       buildActiveDashboardOpportunities(visibleOpportunities, odds),
       odds
     );
+    const matching = buildFixtureMatchingMonitor(odds);
 
     const uniqueFixtures = new Set(opportunities.map((item) => item.fixture_id)).size;
     const uniqueSources = new Set(
@@ -84,6 +86,7 @@ export async function GET() {
             tone: uniqueSources > 0 ? "positive" : "warning"
           }
         ],
+        matching,
         opportunities
       },
       {

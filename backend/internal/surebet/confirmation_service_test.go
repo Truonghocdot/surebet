@@ -29,6 +29,11 @@ func TestConfirmationServiceHardConfirmsCurrentDetectorResult(t *testing.T) {
 	if confirmed.VerificationStatus != "confirmed" || confirmed.ValidUntil.IsZero() {
 		t.Fatal("confirmation must return a short-lived verified opportunity")
 	}
+	for _, leg := range confirmed.Legs {
+		if leg.ProviderRef == "" || leg.SourceEventID == "" || leg.OddsFormat == "" || leg.RawOdds == 0 {
+			t.Fatalf("confirmed live leg metadata was dropped: %+v", leg)
+		}
+	}
 }
 
 func TestConfirmationServiceRejectsOpportunityMissingFromCurrentDetectorResult(t *testing.T) {
@@ -384,6 +389,7 @@ func (s confirmationConfirmerStub) ConfirmQuote(
 			RawOdds:       rawOdds,
 			OddsFormat:    oddsFormat,
 			SourceEventID: source.BookmakerID + "-event",
+			ProviderRef:   source.BookmakerID + "-provider-ref",
 		},
 	}, nil
 }

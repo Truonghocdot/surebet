@@ -253,6 +253,30 @@ func TestVerificationServiceAcceptsHardConfirmDeltaThatRemainsCurrent(t *testing
 	}
 }
 
+func TestVerificationServiceTriggersSimulationOnlyAfterHardConfirmation(t *testing.T) {
+	candidate := confirmationCandidate()
+	confirmed := cloneSurebetView(candidate)
+	confirmed.VerificationStatus = "confirmed"
+	confirmed.ConfirmedAt = time.Now().UTC()
+	confirmed.ValidUntil = confirmed.ConfirmedAt.Add(2 * time.Second)
+	trigger := &simulationTriggerStub{}
+	service := NewVerificationService(
+		config.SurebetConfig{VerificationMode: "strict"},
+		confirmationReaderStub{items: []dto.SurebetView{candidate}},
+		&countingVerificationConfirmer{item: confirmed},
+		&verificationStoreStub{},
+		nil,
+		nil,
+		nil,
+	)
+	service.SetAutoBetSimulation(trigger)
+	service.verifyCandidate(context.Background(), candidate, map[string]uint64{})
+
+	if item, ok := trigger.Item(); !ok || item.ID != confirmed.ID {
+		t.Fatalf("confirmed opportunity did not trigger simulation: ok=%t item=%+v", ok, item)
+	}
+}
+
 type verificationConfirmerStub struct {
 	item    dto.SurebetView
 	started chan struct{}
@@ -359,6 +383,25 @@ func (s *verificationStoreStub) Deleted() string {
 type verificationBroadcasterStub struct {
 	mu     sync.Mutex
 	events []realtime.Event
+}
+
+type simulationTriggerStub struct {
+	mu   sync.Mutex
+	item dto.SurebetView
+	set  bool
+}
+
+func (s *simulationTriggerStub) Trigger(item dto.SurebetView) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.item = item
+	s.set = true
+}
+
+func (s *simulationTriggerStub) Item() (dto.SurebetView, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.item, s.set
 }
 
 func (s *verificationBroadcasterStub) Broadcast(event realtime.Event) {
