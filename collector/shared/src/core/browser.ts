@@ -11,7 +11,8 @@ export function collectorLaunchOptions(defaultHeadless = true): LaunchOptions {
     "--disable-accelerated-2d-canvas",
     "--no-first-run",
     "--no-zygote",
-    "--disable-gpu"
+    "--disable-gpu",
+    "--start-maximized",
   ];
   if (envBool("COLLECTOR_SINGLE_PROCESS", false)) {
     args.push("--single-process");

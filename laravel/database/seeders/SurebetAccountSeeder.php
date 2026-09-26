@@ -11,19 +11,19 @@ class SurebetAccountSeeder extends Seeder
     public function run(): void
     {
         $this->upsertUser(
-            id: (string) env('SEED_FRONTEND_USER_ID', 'surebet-operator'),
-            email: (string) env('SEED_FRONTEND_USER_EMAIL', 'operator@surebet.local'),
-            password: (string) env('SEED_FRONTEND_USER_PASSWORD', 'matkhau123'),
-            fullName: (string) env('SEED_FRONTEND_USER_FULL_NAME', 'Surebet Operator'),
-            role: (string) env('SEED_FRONTEND_USER_ROLE', 'operator'),
+            id: (string) 'surebet-operator',
+            email: (string) 'operator@surebet.local',
+            password: (string) 'matkhau123',
+            fullName: (string) 'Surebet Operator',
+            role: (string) 'operator',
         );
 
         $this->upsertUser(
-            id: (string) env('SEED_SUPER_ADMIN_ID', 'surebet-super-admin'),
-            email: (string) env('SEED_SUPER_ADMIN_EMAIL', 'superadmin@surebet.local'),
-            password: (string) env('SEED_SUPER_ADMIN_PASSWORD', 'superadmin123'),
-            fullName: (string) env('SEED_SUPER_ADMIN_FULL_NAME', 'Surebet Super Admin'),
-            role: (string) env('SEED_SUPER_ADMIN_ROLE', 'super_admin'),
+            id: (string) 'surebet-super-admin',
+            email: (string) 'superadmin@surebet.local',
+            password: (string) 'superadmin123',
+            fullName: (string) 'Surebet Super Admin',
+            role: (string) 'super_admin',
         );
     }
 

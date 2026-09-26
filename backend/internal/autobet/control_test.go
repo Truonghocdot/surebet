@@ -24,3 +24,11 @@ func TestControlRejectsInvalidStake(t *testing.T) {
 		t.Fatalf("expected invalid stake error, got %v", err)
 	}
 }
+
+func TestControlDisablePreservesStakeAndTurnsOff(t *testing.T) {
+	control := NewControl(true, 250_000)
+	state := control.Disable()
+	if state.Enabled || state.TotalStakeVND != 250_000 || state.UpdatedAt.IsZero() {
+		t.Fatalf("unexpected disabled state: %+v", state)
+	}
+}

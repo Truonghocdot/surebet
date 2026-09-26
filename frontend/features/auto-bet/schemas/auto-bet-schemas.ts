@@ -182,6 +182,8 @@ const unavailableBalancesResource = {
   error: "Frontend chưa nhận dữ liệu số dư tài khoản."
 };
 
+export const collectorAccountBalancesResourceSchema = resourceSchema(collectorAccountBalanceSchema);
+
 export const autoBetMonitorSnapshotSchema = z.object({
   checked_at: z.string(),
   runtime: autoBetRuntimeSchema,
@@ -200,7 +202,10 @@ export const autoBetControlSchema = z.object({
 
 export const autoBetControlSnapshotSchema = z.object({
   checked_at: z.string(),
-  control: autoBetControlSchema
+  control: autoBetControlSchema,
+  balances: collectorAccountBalancesResourceSchema
+    .optional()
+    .default(unavailableBalancesResource)
 });
 
 export type AutoBetAction = z.infer<typeof autoBetActionSchema>;

@@ -19,6 +19,7 @@ import {
   readEightXBetAccountBalance,
   type BookmakerAccountBalance
 } from "./account-balance.js";
+import { resolveEightXBetLoginURL } from "../core/page-url-resolver.js";
 import { streamPollIntervalMs } from "./streaming-utils.js";
 import { liveBetFeatureFlags } from "../live-actions.js";
 import { EightXBetLiveBetActions } from "./eightxbet-live-actions.js";
@@ -532,8 +533,9 @@ export async function ensureEightXBetLogin(
     );
   }
 
-  const loginURL = envString("EIGHTXBET_LOGIN_URL", "https://8x2000.com/login").trim();
+  const loginURL = resolveEightXBetLoginURL();
   const timeoutMs = Math.max(envInt("EIGHTXBET_LOGIN_TIMEOUT_MS", 60_000), 5_000);
+  console.log(`[8xbet-auth] opening login url=${loginURL}`);
   await page.goto(loginURL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForTimeout(Math.min(Math.max(envInt("COLLECTOR_LOGIN_SETTLE_MS", 1_000), 250), 5_000));
 

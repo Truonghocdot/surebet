@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/features/auth/server/session";
 import {
   autoBetControlSchema,
+  collectorAccountBalanceSchema,
   type AutoBetControlSnapshot
 } from "@/features/auto-bet/schemas/auto-bet-schemas";
 import { backendURL } from "@/lib/server-api";
@@ -24,33 +25,28 @@ export async function GET() {
   const checkedAt = new Date().toISOString();
   const token = process.env.INTERNAL_API_TOKEN?.trim();
   if (!token) {
-    return monitorResponse({ checked_at: checkedAt, control: controlFromEnv() });
+    return monitorResponse({
+      checked_at: checkedAt,
+      control: controlFromEnv(),
+      balances: unavailableBalances("Frontend chÆ°a Ä‘Æ°á»£c cáº¥p INTERNAL_API_TOKEN.")
+    });
   }
 
-  try {
-    const response = await fetch(backendURL("/v2/internal/auto-bet/control"), {
-      headers: { Accept: "application/json", [INTERNAL_TOKEN_HEADER]: token },
-      cache: "no-store",
-      signal: AbortSignal.timeout(2_000)
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(readBackendError(payload, response.status));
-    }
-    const data = payload && typeof payload === "object" && "data" in payload
-      ? (payload as { data: unknown }).data
-      : payload;
-    const control = autoBetControlSchema.parse(data);
-    return monitorResponse({ checked_at: checkedAt, control });
-  } catch {
-    return monitorResponse({ checked_at: checkedAt, control: controlFromEnv() });
-  }
+  const [control, balances] = await Promise.all([
+    fetchControl(token),
+    fetchBalances(token)
+  ]);
+  return monitorResponse({ checked_at: checkedAt, control, balances });
 }
 
 export async function PUT(request: Request) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Bạn chưa đăng nhập." }, { status: 401 });
+  }
+
+  if (user.role !== "super_admin") {
+    return NextResponse.json({ error: "Bạn không có quyền thay đổi auto-bet." }, { status: 403 });
   }
 
   const parsed = controlUpdateSchema.safeParse(await request.json().catch(() => null));
@@ -86,7 +82,11 @@ export async function PUT(request: Request) {
       ? (payload as { data: unknown }).data
       : payload;
     const control = autoBetControlSchema.parse(data);
-    return monitorResponse({ checked_at: new Date().toISOString(), control });
+    return monitorResponse({
+      checked_at: new Date().toISOString(),
+      control,
+      balances: unavailableBalances("Balance snapshot is refreshed by GET.")
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Không kết nối được backend." },
@@ -104,6 +104,63 @@ function controlFromEnv() {
     total_stake_vnd: total,
     updated_at: new Date(0).toISOString()
   } satisfies AutoBetControlSnapshot["control"];
+}
+
+async function fetchControl(token: string) {
+  try {
+    const response = await fetch(backendURL("/v2/internal/auto-bet/control"), {
+      headers: { Accept: "application/json", [INTERNAL_TOKEN_HEADER]: token },
+      cache: "no-store",
+      signal: AbortSignal.timeout(2_000)
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(readBackendError(payload, response.status));
+    }
+    const data = payload && typeof payload === "object" && "data" in payload
+      ? (payload as { data: unknown }).data
+      : payload;
+    return autoBetControlSchema.parse(data);
+  } catch {
+    return controlFromEnv();
+  }
+}
+
+async function fetchBalances(token: string) {
+  try {
+    const response = await fetch(backendURL("/v2/internal/account-balances"), {
+      headers: { Accept: "application/json", [INTERNAL_TOKEN_HEADER]: token },
+      cache: "no-store",
+      signal: AbortSignal.timeout(2_000)
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(readBackendError(payload, response.status));
+    }
+    const data = payload && typeof payload === "object" && "data" in payload
+      ? (payload as { data: { items?: unknown[]; server_time?: string; stale_after_seconds?: number } }).data
+      : null;
+    if (!data || !Array.isArray(data.items)) {
+      throw new Error("Backend khÃ´ng tráº£ vá» dá»¯ liá»‡u sá»‘ dÆ° há»£p lá»‡.");
+    }
+    const items = data.items.map((item) => collectorAccountBalanceSchema.parse(item));
+    return {
+      state: "available" as const,
+      items,
+      server_time: data.server_time,
+      stale_after_seconds: data.stale_after_seconds
+    };
+  } catch (error) {
+    return unavailableBalances(error instanceof Error ? error.message : "KhÃ´ng Ä‘á»c Ä‘Æ°á»£c sá»‘ dÆ°.");
+  }
+}
+
+function unavailableBalances(error: string) {
+  return {
+    state: "unavailable" as const,
+    items: [],
+    error
+  };
 }
 
 function readBackendError(payload: unknown, status: number) {

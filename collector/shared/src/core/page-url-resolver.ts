@@ -2,6 +2,21 @@ import { JUN88_LOBBIES } from "../bookmakers/jun88-lobbies.js";
 import { envString } from "./env.js";
 
 const EIGHTXBET_INPLAY_PATH = "/sportEvents/inplay/football";
+const JUN88_LOGIN_PATH = "/vi-vn/login";
+
+export function resolveEightXBetLoginURL() {
+  const explicitURL = envString("EIGHTXBET_LOGIN_URL", "").trim();
+  if (explicitURL !== "") {
+    return explicitURL;
+  }
+
+  const baseURL = envString("EIGHTXBET_BASE_URL", "https://8x2000.com").trim();
+  if (baseURL === "") {
+    throw new Error("Missing 8xbet login URL. Set EIGHTXBET_LOGIN_URL or EIGHTXBET_BASE_URL.");
+  }
+
+  return new URL("/login", ensureTrailingSlash(baseURL)).toString();
+}
 
 export function resolveEightXBetInplayPageURL() {
   const directURL = envString(
@@ -39,6 +54,20 @@ export function resolveJun88CmdPageURL() {
   throw new Error(
     "Missing Jun88 CMD page URL. Set JUN88_CMD_PAGE_URL or JUN88_BASE_URL."
   );
+}
+
+export function resolveJun88LoginURL() {
+  const explicitURL = envString("JUN88_LOGIN_URL", "").trim();
+  if (explicitURL !== "") {
+    return explicitURL;
+  }
+
+  const baseURL = envString("JUN88_BASE_URL", "https://www.junn8811.cc").trim();
+  if (baseURL === "") {
+    throw new Error("Missing Jun88 login URL. Set JUN88_LOGIN_URL or JUN88_BASE_URL.");
+  }
+
+  return new URL(JUN88_LOGIN_PATH, ensureTrailingSlash(baseURL)).toString();
 }
 
 function ensureTrailingSlash(value: string) {

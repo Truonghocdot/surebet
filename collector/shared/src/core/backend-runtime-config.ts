@@ -67,5 +67,8 @@ function collectorRuntimeAuthHeaders(options: SyncCollectorRuntimeConfigOptions)
 }
 
 function applySetting(key: string, value?: string) {
-  process.env[key] = (value ?? "").trim();
+  const normalized = (value ?? "").trim();
+  if (normalized !== "") {
+    process.env[key] = normalized;
+  }
 }

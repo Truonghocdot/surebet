@@ -220,7 +220,7 @@ func (s *Service) Simulate(ctx context.Context, item dto.SurebetView) (dto.BetAc
 		)
 	}
 	junStake, eightXBetStake, ok = calculator.AllocateTwoWayStakeVND(
-		s.cfg.TotalStakeVND,
+		totalStakeVND,
 		state.legs[0].SelectedOdds,
 		state.legs[1].SelectedOdds,
 	)

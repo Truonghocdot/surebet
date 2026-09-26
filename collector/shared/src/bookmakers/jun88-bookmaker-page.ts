@@ -3,6 +3,7 @@ import { collectorLaunchOptions } from "../core/browser.js";
 import { formatError, writeContextDebugArtifacts } from "../core/debug.js";
 import { envBool, envInt, envString } from "../core/env.js";
 import { installCollectorResourceBlocking } from "../core/resource-blocking.js";
+import { resolveJun88LoginURL } from "../core/page-url-resolver.js";
 import type { Jun88LobbyAccess } from "../contracts.js";
 
 export async function withJun88BookmakerPage<T>(
@@ -22,7 +23,7 @@ export async function withJun88BookmakerPage<T>(
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
       }
     });
-    const authenticatedPage = await ensureJun88Login(context, lobby);
+    const authenticatedPage = await ensureJun88Login(context);
 
     const page = await openLobby(context, lobby, targetURL, authenticatedPage);
     // Login and lobby bootstrap need the bookmaker's styles/scripts. Apply the
@@ -49,8 +50,7 @@ export async function withJun88BookmakerPage<T>(
 }
 
 async function ensureJun88Login(
-  context: BrowserContext,
-  lobby: Jun88LobbyAccess
+  context: BrowserContext
 ): Promise<Page | undefined> {
   const username = envString("JUN88_LOGIN_USERNAME", "").trim();
   const password = envString("JUN88_LOGIN_PASSWORD", "").trim();
@@ -64,10 +64,7 @@ async function ensureJun88Login(
     );
   }
 
-  const loginURL = envString(
-    "JUN88_LOGIN_URL",
-    lobby.loginURL || "https://www.junn8811.cc/vi-vn/login"
-  ).trim();
+  const loginURL = resolveJun88LoginURL();
   const page = await context.newPage();
   const timeoutMs = Math.max(envInt("COLLECTOR_LOGIN_TIMEOUT_MS", 20_000), 5_000);
   const settleMs = Math.min(

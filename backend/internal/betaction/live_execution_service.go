@@ -126,6 +126,16 @@ func (s *LiveExecutionService) runtimeTotalStakeVND() int64 {
 	return s.cfg.TotalStakeVND
 }
 
+func (s *LiveExecutionService) disableForRisk(reason string) {
+	if s == nil || s.control == nil {
+		return
+	}
+	state := s.control.Disable()
+	if s.log != nil {
+		s.log.Warn("live auto-bet disabled by risk gate", "reason", reason, "total_stake_vnd", state.TotalStakeVND)
+	}
+}
+
 type preparedLiveLeg struct {
 	index    int
 	leg      dto.SurebetLegView
@@ -241,6 +251,15 @@ func (s *LiveExecutionService) Execute(
 		}
 		return s.failAction(ctx, &action, legs, StatusAbortedNoExposure, "prepare_failed", err)
 	}
+	if preparedBalancesCannotFund(action.TotalStakeVND, prepared[0], prepared[1], s.cfg.BalanceFloorVND) {
+		for index := range prepared {
+			if prepared[index] != nil {
+				s.cancelPrepared(context.WithoutCancel(ctx), action, *prepared[index])
+			}
+		}
+		s.disableForRisk("prepared bookmaker balance is below the minimum stake or balance floor")
+		return s.failAction(ctx, &action, legs, StatusAbortedNoExposure, "balance_insufficient", ErrLiveRiskGate)
+	}
 	if absoluteDuration(prepared[0].response.ObservedAt.Sub(prepared[1].response.ObservedAt)) > livePreparedMaxSkew {
 		for _, item := range prepared {
 			s.cancelPrepared(context.WithoutCancel(ctx), action, *item)
@@ -253,6 +272,10 @@ func (s *LiveExecutionService) Execute(
 	if !ok {
 		for _, item := range prepared {
 			s.cancelPrepared(context.WithoutCancel(ctx), action, *item)
+		}
+		if preparedBalancesCannotFund(action.TotalStakeVND, prepared[0], prepared[1], s.cfg.BalanceFloorVND) {
+			s.disableForRisk("prepared bookmaker balances cannot fund the configured action stake")
+			return s.failAction(ctx, &action, legs, StatusAbortedNoExposure, "balance_insufficient", ErrLiveRiskGate)
 		}
 		return s.failAction(ctx, &action, legs, StatusAbortedNoExposure, "prepared_pair_unprofitable", errors.New("prepared pair cannot produce positive rounded VND returns"))
 	}
@@ -1273,6 +1296,27 @@ func allocatePreparedPair(
 		}
 	}
 	return bestJun, bestEight, bestProfit, bestJun > 0 && bestEight > 0
+}
+
+func preparedBalancesCannotFund(totalStakeVND int64, jun, eight *preparedLiveLeg, balanceFloorVND int64) bool {
+	if totalStakeVND <= 0 || jun == nil || eight == nil {
+		return true
+	}
+	junMinimum := alignUp(jun.response.MinimumStakeVND, jun.response.StakeIncrementVND)
+	eightMinimum := alignUp(eight.response.MinimumStakeVND, eight.response.StakeIncrementVND)
+	junMaximum := alignDown(minPositiveInt64(
+		jun.response.MaximumStakeVND,
+		spendableBalance(jun.response.BalanceVND, balanceFloorVND),
+		totalStakeVND-eightMinimum,
+	), jun.response.StakeIncrementVND)
+	eightMaximum := alignDown(minPositiveInt64(
+		eight.response.MaximumStakeVND,
+		spendableBalance(eight.response.BalanceVND, balanceFloorVND),
+		totalStakeVND-junMinimum,
+	), eight.response.StakeIncrementVND)
+	return junMinimum <= 0 || eightMinimum <= 0 ||
+		junMaximum < junMinimum || eightMaximum < eightMinimum ||
+		junMaximum+eightMaximum < totalStakeVND
 }
 
 func stakeCandidates(ideal float64, minimum, maximum, increment int64) []int64 {

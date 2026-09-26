@@ -60,3 +60,17 @@ func (c *Control) Update(enabled bool, totalStakeVND int64) (Snapshot, error) {
 	c.mu.Unlock()
 	return state, nil
 }
+
+// Disable is a fail-closed kill switch used by risk gates after a live
+// execution observes an account condition that makes new actions unsafe.
+func (c *Control) Disable() Snapshot {
+	if c == nil {
+		return Snapshot{}
+	}
+	c.mu.Lock()
+	c.state.Enabled = false
+	c.state.UpdatedAt = time.Now().UTC()
+	state := c.state
+	c.mu.Unlock()
+	return state
+}

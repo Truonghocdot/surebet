@@ -1,0 +1,2391 @@
+<div id="Left">
+  <form
+    method="post"
+    action="./AdminLeftFrame.aspx"
+    id="frmAdminLeftFrame"
+    onsubmit="return false;"
+  >
+    <div class="aspNetHidden">
+      <input
+        type="hidden"
+        name="__VIEWSTATE"
+        id="__VIEWSTATE"
+        value="/wEPDwULLTIxMTYyODc4NjUPFgIeE1ZhbGlkYXRlUmVxdWVzdE1vZGUCARYCAgEPZBYQZg8WAh4HVmlzaWJsZWhkAgEPFgIeBXN0eWxlBQ5kaXNwbGF5OmJsb2NrOxYgAgEPDxYCHgRUZXh0BQzEkOG7lWkgbeG7m2lkZAIDDxYCHwMFDnM4czE1OTQxNjgxOTYzZAIFDw8WBB8DBQpDb25maWcgTm93HwFoZGQCBw8WAh8DBQ5UaeG7gW4gY8aw4bujY2QCCQ8WAh8DBQJWRGQCCw8PFgIfAwUFNTEuNTdkZAIND2QWBmYPFgIfAwUOVGnDqsyAbiBtxIPMo3RkAgEPDxYCHwMFBTUxLjU3ZGQCAg8WAh8BaBYEAgEPFgIfAwUYdHLDsiBjaMahaSBjaHV54buDbiBnaWFvZAIDDxYCHwMFBDAuMDBkAg8PFgIfAwUiQ8awxqHMo2MgxJFhbmcgY2jGocyAIGvDqsyBdCBxdcyJYWQCEQ8PFgIfAwUEMC4wMGRkAhMPFgIfAwUOVGnhu4FuIGPGsOG7o2NkAhUPFgIfAwUCVkRkAhcPDxYCHwMFBTUxLjU3ZGQCGQ8WAh8BaBYGAgEPFgIfAwUVc+G7kSB0aeG7gW4gxJFhbmcgY8OzZAIDDxYCHwMFAlZEZAIFDw8WAh8DBQgxLDYxMC45NWRkAhsPFgIfAwUXdHJ1eSBj4bqtcCBs4bqnbiBjdeG7kWlkAh0PDxYCHwMFFTI2LzA5LzIwMjYgMzoyODowOCBTQWRkAh8PFgIfAWgWCAIBDxYCHwMFJWzhuqduIGN14buRaSBjw7luZyBk4buVaSBt4bqtdCBraOG6qXVkAgMPDxYCHwMFFjIxLzA2LzIwMjYgMTA6MDk6NDMgQ0hkZAIFDxYCHwMFHW5nw6B5IG3huq10IGto4bqpdSBtw6NuIGjhuqFuZAIHDw8WAh8DBRYwMS8wMS8yMDAyIDEyOjAwOjAwIFNBZGQCBQ8WAh8DBRhU4buxIMSQ4buZbmcgVOG6o2kgTOG6oWlkAgYPFgIfAwUCVkRkAgcPFgIfAwUCVkRkAggPFgIfAwUVVGhhbmggVG/DoW4gVOG7kWkgxJBhZAIJDxYCHwMFG0dp4bubaSBo4bqhbiDEkeG6t3QgY8aw4bujY2QCDA8WAh8DBRJkYW5oIHPDoWNoIGPGsOG7o2NkZAIGJVbdfVobJ1jPvZlRupvKRA5/"
+      />
+    </div>
+
+    <div class="aspNetHidden">
+      <input
+        type="hidden"
+        name="__VIEWSTATEGENERATOR"
+        id="__VIEWSTATEGENERATOR"
+        value="B804CE58"
+      />
+    </div>
+
+    <div id="divUserInfo" style="display: block">
+      <div class="UserInfo" style="line-height: 18px">
+        <input
+          type="submit"
+          name="rfsBtn"
+          value="Đổi mới"
+          onclick="
+            onUserInfoRefresh();
+            return false;
+          "
+          id="rfsBtn"
+          style="display: block"
+        />
+        <span class="loading-info" id="loading-info" style="display: none">
+          <img src="/app_themes/resources/images/loading-red.gif"
+        /></span>
+        s8s15941681963
+        <span> </span>
+        <span class="hideIcon" id="btn_staus" onclick="updatStatus()"></span>
+      </div>
+      <!--Start: User Info-->
+      <div class="UserInfo2">
+        <!--单独显示CredieBlances-->
+        <table>
+          <tbody>
+            <tr id="tdBalances">
+              <th id="tdBetCredits" class="bet_banlance">Tiền cược</th>
+              <td class="b">
+                VD&nbsp;
+
+                <span id="lb_bet_credits">38.77</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <table id="tbUserInfo" class="hide">
+          <tbody>
+            <tr>
+              <th>Tiền mặt</th>
+              <td id="tdBalance" class="b">
+                <span id="lb_balance">51.57</span>
+              </td>
+            </tr>
+
+            <tr>
+              <th>Cược đang chờ kết qủa</th>
+              <td class="b">
+                <span id="lb_outstanding">12.80</span>
+              </td>
+            </tr>
+            <tr>
+              <th id="tdBetCredit">Tiền cược</th>
+              <td class="b">
+                VD&nbsp;
+
+                <span id="lb_bet_credit">38.77</span>
+              </td>
+            </tr>
+
+            <tr>
+              <th colspan="2">truy cập lần cuối</th>
+            </tr>
+            <tr>
+              <td colspan="2">
+                <span id="lblLastLogin">26/09/2026 3:28:08 SA</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="group-view" style="display: none">
+      <button class="btn-view" id="btn-view">Chế độ xem Châu Á mới</button>
+    </div>
+    <div id="divForecastSum" class="SumForcast">
+      <div class="BetBill">
+        <span
+          class="iconOdds Sum_Forcast"
+          onclick="OnForecastListClick()"
+          style="cursor: pointer"
+          title="Click to detail"
+        ></span>
+        <span onclick="OnForecastListClick()">tóm tắt dự báo</span>
+        <span
+          id="refresh-sumForcast"
+          class="iconOdds refreshe"
+          onclick="RefreshForecastSum(this)"
+        ></span>
+      </div>
+      <div class="SumForcast2">
+        <select
+          name="select"
+          onchange="SumForecastChange()"
+          id="selForecastSum"
+        >
+          <option value="0">Tất cả</option>
+          <option value="1">Trực tiếp</option>
+          <option value="2">Hôm nay</option>
+          <option value="3">Ngày mai</option>
+        </select>
+        <span
+          id="span_ForecastSum"
+          class="b"
+          style="cursor: pointer; color: red"
+          onclick="OnForecastListClick()"
+          title="Click to detail"
+          >VD -6.40</span
+        >
+      </div>
+    </div>
+
+    <div class="SportMenu" id="menu" style="display: none">
+      <a name="betWindowAnchor"></a>
+      <div class="PlaceBetLeft">
+        <h1 id="BetWindowTitle">
+          <span id="hidplacebet" style="display: none"> </span>
+          <span id="lbPlaceBet">bóng đá</span>
+          <span>-</span>
+          <span id="lb_title">Cược chấp</span>
+          <span
+            id="lb_parlay"
+            style="
+              display: none;
+              float: right;
+              margin-right: 6px;
+              font-size: 11px;
+            "
+            ><span id="lb_parlaytitle" style="display: none">Cược hỗn hợp</span>
+            <span id="lb_count" style="padding: 1px 5px; border-radius: 3px"
+              >12</span
+            ></span
+          >
+        </h1>
+        <table
+          cellspacing="0"
+          cellpadding="1"
+          border="0"
+          style="width: 100%; background: #eeedeb"
+          id="BetWindow"
+        >
+          <tbody>
+            <tr>
+              <td id="td_tbg" class="betWindowBg_R">
+                <span class="BetChoice" id="lb_bet_team">Italy</span>
+                <br />
+                <b
+                  class="disin ballchg"
+                  id="lb_hdpball"
+                  style="color: rgb(181, 0, 0)"
+                  >-0.25</b
+                >
+                <span class="disin" id="lb_hdpscore">[0-2]</span>
+                <span class="disin">@</span>
+                <span
+                  id="lb_bet_odds"
+                  style="margin-right: 2px; color: rgb(181, 0, 0)"
+                  class="oddschg"
+                  >-0.64</span
+                >
+                <div id="pl_autorefresh" style="display: none">
+                  <label for="chkAutoRefresh">
+                    Tự Động Tải Lại<span id="spautorefreshcount"
+                      >(6)</span
+                    ></label
+                  ><input
+                    id="chkAutoRefresh"
+                    style="vertical-align: middle"
+                    type="checkbox"
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr id="pnNormal">
+              <td>
+                <div class="aosbox" style="display: none">
+                  Ngoại trừ:
+                  <span class="aosbox-content" id="aosbox-content"></span>
+                </div>
+                <div class="PlaceBetLeft_3" id="pn_title">
+                  <span
+                    class="PlaveBet_blue"
+                    id="lb_league"
+                    style="text-decoration: none"
+                    >UEFA NATIONS LEAGUE A</span
+                  >
+                  <span id="lb_home_team" style="display: block">Italy</span>
+                  <span id="lb_away_team" style="display: block">Belgium</span>
+                </div>
+              </td>
+            </tr>
+            <tr id="pnParlay" style="display: none">
+              <td id="pnParlayC"></td>
+            </tr>
+            <tr id="tr_stake">
+              <td class="PlaceBetLeft_4">
+                <b id="lb_stake"> VD:</b>
+                <input
+                  type="text"
+                  onclick="this.select()"
+                  onkeyup="onStakeChanged()"
+                  oncut="return false;"
+                  onpaste="return false;"
+                  oncopy="return false;"
+                  oncontextmenu="return false;"
+                  onkeydown="return KeyDownHandler(event);"
+                  tabindex="1"
+                  id="tx_stake"
+                  name="tx_stake"
+                  autocomplete="off"
+                />
+                <input type="hidden" id="tx_min_bet" value="20" />
+                <input type="hidden" id="tx_max_bet" value="250000" />
+                <input
+                  type="hidden"
+                  id="tx_ran_code"
+                  value="0.5727428053502123"
+                />
+                <input type="hidden" id="tx_bet_type" value="Hdp" />
+                <input type="hidden" id="tx_bet_odds" value="-0.64" />
+                <input type="hidden" id="tx_bet_oddsType" value="MY" />
+                <input type="hidden" id="tx_ismr" value="0" />
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <div style="width: 100%" id="pn_details">
+                  <table
+                    cellspacing="0"
+                    cellpadding="0"
+                    border="0"
+                    class="PlaceBetLeft_5"
+                    style="width: 100%; clip: rect(auto, auto, auto, 2px)"
+                  >
+                    <tbody>
+                      <tr id="tr_parlay_combo" style="display: none">
+                        <th>
+                          <span id="spanMixCombo">Kết hợp</span>
+                        </th>
+                        <td>
+                          <select
+                            id="selMixCombo"
+                            onchange="onCheckMaxBetMatch()"
+                            style="font-size: 12px; width: 86px"
+                          ></select>
+                        </td>
+                      </tr>
+                      <tr id="tr_parlay_odds" style="display: none">
+                        <th style="width: 50%">
+                          <span id="Span1">Odds</span>
+                        </th>
+                        <td>
+                          <span
+                            id="lb_parlay_odds"
+                            style="color: rgb(181, 0, 0)"
+                            >-0.64</span
+                          >
+                        </td>
+                      </tr>
+                      <tr id="tr_parlay_stake" style="display: none">
+                        <th>
+                          <span id="Span2">Tiền Cược</span>
+                        </th>
+                        <td class="PlaceBetLeft_4">
+                          <b id="B1" style="color: #003399"> VD</b>
+                          <input
+                            type="text"
+                            onclick="this.select()"
+                            onkeyup="onStakeChanged()"
+                            oncut="return false;"
+                            onpaste="return false;"
+                            oncopy="return false;"
+                            oncontextmenu="return false;"
+                            onkeydown="return KeyDownHandler(event);"
+                            tabindex="1"
+                            id="tx_stake_parlay"
+                            name="tx_stake"
+                            autocomplete="off"
+                          />
+                        </td>
+                      </tr>
+                      <tr id="trComboStake" style="display: none">
+                        <th>
+                          <span>Tổng số tiền cọc</span>
+                        </th>
+                        <td>
+                          <b id="lb_ComboStake">0</b>
+                        </td>
+                      </tr>
+                      <tr>
+                        <th>
+                          <span id="lb_estPay"> Thanh Toán Tối Đa</span>
+                        </th>
+                        <td>
+                          <b id="lb_estPayVal">20</b>
+                        </td>
+                      </tr>
+                      <tr id="trComboPayout" style="display: none">
+                        <th>
+                          <span>Kết hợp.chi</span>
+                        </th>
+                        <td>
+                          <b id="lb_ComboPayout">0</b>
+                        </td>
+                      </tr>
+                      <tr>
+                        <th>
+                          <span id="lb_bet_limit"> Giới hạn đặt cược</span>
+                        </th>
+                        <td>
+                          <span
+                            style="color: rgb(0, 83, 185)"
+                            id="lb_bet_limit_val"
+                            >20 / 250,000</span
+                          >
+                        </td>
+                      </tr>
+                      <tr id="tr_chk_auto" style="display: none">
+                        <td
+                          style="padding-left: 5px; border-top: 1px dotted #ccc"
+                          colspan="2"
+                        >
+                          <label for="chk_auto"> </label>
+                          <input
+                            type="checkbox"
+                            name="chk_auto"
+                            id="chk_auto"
+                            style="vertical-align: middle"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td class="PlaceBetLeft_6" align="center">
+                <input
+                  type="button"
+                  tabindex="2"
+                  value="đặt cược"
+                  class="btnbet"
+                  id="btnBet"
+                  name="btnBet"
+                  onclick="onBet()"
+                />
+                <input
+                  type="button"
+                  tabindex="3"
+                  value="hủy bỏ"
+                  class="btnbet"
+                  id="btnCancel"
+                  name="btnCancel"
+                  onclick="onCancel()"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <table
+          width="190"
+          cellspacing="0"
+          cellpadding="0"
+          border="0"
+          id="BetErrorMessage"
+          style="display: none"
+        >
+          <tbody>
+            <tr>
+              <td align="center">
+                <span style="color: Black" class="fs" id="lb_msg"
+                  >Match closed</span
+                >
+              </td>
+            </tr>
+            <tr>
+              <td valign="middle" align="center">
+                <input
+                  type="button"
+                  value="OK"
+                  class="btnbet"
+                  id="imgbtnOK"
+                  onclick="onErrorOk()"
+                  tabindex="5"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div
+      class="liveC"
+      id="LiveCenterConatiner"
+      onclick="onLiveCenterClick()"
+      style=""
+    >
+      <span id="LiveCenterCount">35</span>
+      <h1>Trực Tiếp</h1>
+    </div>
+
+    <div class="favorites" onclick="ShowFavorites()">
+      <span class="iconOdds myfavorites"></span>
+      <span>Mục ưa thích của tôi</span>
+      <span id="favcount" style="display: none"></span>
+    </div>
+    <div class="countdown-eurocup" hidden="" style="display: none">
+      <img
+        class="eurocup2024-logo"
+        src="../app_themes/resources/images//euro2024_logo.png"
+        alt="eurocup2024"
+      />
+      <div class="countdown">
+        <div class="countdown-item">
+          <span class="countdown-number"></span>
+          <span class="countdown-unit">ngày</span>
+        </div>
+        <div class="countdown-item">
+          <span class="countdown-number"></span>
+          <span class="countdown-unit">giờ</span>
+        </div>
+        <div class="countdown-item">
+          <span class="countdown-number"></span>
+          <span class="countdown-unit">phút</span>
+        </div>
+        <div class="countdown-item">
+          <span class="countdown-number"></span>
+          <span class="countdown-unit">giây</span>
+        </div>
+      </div>
+    </div>
+    <div
+      id="Tournament"
+      class="tournament-text-carousel"
+      data-interval="10000"
+      data-animation="600"
+      tabindex="0"
+      aria-label="Tournament carousel"
+      style="cursor: pointer; display: none"
+    >
+      <style type="text/css">
+        @font-face {
+          font-family: "Bebas Neue";
+          src: url("../statics/css/font-awesome/fonts/BebasNeue-Regular.ttf")
+            format("truetype");
+          font-weight: 400;
+          font-style: normal;
+          font-display: swap;
+        }
+        /* 固定背景圖 + 文字橫向滑動（無預覽、無手動滑動） */
+        .tournament-text-carousel {
+          display: none;
+          position: relative;
+          width: 100%;
+          height: 48px;
+          /*background: url('../statics/img/tournament/pc.svg') center center no-repeat;*/
+          background-size: cover;
+          overflow: hidden;
+          border-radius: 5px;
+          margin: 5px 0;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer; /* 新增：顯示可點擊 */
+        }
+        .tournament-text-carousel .tc-text-track {
+          position: absolute;
+          left: 0;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          will-change: transform;
+          transition: transform 600ms cubic-bezier(0.4, 0.2, 0.2, 1);
+        }
+        .tournament-text-carousel .tc-text {
+          font-family: Bebas Neue;
+          font-weight: 400;
+          font-size: 20px;
+          line-height: 18px;
+
+          min-width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          text-shadow:
+            -0.1px 0 #000,
+            0 0.1px #000,
+            0.1px 0 #000,
+            0 -0.1px #000;
+
+          /* 新增：右側背景圖（136px × 40px）*/
+          /*background-image: url('../statics/img/tournament/1760005645517.png');*/
+          background-repeat: no-repeat;
+          background-position: center;
+          /*background-size: 136px 40px;*/
+          background-size: cover;
+
+          padding: 0 24px;
+          text-align: center;
+          white-space: pre-line;
+          box-sizing: border-box;
+          cursor: pointer; /* 每個項目也可點擊 */
+        }
+        .tournament-text-carousel .tc-text .tc-text-content {
+          display: block;
+          max-width: 100%;
+          word-break: break-word;
+          overflow-wrap: break-word;
+        }
+        .tournament-text-carousel .tc-text .double-right-arrow {
+          height: 18px;
+          width: 18px;
+          position: absolute;
+          z-index: 1;
+          margin-left: 160px;
+          display: inline-block;
+          background: url("/statics/img/tournament/DoubleRightArrow_202511141408.svg")
+            no-repeat center center;
+          background-size: contain;
+        }
+        .tournament-text-carousel .tc-text-track {
+          z-index: 2;
+          position: relative;
+        }
+      </style>
+      <div
+        class="tc-text-track"
+        id="TournamentZone"
+        style="transition: none; transform: translateX(0%)"
+      >
+        <!-- 範例：每個 .tc-text 帶有 data-id  
+                    <div class="tc-text" data-id="1">
+                        WORLD CUP 2026
+                        <div class="double-right-arrow" aria-label="WORLD CUP 2026"></div>
+                    </div>-->
+      </div>
+      <script type="text/javascript">
+        (function (window, document) {
+          var TournamentCarousel = {
+            inited: false,
+            root: null,
+            zone: null,
+            track: null,
+            texts: null,
+            interval: 0,
+            animation: 0,
+            curr: 0,
+            timer: null,
+            paused: false,
+            cacheHtml: "",
+            loadTournamentTimer: null,
+
+            load: function () {
+              var self = this; // <- 捕捉物件參考
+              self.init(); // 確保已初始化
+
+              if (self.loadTournamentTimer)
+                clearTimeout(self.loadTournamentTimer);
+              self.loadTournamentTimer = null;
+
+              var data = { language: curLang, d: [], type: [3] };
+              callWebService(
+                "../asbapis/v1/all-sports",
+                JSON.stringify(data),
+                function (json) {
+                  // 使用 self.schedule 下一次載入
+                  self.loadTournamentTimer = setTimeout(function () {
+                    self.load(); // 呼叫物件的方法
+                  }, 60000);
+
+                  var html = "";
+                  var arr = self.getSortedHighlightItems(
+                    json.hightlights || [],
+                  );
+                  arr.forEach(function (item, index, array) {
+                    html +=
+                      '<div class="tc-text" data-id="' +
+                      item.id +
+                      '"' +
+                      'style="background-image: url(' +
+                      item.tabImg +
+                      ")" +
+                      '">' +
+                      '<span class="tc-text-content">' +
+                      item.name +
+                      "</span>" +
+                      '<div class="double-right-arrow" aria-label="' +
+                      item.name +
+                      '"></div>' +
+                      "</div>";
+                  });
+                  // 使用 self.reset 而非 this.reset（回呼中的 this 非預期）
+                  self.reset(html);
+                },
+                function () {
+                  console.warn("loadTournament => fail!!");
+                  self.loadTournamentTimer = setTimeout(function () {
+                    self.load();
+                  }, 60000);
+                },
+              );
+            },
+
+            getSortedHighlightItems: function (data) {
+              var nowUtc = new Date(new Date().toISOString());
+
+              // 過濾在 tsd~ted 範圍內的項目
+              var filtered = data.filter(function (item) {
+                var tsdDate = new Date(item.tsd);
+                var tedDate = new Date(item.ted);
+                return nowUtc >= tsdDate && nowUtc <= tedDate;
+              });
+
+              // 排序
+              return filtered.sort(function (a, b) {
+                if ("order" in a && "order" in b && a.order !== b.order) {
+                  return a.order - b.order;
+                }
+                return a.name.localeCompare(b.name);
+              });
+            },
+
+            init: function () {
+              if (this.inited) return;
+              var root = document.getElementById("Tournament");
+              if (!root) return;
+              this.root = root;
+              this.zone = document.getElementById("TournamentZone");
+              this.track =
+                root.querySelector(".tc-text-track") ||
+                (root.getElementsByClassName
+                  ? root.getElementsByClassName("tc-text-track")[0]
+                  : null);
+              if (!this.track) return;
+
+              this.interval =
+                parseInt(root.getAttribute("data-interval"), 10) ||
+                this.interval;
+              this.animation =
+                parseInt(root.getAttribute("data-animation"), 10) ||
+                this.animation;
+              this.updateTexts();
+
+              var self = this;
+              root.style.cursor = "pointer";
+
+              this.goto = function (idx, animate) {
+                if (typeof animate === "undefined") animate = true;
+                self.track.style.transition = animate
+                  ? "transform " +
+                    self.animation +
+                    "ms cubic-bezier(.4,.2,.2,1)"
+                  : "none";
+                self.track.style.transform = "translateX(" + -idx * 100 + "%)";
+                self.curr = idx;
+              };
+
+              this.next = function () {
+                if (!self.texts || self.texts.length <= 1) return;
+                var nextIdx = self.curr + 1;
+                var isWrap = nextIdx >= self.texts.length;
+
+                if (isWrap) {
+                  // 最後一張 -> 第一張：在尾端複製第一張，向左滑到複製項目，動畫結束後移除 clone 並瞬間回位
+                  if (self.animating) return;
+                  self.animating = true;
+
+                  var first = self.texts[0];
+                  if (!first) {
+                    self.curr = 0;
+                    self.animating = false;
+                    self.schedule();
+                    return;
+                  }
+
+                  var clone = first.cloneNode(true);
+                  clone.classList.add("tc-clone"); // 標記以便移除
+                  self.track.appendChild(clone);
+
+                  // 更新節點集合（包含剛加的 clone）
+                  self.updateTexts();
+
+                  // 強制重排，確保 DOM/樣式已應用
+                  self.track.offsetWidth;
+
+                  var cloneIndex = self.texts.length - 1;
+                  self.track.style.transition =
+                    "transform " +
+                    self.animation +
+                    "ms cubic-bezier(.4,.2,.2,1)";
+                  self.track.style.transform =
+                    "translateX(" + -cloneIndex * 100 + "%)";
+
+                  var fallback = setTimeout(function () {
+                    if (self.animating) onTransEnd();
+                  }, self.animation + 100);
+
+                  function onTransEnd(ev) {
+                    if (ev && ev.target !== self.track) return;
+                    clearTimeout(fallback);
+                    self.track.removeEventListener("transitionend", onTransEnd);
+
+                    // 移除 clone，無動畫回位到真實第一張
+                    var clones = self.track.querySelectorAll(".tc-clone");
+                    for (var i = 0; i < clones.length; i++) {
+                      clones[i].parentNode.removeChild(clones[i]);
+                    }
+
+                    self.track.style.transition = "none";
+                    self.track.style.transform = "translateX(0%)";
+                    self.updateTexts();
+                    self.curr = 0;
+                    self.animating = false;
+
+                    // 小延遲後恢復 transition 並排程下一次
+                    setTimeout(function () {
+                      self.track.style.transition =
+                        "transform " +
+                        self.animation +
+                        "ms cubic-bezier(.4,.2,.2,1)";
+                      self.schedule();
+                    }, 20);
+                  }
+
+                  self.track.addEventListener("transitionend", onTransEnd);
+                } else {
+                  self.goto(nextIdx, true);
+                  self.schedule();
+                }
+              };
+
+              this.schedule = function () {
+                clearTimeout(self.timer);
+                if (
+                  !self.paused &&
+                  !self.animating &&
+                  self.texts &&
+                  self.texts.length > 1
+                ) {
+                  self.timer = setTimeout(self.next, self.interval);
+                }
+              };
+
+              // pause on hover / touch
+              root.addEventListener("mouseenter", function () {
+                self.paused = true;
+                clearTimeout(self.timer);
+              });
+              root.addEventListener("mouseleave", function () {
+                self.paused = false;
+                self.schedule();
+              });
+              root.addEventListener(
+                "touchstart",
+                function () {
+                  self.paused = true;
+                  clearTimeout(self.timer);
+                },
+                { passive: true },
+              );
+              root.addEventListener(
+                "touchend",
+                function () {
+                  self.paused = false;
+                  self.schedule();
+                },
+                { passive: true },
+              );
+
+              // click handling (保持原行為)
+              root.addEventListener(
+                "click",
+                function (ev) {
+                  var t = ev.target;
+                  while (t && t !== root && !t.classList.contains("tc-text"))
+                    t = t.parentNode;
+                  if (t && t.classList && t.classList.contains("tc-text")) {
+                    // Safari popup blocker: must call window.open synchronously inside user event.
+                    // Pre-open a blank window now, then navigate it once the async URL is ready.
+                    var top = (screen.height - 680) / 2;
+                    var left = (screen.width - 880) / 2;
+                    var winRef = window.open(
+                      "about:blank",
+                      "_blank",
+                      "left=" +
+                        left +
+                        "px, top=" +
+                        top +
+                        "px, width=880, height=680, scrollbars=yes, location=no, menubar=no, titlebar=no, hotkeys=no, toolbars=no, status=no, resizable=yes",
+                    );
+                    var data = { Language: curLang };
+                    callWebService(
+                      "../member/betsview/data.asmx/tournament/build/url",
+                      JSON.stringify(data),
+                      function (json) {
+                        if (json.Code !== 200) {
+                          if (winRef) winRef.close();
+                          alert(errorMessage);
+                        } else {
+                          if (json.Au) {
+                            if (winRef) {
+                              winRef.location.href =
+                                json.Url + "&tid=" + t.getAttribute("data-id");
+                            }
+                          } else {
+                            if (winRef) winRef.close();
+                            alert(errorMessage);
+                          }
+                        }
+                      },
+                      function () {
+                        if (winRef) winRef.close();
+                        alert(errorMessage);
+                        console.warn("TournamentCarousel => fail!!");
+                      },
+                    );
+                  }
+                },
+                false,
+              );
+
+              // resize: 保持每個 .tc-text 寬度 100%
+              var onResize = function () {
+                if (!self.texts) return;
+                for (var i = 0; i < self.texts.length; i++) {
+                  self.texts[i].style.minWidth = self.root.offsetWidth + "px";
+                }
+                self.fitTextSize(); // 寬度改變後重新計算字體
+                self.goto(self.curr, false);
+              };
+              window.addEventListener("resize", onResize);
+
+              // 初始化
+              onResize();
+              this.goto(this.curr, false);
+              this.schedule();
+              this.inited = true;
+            },
+
+            updateTexts: function () {
+              if (!this.track) return;
+              this.texts = this.track.querySelectorAll(".tc-text") || [];
+            },
+
+            fitTextSize: function () {
+              var self = this;
+              if (!self.zone) return;
+              var items = self.zone.querySelectorAll(".tc-text");
+              var maxFontSize = 20;
+              var minFontSize = 12;
+              var lineHeight = 18; // 與 CSS line-height 保持一致
+              var maxH = lineHeight * 2; // 最多兩行 = 36px
+
+              for (var i = 0; i < items.length; i++) {
+                var span = items[i].querySelector(".tc-text-content");
+                if (!span) continue;
+
+                // 重置
+                span.style.fontSize = maxFontSize + "px";
+                span.style.overflow = "";
+                span.style.display = "block";
+                span.style.webkitLineClamp = "";
+                span.style.webkitBoxOrient = "";
+
+                // 逐步縮小字體直到符合兩行
+                for (var size = maxFontSize; size >= minFontSize; size--) {
+                  span.style.fontSize = size + "px";
+                  if (span.scrollHeight <= maxH) break;
+                }
+
+                // 最小字體仍超過則顯示 ...
+                if (span.scrollHeight > maxH) {
+                  span.style.display = "-webkit-box";
+                  span.style.webkitBoxOrient = "vertical";
+                  span.style.webkitLineClamp = "2";
+                  span.style.overflow = "hidden";
+                }
+              }
+            },
+
+            checkDisplay: function (html) {
+              if (html) {
+                this.root.style.display = "flex";
+                return true;
+              } else {
+                this.root.style.display = "none";
+                return false;
+              }
+            },
+
+            reset: function (html) {
+              if (!this.checkDisplay(html)) return;
+              if (this.cacheHtml == html) return;
+              this.cacheHtml = html;
+              this.zone.innerHTML = html;
+              if (!this.track) return;
+              clearTimeout(this.timer);
+              this.curr = 0;
+              this.track.style.transition = "none";
+              this.track.style.transform = "translateX(0%)";
+              this.updateTexts();
+              void this.zone.offsetHeight; // 強制重排以利正確量測
+              this.fitTextSize();
+              var self = this;
+              // 恢復 schedule 與 transition（小延遲避免 CSS transition 干擾）
+              setTimeout(function () {
+                self.track.style.transition =
+                  "transform " + self.animation + "ms cubic-bezier(.4,.2,.2,1)";
+                self.schedule();
+              }, 20);
+            },
+          };
+
+          // 對外介面（保留舊函式名以避免其他呼叫點中斷）
+          window.TournamentCarousel = TournamentCarousel;
+          window.loadTournament = function () {
+            TournamentCarousel.load();
+          };
+          //window.initTournament = function () { TournamentCarousel.init(); };
+          //window.resetTournamentCarousel = function (html) { TournamentCarousel.reset(html); };
+        })(window, document);
+      </script>
+    </div>
+
+    <div
+      class="BetList"
+      id="NewSportPanelByHighlight_nullData"
+      style="display: none; margin-bottom: 5px"
+    >
+      <div class="BetBill">
+        <span
+          class="HidBill"
+          onclick="switchSport(this)"
+          id="panelswitchByHighlight"
+        >
+          <div id="lang_PictureSportByHighlight">　</div>
+          <span id="lang_HideSportByHighlight">Highlight</span>
+          <span id="lang_ShowSportByHighlight" style="display: none"
+            >Highlight</span
+          >
+        </span>
+      </div>
+      <ul class="TabGroup">
+        <li onclick="changeTab(0, this, true)">
+          <a
+            href="#"
+            onclick="
+              $(this).trigger('blur');
+              return false;
+            "
+          >
+            Ngày mai</a
+          >
+        </li>
+        <li onclick="changeTab(1, this, true)" class="current">
+          <a
+            href="#"
+            onclick="
+              $(this).trigger('blur');
+              return false;
+            "
+          >
+            Hôm nay</a
+          >
+        </li>
+        <li onclick="changeTab(2, this, true)">
+          <a
+            href="#"
+            onclick="
+              $(this).trigger('blur');
+              return false;
+            "
+          >
+            Trực tiếp</a
+          >
+        </li>
+      </ul>
+      <div style="clear: both"></div>
+      <div id="divSportByHighlight" style="display: none">
+        <dl style="display: none"></dl>
+        <dl style="display: block"></dl>
+        <dl style="display: none"></dl>
+      </div>
+    </div>
+
+    <div class="BetList" id="NewSportPanel" style="display: block">
+      <div class="BetBill">
+        <span class="HidBill" onclick="switchSport(this)" id="panelswitch">
+          <span style="display: none">ẩn Menu</span>
+          <span style="display: inline">hiện Menu</span>
+        </span>
+      </div>
+      <ul class="TabGroup" style="display: none">
+        <li onclick="changeTab(0, this, false)">
+          <a
+            href="#"
+            onclick="
+              $(this).trigger('blur');
+              return false;
+            "
+          >
+            Ngày mai</a
+          >
+        </li>
+        <li onclick="changeTab(1, this, false)" class="current">
+          <a
+            href="#"
+            onclick="
+              $(this).trigger('blur');
+              return false;
+            "
+          >
+            Hôm nay</a
+          >
+        </li>
+        <li onclick="changeTab(2, this, false)">
+          <a
+            href="#"
+            onclick="
+              $(this).trigger('blur');
+              return false;
+            "
+          >
+            Trực tiếp</a
+          >
+        </li>
+      </ul>
+      <div style="clear: both"></div>
+      <div id="divSport" style="display: none">
+        <dl style="display: none"></dl>
+        <dl style="display: block">
+          <div s="S">
+            <dt s="S" onclick="SportClick(this)">
+              <tt title="bóng đá " class="left-type">bóng đá</tt
+              ><span class="PaneLive">168</span><span class="LiveIcon"></span>
+            </dt>
+            <dd
+              s="S"
+              b="1"
+              onclick="goBetView('S', 1, 91, this, false)"
+              style=""
+            >
+              <b
+                ><tt title="Tất cả " class="left-match">Tất cả</tt
+                ><span class="PaneLive">91</span><span class="LiveIcon"></span
+              ></b>
+            </dd>
+            <dd
+              s="S"
+              b="23"
+              onclick="goBetView('S', 23, 59, this, false)"
+              style=""
+            >
+              <tt title="1X2 " class="left-match">1X2</tt
+              ><span class="PaneLive">59</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="S"
+              b="5"
+              onclick="goBetView('S', 5, 60, this, false)"
+              style=""
+            >
+              <tt title="Tỷ Số Chính Xác " class="left-match"
+                >Tỷ Số Chính Xác</tt
+              ><span class="PaneLive">60</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="S"
+              b="24"
+              onclick="goBetView('S', 24, 34, this, false)"
+              style=""
+            >
+              <tt title="Lẻ/Chẵn " class="left-match">Lẻ/Chẵn</tt
+              ><span>34</span>
+            </dd>
+            <dd
+              s="S"
+              b="25"
+              onclick="goBetView('S', 25, 47, this, false)"
+              style=""
+            >
+              <tt title="Tổng Bàn thắng " class="left-match">Tổng Bàn thắng</tt
+              ><span class="PaneLive">47</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="S"
+              b="11"
+              onclick="goBetView('S', 11, 15, this, false)"
+              style=""
+            >
+              <tt title="Bàn đầu/Bàn cuối " class="left-match"
+                >Bàn đầu/Bàn cuối</tt
+              ><span>15</span>
+            </dd>
+            <dd
+              s="S"
+              b="10"
+              onclick="goBetView('S', 10, 13, this, false)"
+              style=""
+            >
+              <tt title="Nửa trận / Toàn trận " class="left-match"
+                >Nửa trận / Toàn trận</tt
+              ><span>13</span>
+            </dd>
+            <dd
+              s="S"
+              b="7"
+              onclick="goBetView('S', 7, 71, this, false)"
+              style=""
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>71</span>
+            </dd>
+            <dd
+              s="S"
+              b="8"
+              onclick="goBetView('S', 8, 77, this, false)"
+              style=""
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>77</span>
+            </dd>
+          </div>
+          <div s="BB">
+            <dt s="BB" onclick="SportClick(this)">
+              <tt title="Bóng rổ " class="left-type">Bóng rổ</tt
+              ><span class="PaneLive">78</span><span class="LiveIcon"></span>
+            </dt>
+            <dd
+              s="BB"
+              b="1"
+              onclick="goBetView('BB', 1, 40, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt
+              ><span class="PaneLive">40</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="BB"
+              b="8"
+              onclick="goBetView('BB', 8, 38, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>38</span>
+            </dd>
+          </div>
+          <div s="TN">
+            <dt s="TN" onclick="SportClick(this)">
+              <tt title="Quần vợt " class="left-type">Quần vợt</tt
+              ><span class="PaneLive">66</span><span class="LiveIcon"></span>
+            </dt>
+            <dd
+              s="TN"
+              b="1"
+              onclick="goBetView('TN', 1, 58, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt
+              ><span class="PaneLive">58</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="TN"
+              b="7"
+              onclick="goBetView('TN', 7, 23, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>23</span>
+            </dd>
+            <dd
+              s="TN"
+              b="8"
+              onclick="goBetView('TN', 8, 8, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>8</span>
+            </dd>
+          </div>
+          <div s="ES">
+            <dt s="ES" onclick="SportClick(this)">
+              <tt title="E-Sports " class="left-type">E-Sports</tt
+              ><span class="PaneLive">38</span><span class="LiveIcon"></span>
+            </dt>
+            <dd
+              s="ES"
+              b="1"
+              onclick="goBetView('ES', 1, 38, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt
+              ><span class="PaneLive">38</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="ES"
+              b="7"
+              onclick="goBetView('ES', 7, 1, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>1</span>
+            </dd>
+          </div>
+          <div s="CK">
+            <dt s="CK" onclick="SportClick(this)">
+              <tt title="Môn crikê " class="left-type">Môn crikê</tt
+              ><span>15</span>
+            </dt>
+            <dd
+              s="CK"
+              b="1"
+              onclick="goBetView('CK', 1, 3, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>3</span>
+            </dd>
+            <dd
+              s="CK"
+              b="7"
+              onclick="goBetView('CK', 7, 3, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>3</span>
+            </dd>
+            <dd
+              s="CK"
+              b="8"
+              onclick="goBetView('CK', 8, 12, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>12</span>
+            </dd>
+          </div>
+          <div s="VB">
+            <dt s="VB" onclick="SportClick(this)">
+              <tt title="Bóng chuyền " class="left-type">Bóng chuyền</tt
+              ><span class="PaneLive">57</span><span class="LiveIcon"></span>
+            </dt>
+            <dd
+              s="VB"
+              b="1"
+              onclick="goBetView('VB', 1, 53, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt
+              ><span class="PaneLive">53</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="VB"
+              b="7"
+              onclick="goBetView('VB', 7, 27, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>27</span>
+            </dd>
+            <dd
+              s="VB"
+              b="8"
+              onclick="goBetView('VB', 8, 4, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>4</span>
+            </dd>
+          </div>
+          <div s="BA">
+            <dt s="BA" onclick="SportClick(this)">
+              <tt title="Cầu lông " class="left-type">Cầu lông</tt
+              ><span>14</span>
+            </dt>
+            <dd
+              s="BA"
+              b="1"
+              onclick="goBetView('BA', 1, 14, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>14</span>
+            </dd>
+            <dd
+              s="BA"
+              b="7"
+              onclick="goBetView('BA', 7, 1, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>1</span>
+            </dd>
+          </div>
+          <div s="BE">
+            <dt s="BE" onclick="SportClick(this)">
+              <tt title="Bóng chày " class="left-type">Bóng chày</tt
+              ><span>90</span>
+            </dt>
+            <dd
+              s="BE"
+              b="1"
+              onclick="goBetView('BE', 1, 90, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>90</span>
+            </dd>
+            <dd
+              s="BE"
+              b="7"
+              onclick="goBetView('BE', 7, 15, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>15</span>
+            </dd>
+          </div>
+          <div s="UF">
+            <dt s="UF" onclick="SportClick(this)">
+              <tt title="Bóng bầu dục Mỹ " class="left-type">Bóng bầu dục Mỹ</tt
+              ><span>21</span>
+            </dt>
+            <dd
+              s="UF"
+              b="1"
+              onclick="goBetView('UF', 1, 7, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>7</span>
+            </dd>
+            <dd
+              s="UF"
+              b="7"
+              onclick="goBetView('UF', 7, 5, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>5</span>
+            </dd>
+            <dd
+              s="UF"
+              b="8"
+              onclick="goBetView('UF', 8, 14, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>14</span>
+            </dd>
+          </div>
+          <div s="RB">
+            <dt s="RB" onclick="SportClick(this)">
+              <tt title="Bóng bầu dục Anh " class="left-type"
+                >Bóng bầu dục Anh</tt
+              ><span class="PaneLive">24</span><span class="LiveIcon"></span>
+            </dt>
+            <dd
+              s="RB"
+              b="1"
+              onclick="goBetView('RB', 1, 12, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt
+              ><span class="PaneLive">12</span><span class="LiveIcon"></span>
+            </dd>
+            <dd
+              s="RB"
+              b="7"
+              onclick="goBetView('RB', 7, 4, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>4</span>
+            </dd>
+            <dd
+              s="RB"
+              b="8"
+              onclick="goBetView('RB', 8, 12, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>12</span>
+            </dd>
+          </div>
+          <div s="IH">
+            <dt s="IH" onclick="SportClick(this)">
+              <tt title="Khúc côn cầu trên băng " class="left-type"
+                >Khúc côn cầu trên băng</tt
+              ><span>39</span>
+            </dt>
+            <dd
+              s="IH"
+              b="1"
+              onclick="goBetView('IH', 1, 25, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>25</span>
+            </dd>
+            <dd
+              s="IH"
+              b="7"
+              onclick="goBetView('IH', 7, 11, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>11</span>
+            </dd>
+            <dd
+              s="IH"
+              b="8"
+              onclick="goBetView('IH', 8, 14, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>14</span>
+            </dd>
+          </div>
+          <div s="HK">
+            <dt s="HK" onclick="SportClick(this)">
+              <tt title="Khúc côn cầu trên cỏ " class="left-type"
+                >Khúc côn cầu trên cỏ</tt
+              ><span>2</span>
+            </dt>
+            <dd
+              s="HK"
+              b="1"
+              onclick="goBetView('HK', 1, 2, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>2</span>
+            </dd>
+          </div>
+          <div s="GF">
+            <dt s="GF" onclick="SportClick(this)">
+              <tt title="Đánh gôn " class="left-type">Đánh gôn</tt
+              ><span>24</span>
+            </dt>
+            <dd
+              s="GF"
+              b="1"
+              onclick="goBetView('GF', 1, 19, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>19</span>
+            </dd>
+            <dd
+              s="GF"
+              b="7"
+              onclick="goBetView('GF', 7, 14, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>14</span>
+            </dd>
+            <dd
+              s="GF"
+              b="8"
+              onclick="goBetView('GF', 8, 5, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>5</span>
+            </dd>
+          </div>
+          <div s="GP">
+            <dt s="GP" onclick="SportClick(this)">
+              <tt title="Thể Thao Môtô " class="left-type">Thể Thao Môtô</tt
+              ><span>7</span>
+            </dt>
+            <dd
+              s="GP"
+              b="7"
+              onclick="goBetView('GP', 7, 10, this, false)"
+              style="display: none"
+            >
+              <tt title="Cược hỗn hợp " class="left-match">Cược hỗn hợp</tt
+              ><span>10</span>
+            </dd>
+            <dd
+              s="GP"
+              b="8"
+              onclick="goBetView('GP', 8, 7, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>7</span>
+            </dd>
+          </div>
+          <div s="NS">
+            <dt s="NS" onclick="SportClick(this)">
+              <tt title="Bi-a/Bida " class="left-type">Bi-a/Bida</tt
+              ><span>3</span>
+            </dt>
+            <dd
+              s="NS"
+              b="8"
+              onclick="goBetView('NS', 8, 3, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>3</span>
+            </dd>
+          </div>
+          <div s="BX">
+            <dt s="BX" onclick="SportClick(this)">
+              <tt title="Đấm bốc/MMA " class="left-type">Đấm bốc/MMA</tt
+              ><span>1</span>
+            </dt>
+            <dd
+              s="BX"
+              b="1"
+              onclick="goBetView('BX', 1, 1, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>1</span>
+            </dd>
+          </div>
+          <div s="HB">
+            <dt s="HB" onclick="SportClick(this)">
+              <tt title="Bóng Ném " class="left-type">Bóng Ném</tt
+              ><span>6</span>
+            </dt>
+            <dd
+              s="HB"
+              b="1"
+              onclick="goBetView('HB', 1, 1, this, false)"
+              style="display: none"
+            >
+              <tt title="Tất cả " class="left-match">Tất cả</tt><span>1</span>
+            </dd>
+            <dd
+              s="HB"
+              b="8"
+              onclick="goBetView('HB', 8, 5, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>5</span>
+            </dd>
+          </div>
+          <div s="WP">
+            <dt s="WP" onclick="SportClick(this)">
+              <tt title="Bóng nước " class="left-type">Bóng nước</tt
+              ><span>3</span>
+            </dt>
+            <dd
+              s="WP"
+              b="8"
+              onclick="goBetView('WP', 8, 3, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>3</span>
+            </dd>
+          </div>
+          <div s="DT">
+            <dt s="DT" onclick="SportClick(this)">
+              <tt title="Phi tiêu " class="left-type">Phi tiêu</tt
+              ><span>2</span>
+            </dt>
+            <dd
+              s="DT"
+              b="8"
+              onclick="goBetView('DT', 8, 2, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>2</span>
+            </dd>
+          </div>
+          <div s="CY">
+            <dt s="CY" onclick="SportClick(this)">
+              <tt title="Đua Xe Đạp " class="left-type">Đua Xe Đạp</tt
+              ><span>2</span>
+            </dt>
+            <dd
+              s="CY"
+              b="8"
+              onclick="goBetView('CY', 8, 2, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>2</span>
+            </dd>
+          </div>
+          <div s="CH">
+            <dt s="CH" onclick="SportClick(this)">
+              <tt title="Chess " class="left-type">Chess</tt><span>2</span>
+            </dt>
+            <dd
+              s="CH"
+              b="8"
+              onclick="goBetView('CH', 8, 2, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>2</span>
+            </dd>
+          </div>
+          <div s="OL">
+            <dt s="OL" onclick="SportClick(this)">
+              <tt title="Olympic " class="left-type">Olympic</tt><span>1</span>
+            </dt>
+            <dd
+              s="OL"
+              b="8"
+              onclick="goBetView('OL', 8, 1, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>1</span>
+            </dd>
+          </div>
+          <div s="OT">
+            <dt s="OT" onclick="SportClick(this)">
+              <tt title="Khác " class="left-type">Khác</tt><span>1</span>
+            </dt>
+            <dd
+              s="OT"
+              b="8"
+              onclick="goBetView('OT', 8, 1, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>1</span>
+            </dd>
+          </div>
+          <div s="ET">
+            <dt s="ET" onclick="SportClick(this)">
+              <tt title="Giải Trí " class="left-type">Giải Trí</tt
+              ><span>6</span>
+            </dt>
+            <dd
+              s="ET"
+              b="8"
+              onclick="goBetView('ET', 8, 6, this, false)"
+              style="display: none"
+            >
+              <tt title="cược đội vô địch " class="left-match"
+                >cược đội vô địch</tt
+              ><span>6</span>
+            </dd>
+          </div>
+          <div s="MIX">
+            <dt onclick="SportClick(this)">Cược hỗn hợp<span>528</span></dt>
+            <dd
+              onclick="goBetView('All', 7, 528, this, false)"
+              s="MIX"
+              b="7"
+              style="display: none"
+            >
+              Cược hỗn hợp<span>528</span>
+            </dd>
+          </div>
+          <div s="OUT">
+            <dt s="OUT" onclick="SportClick(this)">
+              cược đội vô địch<span>216</span>
+            </dt>
+            <dd
+              onclick="goBetView('S', 8, 77, this, false)"
+              s="S"
+              b="8"
+              style="display: none"
+            >
+              bóng đá<span>77</span>
+            </dd>
+            <dd
+              onclick="goBetView('BB', 8, 38, this, false)"
+              s="BB"
+              b="8"
+              style="display: none"
+            >
+              Bóng rổ<span>38</span>
+            </dd>
+            <dd
+              onclick="goBetView('TN', 8, 8, this, false)"
+              s="TN"
+              b="8"
+              style="display: none"
+            >
+              Quần vợt<span>8</span>
+            </dd>
+            <dd
+              onclick="goBetView('CK', 8, 12, this, false)"
+              s="CK"
+              b="8"
+              style="display: none"
+            >
+              Môn crikê<span>12</span>
+            </dd>
+            <dd
+              onclick="goBetView('VB', 8, 4, this, false)"
+              s="VB"
+              b="8"
+              style="display: none"
+            >
+              Bóng chuyền<span>4</span>
+            </dd>
+            <dd
+              onclick="goBetView('UF', 8, 14, this, false)"
+              s="UF"
+              b="8"
+              style="display: none"
+            >
+              Bóng bầu dục Mỹ<span>14</span>
+            </dd>
+            <dd
+              onclick="goBetView('RB', 8, 12, this, false)"
+              s="RB"
+              b="8"
+              style="display: none"
+            >
+              Bóng bầu dục Anh<span>12</span>
+            </dd>
+            <dd
+              onclick="goBetView('IH', 8, 14, this, false)"
+              s="IH"
+              b="8"
+              style="display: none"
+            >
+              Khúc côn cầu trên băng<span>14</span>
+            </dd>
+            <dd
+              onclick="goBetView('GF', 8, 5, this, false)"
+              s="GF"
+              b="8"
+              style="display: none"
+            >
+              Đánh gôn<span>5</span>
+            </dd>
+            <dd
+              onclick="goBetView('GP', 8, 7, this, false)"
+              s="GP"
+              b="8"
+              style="display: none"
+            >
+              Thể Thao Môtô<span>7</span>
+            </dd>
+            <dd
+              onclick="goBetView('NS', 8, 3, this, false)"
+              s="NS"
+              b="8"
+              style="display: none"
+            >
+              Bi-a/Bida<span>3</span>
+            </dd>
+            <dd
+              onclick="goBetView('HB', 8, 5, this, false)"
+              s="HB"
+              b="8"
+              style="display: none"
+            >
+              Bóng Ném<span>5</span>
+            </dd>
+            <dd
+              onclick="goBetView('WP', 8, 3, this, false)"
+              s="WP"
+              b="8"
+              style="display: none"
+            >
+              Bóng nước<span>3</span>
+            </dd>
+            <dd
+              onclick="goBetView('DT', 8, 2, this, false)"
+              s="DT"
+              b="8"
+              style="display: none"
+            >
+              Phi tiêu<span>2</span>
+            </dd>
+            <dd
+              onclick="goBetView('CY', 8, 2, this, false)"
+              s="CY"
+              b="8"
+              style="display: none"
+            >
+              Đua Xe Đạp<span>2</span>
+            </dd>
+            <dd
+              onclick="goBetView('CH', 8, 2, this, false)"
+              s="CH"
+              b="8"
+              style="display: none"
+            >
+              Chess<span>2</span>
+            </dd>
+            <dd
+              onclick="goBetView('OL', 8, 1, this, false)"
+              s="OL"
+              b="8"
+              style="display: none"
+            >
+              Olympic<span>1</span>
+            </dd>
+            <dd
+              onclick="goBetView('OT', 8, 1, this, false)"
+              s="OT"
+              b="8"
+              style="display: none"
+            >
+              Khác<span>1</span>
+            </dd>
+            <dd
+              onclick="goBetView('ET', 8, 6, this, false)"
+              s="ET"
+              b="8"
+              style="display: none"
+            >
+              Giải Trí<span>6</span>
+            </dd>
+          </div>
+        </dl>
+        <dl style="display: none"></dl>
+      </div>
+      <div id="div4D" style="display: none">
+        <dl style="display: none"></dl>
+        <dl style="display: block"></dl>
+      </div>
+      <input
+        type="hidden"
+        id="BetViewMapJson"
+        value=",Cược chấp &amp; tài xỉu ,Tỷ Số Chính Xác,Lẻ/Chẵn,cược đội vô địch,Cược hỗn hợp,1D2D,Bàn đầu/Bàn cuối,Nửa trận / Toàn trận,1X2,,Tổng Bàn thắng"
+      />
+      <input
+        type="hidden"
+        id="SportsMapJson"
+        value='{"S":"bóng đá","34D":"3D / 4D","12D":"1D / 2D","BB":"Bóng rổ","TN":"Quần vợt","ES":"E-Sports","VS":"Thể thao ảo","CK":"Môn crikê","VB":"Bóng chuyền","BA":"Cầu lông","TT":"Bóng Bàn","BE":"Bóng chày","UF":"Bóng bầu dục Mỹ","RB":"Bóng bầu dục Anh","IH":"Khúc côn cầu trên băng","HK":"Khúc côn cầu trên cỏ","GF":"Đánh gôn","MT":"Quyền Thái","GP":"Thể Thao Môtô","NS":"Bi-a/Bida","BX":"Đấm bốc/MMA","HB":"Bóng Ném","NB":"Bóng lưới","RU":"Rugby Union","PL":"Pool","BL":"Billiard","FS":"Bóng Đá Trong Nhà","BC":"Bóng Đá Bãi Biển","WP":"Bóng nước","MN":"Swimming","DT":"Phi tiêu","CY":"Đua Xe Đạp","AT":"Điền Kinh","AR":"Archery","CH":"Chess","DV":"Diving","EQ":"Equestrian","CN":"Canoeing","CS":"Combat Sports","GM":"Gymnastics","FL":"Floor Ball","NT":"Thể thao mới lạ","OL":"Olympic","QQ":"Squash","WG":"Weightlifting","WI":"Thể thao mùa đông","WS":"Speedway","OT":"Khác","ET":"Giải Trí","PO":"Politics","FB":"Financial Bets","MIX":"Cược hỗn hợp","OUT":"cược đội vô địch","All":"Tất cả"}'
+      />
+      <input
+        type="hidden"
+        id="VirtualSportsMapJson"
+        value='{"S":"Bóng đá ảo","VFEC":"Euro Cup bóng đá ảo","VFCC":"Champions Cup bóng đá ảo","VFAS":"Asian Cup bóng đá ảo","VFLM":"Giải bóng đá ảo","VFWC":"World Cup bóng đá ảo","BB":"Bóng rổ ảo","VFNC":"Cup bóng đá quốc gia ảo","VBL":"Giải bóng rổ ảo"}'
+      />
+    </div>
+
+    <div class="minibetlist">
+      <div class="BetBill">
+        <span class="ShoBill" id="img_mini"> danh sách cược</span>
+        <span class="iconOdds refreshe" id="imgBtn_betRefresh"></span>
+      </div>
+      <a name="miniAnchor"></a>
+      <div class="BetBill2" id="miniBetList" style="display: block">
+        <div class="BetBill3">
+          <span id="hl_pending" class="BetBill_c">Cược Chờ</span>
+          <span id="hl_top">lần cược cuối</span>
+        </div>
+        <div id="bet_nlist" style="display: none">
+          <span id="litBetNList">Không có thông tin</span>
+        </div>
+        <div id="bet_list">
+          <div id="pMiniBetLeft" style="">
+            <ul class="bgdanger" id="1846050163_plDetailList" sta="0">
+              <h1>
+                <span class="float_R">09/26 04:25:19</span
+                ><span class="ticketid" title="HDP18460501634"
+                  >HDP18460501634</span
+                >
+              </h1>
+              <li
+                class="betlisttr2"
+                style="
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                  white-space: nowrap;
+                "
+              >
+                bóng đá / <span title="Cược chấp">Cược chấp</span>
+              </li>
+              <li class="betlisttr3">
+                <span class="red">Italy</span> -vs-
+                <span class="blue">Belgium</span>
+              </li>
+              <li>UEFA NATIONS LEAGUE A</li>
+              <li>09/26 02:45</li>
+              <li>
+                <u class="float_R">20.00</u
+                ><span><b class="red">Italy</b></span>
+              </li>
+              <li>
+                <span class="float_R blue">Đang xử lý</span
+                ><b class="red">-0.25</b> <b>[0-2]</b> @<b class="red">-0.64</b>
+              </li>
+              <li>
+                <div class="ref_payout">
+                  <b class="title refPay_text">Thanh toán tham chiếu :</b
+                  ><b>40.00</b>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div id="pMiniBetRight" style="display: none"></div>
+          <pre style="display: none">
+[{"ActualAmt":20,"DangerStatus":"D","Hdp":0.25,"Is1H":false,"IsBetHome":true,"IsHomeGive":true,"IsRun":true,"ParDangerStatus":null,"RunAwayScore":2,"RunHomeScore":0,"MatchDate":"09/26 02:45:00","Odds":-0.64,"ParOdds":0,"ParStatus":null,"ParTransType":null,"RefNo":"HDP18460501634","SocTransId":1846050163,"SocTransParId":0,"TransDate":"09/26 04:25:19","TransType":"HDP","Away":"Belgium","Home":"Italy","Choice":"Italy","GameType":"S","GameTypeDesc":"bóng đá","LeagueCode":"UEFA NATIONS LEAGUE A","SocOddsListId":"d7a9c99f-0181-48f3-8988-e3581a7ad6c3","Percent":0,"OddType":"MY","EX":null}]</pre
+          >
+        </div>
+      </div>
+    </div>
+
+    <script type="text/html" id="ParlayRow">
+      <# var c_c = 'color: ' + DEFIND_COLOR['C'] + ';'; var c_b = 'color: ' +
+      DEFIND_COLOR['B'] + ';'; var c_a = 'color: ' + DEFIND_COLOR['A'] + ';';
+      var c_d = 'color: ' + DEFIND_COLOR['D'] + ';'; #>
+
+      <table cellspacing="0" cellpadding="0" border="0" class="mixParBetWin">
+        <tbody>
+          <tr>
+            <td
+              style="text-align: left; font-size: 11px; width: 190px; font-family: Tahoma,Arial,Helvetica,sans-serif; height: 16px;"
+            >
+              <span style="font-size: 11px; font-weight: bold;"
+                ><#= GD #> - <#= formatSportTypeRB(SP, T) #></span
+              >
+            </td>
+            <td
+              style="text-align: right; vertical-align: top; padding-right: 2px;"
+            >
+              <span
+                class="img-removeitem"
+                style="border: none; cursor: pointer;"
+                onclick="onRemoveItem(this);return false;"
+                socid="<#= SD #>"
+              ></span>
+            </td>
+          </tr>
+          <tr>
+            <td
+              style="text-align: left; font-size: 11px; width: 190px; font-family: Tahoma,Arial,Helvetica,sans-serif; height: 16px;"
+            >
+              <span
+                style="font-size: 11px; font-weight: bold; <#= 'color: ' + DEFIND_COLOR[BC] #>"
+                ><#= BT #></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div
+                class="aosbox-parlay"
+                style="<#= 'display:' + (EXdisplay ? 'block': 'none') #>"
+              >
+                Ngoại trừ: <span class="aosbox-content"><#= EX #></span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td
+              style="font-size: 11px; font-family: Tahoma,Arial,Helvetica,sans-serif; text-align: left; height: 16px;"
+              colspan="2"
+            >
+              <table class="table">
+                <tbody>
+                  <tr>
+                    <td style="width: 100%; white-space: nowrap">
+                      <span
+                        style="font-size: 12px; font-weight: bold; <#= setParlayItemRB(B, GB) #><#= CB ? 'background:Yellow;': '' #>"
+                        ><#= RB #></span
+                      ><span style="font-size: 12px; font-weight: bold;"
+                        ><#= S #></span
+                      ><span style="font-size: 12px;">@</span
+                      ><span
+                        style="<#= C ? 'background:Yellow;': '' #>; font-size: 13px; font-weight: bold; <#= GO ? c_c: c_d #>"
+                        ><#= O #></span
+                      >
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td
+              style="text-align: left; font-size: 11px; font-family: Tahoma,Arial,Helvetica,sans-serif; height: 16px;"
+              colspan="2"
+            >
+              <span style="font-size: 11px; font-weight: normal;"
+                ><#= H #></span
+              >
+              <span style="font-size: 10px;">-VS-</span>
+              <span style="font-size: 11px; font-weight: normal;"
+                ><#= A #></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </script>
+
+    <br />
+    <input type="hidden" id="hf_redirectUrl" value="../Default.aspx" />
+    <a id="AOpenUrlLink"></a>
+
+    <script
+      type="text/javascript"
+      src="/Common/Javascripts/Compressed/StdLibs.min.js?v=2609152318"
+    ></script>
+
+    <script
+      type="text/javascript"
+      src="/Common/Javascripts/Compressed/LeftFrame.min.141210.js?v=2609152318"
+    ></script>
+
+    <script type="text/javascript">
+      var templateName = "blue";
+      var IsCookieless = false;
+      var isShowPrint = false;
+      //IgnoreScoreSports
+      var IgnoreScoreSportsType =
+        "BB|TN|BA|GF|CK|VB|NS|GP|DT|BX|QQ|TT|MT|ES|HB|NB|BE|RB|MT|CK|IH|HK|PL|BL";
+      var adsImgClickUrl =
+        "https://www.368connect.com/CMD_2026_World_Cup_Kickoff_Carnival/?lang=vi-VN&AccountName=gd03di00cnjz&CurrCode=VD";
+      //VirtualSports
+      var isShowVirtualSportsMenu = false;
+      function getUrlParameter(name) {
+        var urlParam, urlArr;
+
+        urlParam = document.referrer.split("?")[1];
+
+        if (typeof urlParam === "undefined" || urlParam.split("&").length < 2) {
+          return "";
+        }
+
+        urlArr = urlParam.split("&");
+
+        for (var i = 0; i < urlArr.length; i++) {
+          var param = urlArr[i].split("=");
+          if (name == param[0]) {
+            return param[1];
+          }
+        }
+
+        return "";
+      }
+
+      var hotDate = getUrlParameter("date");
+      var hotSportType = getUrlParameter("sportType");
+      var hotGroupId = getUrlParameter("groupId");
+      var hotMarketType = getUrlParameter("mType");
+      var hotOddsType = getUrlParameter("oddsType");
+      var hotBetType = getUrlParameter("betType");
+      var hotChoice = getUrlParameter("choice");
+      var hotMatchID = getUrlParameter("matchID");
+      var hotPeriod = getUrlParameter("period");
+
+      var isTriggerHotEvent = false;
+      var isHotMarketTypeEarly = false;
+
+      if (hotDate != "") {
+        isTriggerHotEvent = true;
+        if (hotMarketType == "1") {
+          isHotMarketTypeEarly = true;
+        }
+        //m_market = "Early";
+      }
+
+      $(document).ready(function () {
+        //for preload.aspx
+        var hideBodyStyleElement = document.getElementById("hideBodyStyle");
+        if (hideBodyStyleElement) {
+          hideBodyStyleElement.parentNode.removeChild(hideBodyStyleElement);
+        }
+
+        $(window).unload(onUnload);
+        $(document).bind("click", onPanelClick);
+        $("#btn-view").bind("click", function () {
+          var postdata = {};
+          if (IsUseAuthV2) {
+            postdata = {
+              type: "switchview",
+              msg:
+                //"https://loginapimember.vinhill.live" + //AuthV2_TEST
+                "/ssapi/switchview?" +
+                "ViewId=" +
+                1012 +
+                "&JWT=" +
+                JWTAuthV2 +
+                "&Template=" +
+                TemplateName +
+                "&Lang=" +
+                Language,
+            };
+          } else {
+            $.cookie("View_Name", "v2", { expires: 365, path: "/" });
+            postdata = {
+              type: "redirect-NewAsia",
+              msg: "/new/main.aspx",
+            };
+          }
+          window.parent.parent.postMessage(postdata, "*");
+        });
+        $("#chkAutoRefresh").bind("click", restartAutoRefreshOdds);
+        //init param
+        isShowPrint = isPrint === "True" && isTradeInByUser !== "True";
+
+        if (typeof SHOWFORECASTSUM != "undefined" && SHOWFORECASTSUM) {
+          CheckAndLoadAllBetList();
+        }
+
+        // LeftMiniBetList.js
+        initMiniBetListPanel();
+        initSportPanel();
+        InitEventSwitchV3();
+
+        // 倒數計時器
+        window.countdownIntervalID = setInterval(updateCountdown, 1000);
+
+        // chrome zh-CN
+        if (
+          navigator.userAgent.indexOf("Chrome") > -1 &&
+          navigator.language.indexOf("zh") > -1
+        ) {
+          document.body.style["-webkit-text-size-adjust"] = "none";
+        }
+
+        if (
+          navigator.userAgent.indexOf("Mobile") > -1 &&
+          templateName == "flashtechgray"
+        ) {
+          $("#LiveCenterCount").css("margin-right", 20);
+        }
+
+        initAds();
+
+        //初始化赛事轮播
+        if (typeof loadTournament === "function") {
+          loadTournament();
+        }
+      });
+
+      var errorMessage =
+        "Kính thưa quý khách hàng, chúng tôi không thể phục vụ yêu cầu của bạn ngay bây giờ. Hãy thử lại sau hoặc liên hệ với dịch vụ khách hàng của chúng tôi. Xin lỗi vì gây ra sự bất tiện.";
+      function InitEventSwitchV3() {
+        $(".switch-to-v3").bind("click", function () {
+          var args = {
+            type: "build-url-v3",
+          };
+
+          $.ajax({
+            type: "POST",
+            url: "/Main.aspx",
+            data: args,
+            dataType: "json",
+            async: false,
+            beforeSend: AuthTokenManager.SetAuthorizationHeader,
+            success: function (data) {
+              if (data && data.Status === 200) {
+                if (parent && parent.parent) {
+                  parent.parent.location.href = data.Url;
+                  return true;
+                }
+
+                if (parent) {
+                  parent.location.href = data.Url;
+                  return true;
+                }
+
+                top.location.href = data.Url;
+                return true;
+              }
+
+              console.warn(data);
+              alert(errorMessage);
+            },
+            error: function (err) {
+              console.warn(err);
+            },
+          });
+        });
+      }
+
+      // 菜单隐藏显示
+      function updatStatus() {
+        var cls = $("#tbUserInfo").attr("class");
+        if (cls === "hide") {
+          $("#tbUserInfo").show();
+          $("#tbUserInfo").removeClass("hide").addClass("show");
+          $("#btn_staus").removeClass().addClass("showIcon");
+          $("#tdBalances").hide();
+        } else {
+          $("#tbUserInfo").hide();
+          $("#tbUserInfo").removeClass("show").addClass("hide");
+          $("#btn_staus").removeClass().addClass("hideIcon");
+          $("#tdBalances").show();
+        }
+      }
+    </script>
+
+    <script type="text/javascript">
+      //<![CDATA[
+      error =
+        "Mức đặt cược tối thiểu đã được cài đặc mặc định. Bạn không thể đặt cược thấp hơn mức đặt cược tối thiểu.";
+      maxbeterror =
+        "Tiền cược của bạn không được vượt quá tiền cược tối đa. Nó sẽ được tự động điều chỉnh đến số tiền cược tối đa.";
+      confirmMessage = "có chắc bạn muốn cược?";
+      betListIncShortTime = 5000;
+      betListIncLongTime = 60000;
+      m_aut = true;
+      m_logMsg = "MultipleLogin";
+      X_FIRST_HALF_CONST = "hiệp 1";
+      X_REJECT_CONST = "(từ chối)";
+      X_CANCEL_CONST = "(đã hủy bỏ)";
+      X_PAR_SUM = "cược hỗn hợp";
+      X_BET = "";
+      X_TODAY = "today";
+      X_EARLY = "Ngày mai";
+      X_PENDING = "Cược Chờ";
+      X_TOP10 = "lần cược cuối";
+      X_MODE = "chế độ";
+      X_ODDS = "Odds";
+      X_STAKE = "Tiền Cược";
+      X_BET_NO = "số";
+      X_PAR_SUM = "cược hỗn hợp";
+      HDP_V_CONST = "Cược chấp";
+      OVER_V_CONST = "tài";
+      UNDER_V_CONST = "xỉu";
+      ODD_V_CONST = "LÊ";
+      EVEN_V_CONST = "chẵn";
+      CS_V_CONST = "Tỷ Số Chính Xác";
+      TG_V_CONST = "Tổng Bàn thắng";
+      OUT_V_CONST = "cược đội vô địch";
+      ONE_V_CONST = "1";
+      X_V_CONST = "X";
+      TWO_V_CONST = "2";
+      OU_V_CONST = "tài/xỉu";
+      OE_V_CONST = "Lẻ/Chẵn";
+      WAITING_V_CONST = "Đang xử lý";
+      REJECT_V_CONST = "Từ chối";
+      ACCEPT_V_CONST = "Đang chạy";
+      m_isRunOnlyMsg = "";
+      m_debugDisplay = "Both";
+      BET_V_CONST = "cược:";
+      m_language = "vi-VN";
+      FGLG_V_CONST = "Bàn Đầu / Bàn Cuối";
+      HTFT_V_CONST = "Nửa trận / Toàn trận";
+      FG_V_CONST = "bàn trước";
+      LG_V_CONST = "bàn sau";
+      HH_V_CONST = "HH";
+      HA_V_CONST = "HA";
+      HD_V_CONST = "HD";
+      DH_V_CONST = "DH";
+      DA_V_CONST = "DA";
+      DD_V_CONST = "DD";
+      AH_V_CONST = "AH";
+      AA_V_CONST = "AA";
+      AD_V_CONST = "AD";
+      FT_V_CONST = "cả trận";
+      HT_V_CONST = "HT";
+      NG_V_CONST = "không bàn thắng";
+      ETG_V_CONST = "Tổng Bàn thắng Chính xác";
+      HTG_V_CONST = "Tổng Bàn thắng Đội nhà Chính xác của";
+      ATG_V_CONST = "Tổng Bàn thắng Đội khách Chính xác của";
+      HP3_V_CONST = "Cược chấp 3 Cửa";
+      HOME_V_CONST = "Nhà";
+      DRAW_V_CONST = "Hòa";
+      AWAY_V_CONST = "khách";
+      CNS_V_CONST = "Giữ sạch lưới";
+      HY_V_CONST = "Đội nhà Có";
+      HN_V_CONST = "Đội nhà Không";
+      AY_V_CONST = "Đội khách Có";
+      AN_V_CONST = "Đội khách Không";
+      X_1H_CONST = "Hiệp 1";
+      X_RUNNING = "Trực tiếp";
+      X_REF_PAYOUT = "Thanh toán tham chiếu";
+      X_SORT_BY_MATCH = "";
+      X_SORT_BY_TIME = "";
+      var m_redirectUrl = "../default.aspx";
+      m_AutoRefreshOdds = true;
+      commonErrorMessage = "kèo đang đổi mới........";
+      EnableBetViewParlay = true;
+      var C =
+        "53544B50535B515D565445445057565A5F445B320306554707045452061A0917";
+      var UserCurrency = "VD";
+      SHOWBETCONFIRM = true;
+      SHOWFORECASTSUM = true;
+      var lang_Refresh = "Đổi mới";
+      var ShowGivenCredit = false;
+      var isPrint = "False";
+      var isTradeInByUser = "False";
+      var langPrice = "Giá";
+      var langSell = "lệnh bán";
+      var langCashOut = "Lệnh Bán";
+      var langSellTip =
+        "Số tiền bán vé cược tối thiểu là 1.00<br> Số tiền bán vé cược tối đa là số tiền có thể giao dịch còn lại (kiểm tra vé cược của bạn)";
+      var langSellTip2 = "Only allows to enter an integer";
+      var langSellSuccess = "Bán thành công";
+      var langSellFalied = "lệnh bán không thành công";
+      var langReturn = "Quay lại";
+      var langClickDetail = "Click to detail";
+      var langSellStatusCancel = "Hủy bỏ";
+      var langSellStatusInprogress = "Đang tiến hành";
+      var langSellStatusProcessing = "Xử lý";
+      var langSellStatusSold = "Đã bán";
+      var langStatusCashedOut = "Đã bán";
+      var langSellStatusRejected = "Vé chính bị từ chối";
+      var langSellStatusReject = "Từ chối";
+      var langSellStatusCancelledGoal = "Hủy bỏ bàn thắng";
+      var langSellStatusCancelledRedcard = "Hủy bỏ thẻ đỏ";
+      var SellMatchClosed = "Trận đấu kết thúc";
+      var SellMatchNotAllow = "Trận đấu không cho phép";
+      var SellMemberNotExist = "Thành viên không tồn tại";
+      var SellMemberIsSuspend = "Thành viên bị treo";
+      var SellMemberNotAllow = "Không cho phép thành viên";
+      var SellMatchChanged = "Giá bán thay đổi, Xin vui lòng kiểm tra lại";
+      var SellMatchPause = "Tạm dừng trận đấu hoặc ẩn";
+      var SellNotAllow = "Không cho phép bán";
+      var SellDupIgnore = "Duplicated sell ignored";
+      var curLang = "vi-VN";
+      var langYes = "Gửi";
+      var langNo = "Hủy bỏ";
+      var langOK = "Gửi";
+      var langCashOutMessage = "Lệnh Bán Cược của bạn đã được chấp nhận.";
+      IsForTradeInWS = "true";
+      var CommissionType = "A";
+      IsAllowCombinedParlay = true;
+      IsAllowParlay2Selection = true;
+      IsAllowOtherSports = true;
+      var TXT_PlsLogin = "Xin vui lòng đăng nhập trước";
+      var Lang = "vi-VN";
+      var UserName = "gd03di00cnjz";
+      var UserSession = "bigfjs3t30melwwgxnw2bf1h";
+      var ISLOGIN = true;
+      var JWTAuthV2 = "";
+      var IsUseAuthV2 = false;
+      var TemplateName = "";
+      var Language = "";
+      localStorage.setItem(
+        "customSportOrder",
+        '["S","34D","12D","BB","TN","ES","VS","CK","VB","BA","TT","BE","UF","RB","IH","HK","GF","MT","GP","NS","BX","HB","NB","RU","PL","BL","FS","BC","WP","MN","DT","CY","AT","AR","CH","DV","EQ","CN","CS","GM","FL","NT","OL","QQ","WG","WI","WS","OT","ET","PO","FB","MIX","OUT","All"]',
+      );
+      var Brand = "ss159";
+      $(window).data("pBet", 10);
+      $(window).data("pBetView", 2);
+      $(window).data("pCountry", "MY");
+      ShowBetConfirm = true;
+      V_FAV_USERKEY = "gd03di00cnjz";
+      TXT_EMPTY_FAVORITES = "Mục yêu thích của tôi trống";
+      $(window).data("QuickId", "gd03di00cnjz");
+      $(window).data("QuickCode", "45545D02065D5F0302575A584D46435E5500");
+      SiteRootUrl = "//ss159.6688867.com/";
+      TXT_PARLAY_ITEMS_LIMIT = "Phải lựa chọn trên 2 đội."; //]]>
+    </script>
+  </form>
+</div>

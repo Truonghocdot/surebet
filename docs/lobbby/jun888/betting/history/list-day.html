@@ -1,0 +1,233 @@
+<div class="container">
+  <div
+    class="result_title result_top hideprint"
+    id="tittle_theme"
+    style="
+      background: url(&quot;../../App_Themes/Resources/blue/img/betlistbg.png&quot;)
+        repeat-x;
+    "
+  >
+    <div class="result_h1">
+      <span>
+        <a
+          href="#"
+          onclick="imgbtnLastWeek_Click()"
+          class="lw"
+          style="font-weight: normal"
+          >tuần trước</a
+        >
+        <a
+          href="#"
+          onclick="imgbtnThisWeek_Click()"
+          class="tw"
+          style="font-weight: normal"
+          >tuần này</a
+        >
+        <img
+          class="result_fresh"
+          src="../../App_Themes/Resources/img/refresh1.gif"
+          onclick="imgbtnRefresh_Click()"
+          alt="Đổi mới"
+          title="Đổi mới"
+        />
+      </span>
+      <b>Báo cáo </b>
+    </div>
+  </div>
+  <div class="result_box">
+    <form method="post" action="./payment_daily_new.aspx" id="form2">
+      <div class="aspNetHidden">
+        <input
+          type="hidden"
+          name="__VIEWSTATE"
+          id="__VIEWSTATE"
+          value="lumu6xQuWI9jo96OlzSHsMm4+lysjEhrtjo2Jgzx0clevCFJuwfkfon3Uv59VRq26z+oOJk316N6o/VylzmWAf0wpv6zf4pcQpDZAfT/4J3JwjzsVQHLTjCwYxsuGaZoJAqOQFQiQzn6ZPgI74cbh861CCdW79wHlow+oYa2BYspiCp10f32WIwbNfWs1xZnuokRRqvHtozKoaJQnh4DnlOXyiQ1bnKw4cJDZYnIUQesmyUVS2pnrg/XNlcDRt9ZlNSWbVm62j6OtInPGq9hdLQvda0="
+        />
+      </div>
+
+      <div class="aspNetHidden">
+        <input
+          type="hidden"
+          name="__VIEWSTATEGENERATOR"
+          id="__VIEWSTATEGENERATOR"
+          value="978018DE"
+        />
+        <input
+          type="hidden"
+          name="__VIEWSTATEENCRYPTED"
+          id="__VIEWSTATEENCRYPTED"
+          value=""
+        />
+      </div>
+      <div>
+        <table
+          class="statement abl table2excel"
+          cellspacing="0"
+          rules="all"
+          border="1"
+          id="GVList"
+          style="width: 100%; border-collapse: collapse"
+        >
+          <tbody>
+            <tr>
+              <th scope="col">Ngày</th>
+              <th scope="col" style="display: none">Đặt cược hiệu quả</th>
+              <th scope="col">Doanh thu</th>
+              <th scope="col">Thắng thua</th>
+              <th scope="col" style="display: none">hoa hồng</th>
+              <th scope="col" style="display: none">Balance</th>
+            </tr>
+            <tr class="bg_White tbl_fs" data-date="20260920">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">20 Sep 2026 (chủ nhật)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">0.00</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">0.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance">0.00</span>
+              </td>
+            </tr>
+            <tr class="tbl_fs" data-date="20260921">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">21 Sep 2026 (thứ hai)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">0.00</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">0.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance">0.00</span>
+              </td>
+            </tr>
+            <tr class="bg_White tbl_fs" data-date="20260922">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">22 Sep 2026 (thứ ba)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">0.00</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">0.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance">0.00</span>
+              </td>
+            </tr>
+            <tr class="tbl_fs" data-date="20260923">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">23 Sep 2026 (thứ tư)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">0.00</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">0.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance">0.00</span>
+              </td>
+            </tr>
+            <tr class="bg_White tbl_fs" data-date="20260924">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">24 Sep 2026 (thứ năm)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">0.00</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">0.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance">0.00</span>
+              </td>
+            </tr>
+            <tr class="tbl_fs" data-date="20260925">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">25 Sep 2026 (thứ sáu)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">6.40</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">20.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose" style="color: Red">-6.40</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance" style="color: Blue">45.17</span>
+              </td>
+            </tr>
+            <tr class="bg_White tbl_fs" data-date="20260926">
+              <td class="text-left" align="left">
+                <span id="lblTransDate">26 Sep 2026 (thứ bảy)</span>
+              </td>
+              <td style="text-decoration: none; display: none">
+                <span id="lblMEEffective">0.00</span>
+              </td>
+              <td style="text-decoration: none">
+                <span id="lblTurnOver">0.00</span>
+              </td>
+              <td>
+                <span id="lblWinLose">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblCommission">0.00</span>
+              </td>
+              <td style="display: none">
+                <span id="lblBalance" style="color: Blue">45.17</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 10px">
+        <span class="note-tip">Lưu ý:</span>
+        <span style="margin-left: 2px"
+          >Tất cả các giao dịch sẽ được chọn thời gian là GMT+8</span
+        >
+      </div>
+      <input type="hidden" id="hid_val" name="hid_val" value="1" />
+    </form>
+  </div>
+</div>

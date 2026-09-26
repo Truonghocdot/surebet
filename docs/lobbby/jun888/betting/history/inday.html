@@ -1,0 +1,573 @@
+<div class="container">
+  <div class="div_Page"></div>
+  <form
+    method="post"
+    action="./payment_betList_new.aspx?MatchDate=20260925&amp;week=true"
+    id="fmBet_List2"
+    class="hideprint"
+  >
+    <div class="aspNetHidden">
+      <input
+        type="hidden"
+        name="__VIEWSTATE"
+        id="__VIEWSTATE"
+        value="/wEPDwULLTE5NjQ4NjgxMzAPFgoeCFN1YnRvdGFsKClbU3lzdGVtLkRlY2ltYWwsIG1zY29ybGliLCBWZXJzaW9uPTQuMC4wLjAsIEN1bHR1cmU9bmV1dHJhbCwgUHVibGljS2V5VG9rZW49Yjc3YTVjNTYxOTM0ZTA4OQQtNi40HgtTdWJ0b3RhbENvbSgrBAEwHgtUT1RBTF9TVEFLRQcAAAAAAAA0QB4KVE9UQUxfQ09NTQcAAAAAAAAAAB4OVE9UQUxfV0lOX0xPU0UHmpmZmZmZGcAWAgICD2QWBGYPDxYCHgRUZXh0BRdkYW5oIHPDoWNoIMSRw6MgY8aw4bujY2RkAgEPDxYCHgdUb29sVGlwBQzEkOG7lWkgbeG7m2lkZBgCBR5fX0NvbnRyb2xzUmVxdWlyZVBvc3RCYWNrS2V5X18WAQUNaW1nYnRuUmVmcmVzaAUNR1ZfTUJCZXRUcmFucw88KwAMAQgCAWReB3GWDfQToCCJIwr02ZfCYxTa6A=="
+      />
+    </div>
+
+    <div class="aspNetHidden">
+      <input
+        type="hidden"
+        name="__VIEWSTATEGENERATOR"
+        id="__VIEWSTATEGENERATOR"
+        value="0D1913FC"
+      />
+    </div>
+    <table border="0" cellpadding="0" cellspacing="0" style="width: 100%">
+      <tbody>
+        <tr>
+          <td align="left">
+            <div class="mv pa">
+              <table
+                border="0"
+                cellpadding="0"
+                cellspacing="0"
+                style="width: 100%"
+              >
+                <tbody>
+                  <tr>
+                    <td>
+                      <table
+                        class="titletb_bg"
+                        border="0"
+                        cellpadding="0"
+                        cellspacing="0"
+                        width="100%"
+                      >
+                        <tbody>
+                          <tr>
+                            <td width="15">
+                              <a class="tbarl"></a>
+                            </td>
+                            <td class="bgTitle dtl">
+                              <table
+                                border="0"
+                                cellpadding="0"
+                                cellspacing="0"
+                                width="100%"
+                              >
+                                <tbody>
+                                  <tr>
+                                    <td align="left" width="640">
+                                      <span id="lbBetList" class="fs"
+                                        >danh sách đã cược</span
+                                      >
+                                    </td>
+                                    <td align="right">
+                                      <div id="bs">
+                                        <table
+                                          border="0"
+                                          cellpadding="0"
+                                          cellspacing="0"
+                                        >
+                                          <tbody>
+                                            <tr>
+                                              <td>
+                                                <a
+                                                  class="rb"
+                                                  style="font-weight: normal"
+                                                  href="javascript:window.location.href='BettingStatement.aspx?MatchDate=20260925&amp;week=true'"
+                                                  >Trở về</a
+                                                >
+                                              </td>
+                                              <td>
+                                                <input
+                                                  type="image"
+                                                  name="imgbtnRefresh"
+                                                  id="imgbtnRefresh"
+                                                  title="Đổi mới"
+                                                  src="../../App_Themes/Resources/img/Refresh1.gif"
+                                                />
+                                              </td>
+                                              <td>
+                                                <a
+                                                  id="myexport"
+                                                  style="cursor: pointer"
+                                                  title="Xuất ra excel"
+                                                ></a>
+                                              </td>
+                                              <td>
+                                                <span
+                                                  onclick="printIndex(-1)"
+                                                  style="
+                                                    cursor: pointer;
+                                                    display: inline-block;
+                                                  "
+                                                >
+                                                  <img
+                                                    class="printBtn print_btn"
+                                                    alt="Print"
+                                                    title="In"
+                                                    src="../../App_Themes/Resources/img/PrintIcon_0.gif"
+                                                  />
+                                                </span>
+                                              </td>
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </td>
+                            <td width="6">
+                              <a class="tbarr"></a>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <div id="test" class="paymentbetlist">
+                        <div>
+                          <table
+                            class="abl"
+                            cellspacing="0"
+                            rules="all"
+                            border="1"
+                            id="GV_MBBetTrans"
+                            style="width: 100%; border-collapse: collapse"
+                          >
+                            <tbody>
+                              <tr
+                                class="tbl_Tl fc_White tbl_fs tbspc al_Center"
+                                style="height: 20px"
+                              >
+                                <th
+                                  class="tbl_fw nrs fsect lb_Bottom"
+                                  scope="col"
+                                  style="width: 55px"
+                                >
+                                  Số tt
+                                </th>
+                                <th
+                                  class="tbl_fw nrs fsect lb_Bottom fs_Bold"
+                                  scope="col"
+                                >
+                                  Thông Tin
+                                </th>
+                                <th
+                                  class="tbl_fw nrs fsect lb_Bottom"
+                                  scope="col"
+                                >
+                                  sự kiện
+                                </th>
+                                <th
+                                  class="tbl_fw fsect lb_Bottom"
+                                  scope="col"
+                                  style="width: 55px"
+                                >
+                                  Giá
+                                </th>
+                                <th
+                                  class="tbl_fw nrs fsect lb_Bottom"
+                                  scope="col"
+                                  style="width: 55px"
+                                >
+                                  Stake
+                                </th>
+                                <th
+                                  class="tbl_fw nrs fsect lb_Bottom"
+                                  scope="col"
+                                >
+                                  Thắng thua
+                                </th>
+                                <th
+                                  class="tbl_fw nrs fsect lb_Bottom"
+                                  scope="col"
+                                >
+                                  Trạng thái
+                                </th>
+                              </tr>
+                              <tr class="bg_White tbl_fs tbl_fsc tbspc">
+                                <td
+                                  class="lb_left lb_Right lb_Bottom al_Center"
+                                  align="center"
+                                  style="height: 18px"
+                                >
+                                  <font color="black"> 1</font>
+                                </td>
+                                <td
+                                  class="lb_Bottom lb_Right lrspc noborder"
+                                  align="center"
+                                >
+                                  <span id="GV_MBBetTrans_lblInfo_0"
+                                    ><table
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      style="border: none"
+                                    >
+                                      <tbody>
+                                        <tr>
+                                          <td
+                                            align="center"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                          >
+                                            <span style="font-weight: 700"
+                                              >HDP18460501634</span
+                                            >
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td
+                                            align="center"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                          >
+                                            <span style="font-weight: bold"
+                                              >bóng đá</span
+                                            >
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td
+                                            class="text"
+                                            align="center"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                          >
+                                            <span>09/26 04:25:19</span>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table></span
+                                  >
+                                </td>
+                                <td
+                                  class="lb_Bottom lb_Right lrspc lb_event noborder"
+                                  align="right"
+                                >
+                                  <span id="GV_MBBetTrans_lblEvent_0"
+                                    ><table
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      style="border: none; width: 100%"
+                                    >
+                                      <tbody>
+                                        <tr>
+                                          <td
+                                            style="
+                                              font-weight: 700;
+                                              text-align: right;
+                                            "
+                                            nowrap="nowrap"
+                                          >
+                                            <span style="color: #cc0033"
+                                              >Italy</span
+                                            >
+                                            <span style="color: #cc0033"
+                                              >-0.25</span
+                                            >
+                                            [0-2]
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td style="text-align: right">
+                                            <span style="">Cược chấp</span>
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td
+                                            style="
+                                              font-weight: 700;
+                                              text-align: right;
+                                            "
+                                          >
+                                            <span style="color: #cc0033"
+                                              >Italy</span
+                                            >
+                                            -vs-
+                                            <span style="color: #0053b9"
+                                              >Belgium</span
+                                            ><img
+                                              src="../../App_Themes/Resources/Images/iconFirstGoal.gif"
+                                            /><img
+                                              src="../../App_Themes/Resources/Images/iconLastGoal.gif"
+                                            />
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td style="text-align: right">
+                                            <span style="padding-right: 8px"
+                                              >UEFA NATIONS LEAGUE A</span
+                                            >HT: <span>0-1</span> / cả trận:
+                                            <span>0-2</span>
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td style="text-align: right">
+                                            <span>09/26/2026 02:45 AM</span>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table></span
+                                  >
+                                </td>
+                                <td
+                                  class="lb_Bottom lb_Right lrspc fontb"
+                                  align="center"
+                                >
+                                  <span id="GV_MBBetTrans_lblMainOdds_0"
+                                    ><span style="color: #cc0033"
+                                      >-0.64</span
+                                    ></span
+                                  ><br />
+                                  <span
+                                    id="GV_MBBetTrans_lbl_oddsType_0"
+                                    style="color: Black"
+                                    >Mã Lai</span
+                                  >
+                                </td>
+                                <td
+                                  class="lb_Bottom lb_Right lrspc fontb"
+                                  align="center"
+                                >
+                                  <span id="GV_MBBetTrans_lblStake_0"
+                                    ><span>20.00</span></span
+                                  >
+                                </td>
+                                <td
+                                  class="lb_Bottom lb_Right lrspc fontb noborder"
+                                  align="right"
+                                >
+                                  <input
+                                    type="hidden"
+                                    name="GV_MBBetTrans$ctl03$hfWinLose"
+                                    id="GV_MBBetTrans_hfWinLose_0"
+                                    value="-6.4"
+                                  />
+                                  <input
+                                    type="hidden"
+                                    name="GV_MBBetTrans$ctl03$hfCommision"
+                                    id="GV_MBBetTrans_hfCommision_0"
+                                    value="0"
+                                  />
+                                  <span id="GV_MBBetTrans_lblWinLose_0"
+                                    ><table
+                                      class="maintable"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      style="border: none"
+                                    >
+                                      <tbody>
+                                        <tr>
+                                          <td
+                                            align="right"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                          >
+                                            <span style="color: Red"
+                                              >-6.40</span
+                                            >
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table></span
+                                  >
+                                </td>
+                                <td
+                                  class="lb_Bottom lb_Right lrspc noborder"
+                                  align="center"
+                                >
+                                  <span id="GV_MBBetTrans_lblStatus_0"
+                                    ><table
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      style="border: none"
+                                    >
+                                      <tbody>
+                                        <tr>
+                                          <td
+                                            align="center"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                            style="
+                                              font-weight: 700;
+                                              color: #333;
+                                            "
+                                          >
+                                            <span style="color=#000000"
+                                              >thua</span
+                                            ><br />
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td
+                                            align="center"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                          >
+                                            <span style="color: #8080ff"
+                                              >2405:4802:1bed:7fe0:95d2:2c48:2d80:f0f3</span
+                                            >
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table></span
+                                  >
+                                </td>
+                              </tr>
+                              <tr class="bg_White tbl_fs tbl_fsc tbspc">
+                                <td
+                                  class="noborder nohover total"
+                                  align="right"
+                                  colspan="5"
+                                  style="
+                                    background-color: #eee;
+                                    font-weight: 700;
+                                    border-left: 1px solid #cdcdcd;
+                                    border-right: none;
+                                    text-align: right;
+                                  "
+                                >
+                                  <span
+                                    ><table
+                                      class="maintable"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      style="
+                                        border: none;
+                                        width: 100%;
+                                        color: #000000c2;
+                                      "
+                                    >
+                                      <tbody>
+                                        <tr>
+                                          <td
+                                            colspan="6"
+                                            nowrap="nowrap"
+                                            style="text-align: right"
+                                            valign="center"
+                                          >
+                                            <span style="">tất cả</span>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table></span
+                                  >
+                                </td>
+                                <td
+                                  class="noborder nohover total"
+                                  align="right"
+                                  colspan="1"
+                                  style="
+                                    background-color: #eee;
+                                    font-weight: 700;
+                                    border-left: none;
+                                    border-right: none;
+                                    padding: 0;
+                                  "
+                                >
+                                  <span
+                                    ><table
+                                      class="maintable"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      style="border: none"
+                                    >
+                                      <tbody>
+                                        <tr>
+                                          <td
+                                            class="tright"
+                                            align="right"
+                                            nowrap="nowrap"
+                                            valign="top"
+                                          >
+                                            <span
+                                              style="
+                                                font-size: 12px;
+                                                color: Red;
+                                              "
+                                              >-6.40</span
+                                            >
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table></span
+                                  >
+                                </td>
+                                <td
+                                  class="noborder nohover total"
+                                  align="right"
+                                  style="
+                                    background-color: #eee;
+                                    font-weight: 700;
+                                    border-left: none;
+                                    border-right: 1px solid #cdcdcd;
+                                  "
+                                ></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="div_Page"></div>
+              <br /><br />
+              <div class="note_btn">
+                <span class="note-tip">Lưu ý:</span>
+                <span class="note" style="font-weight: 100"
+                  >Tất cả các giao dịch sẽ được chọn thời gian là GMT+8</span
+                >
+              </div>
+              <input
+                type="hidden"
+                name="hf_imgbtnClose_mo"
+                id="hf_imgbtnClose_mo"
+              />
+              <input
+                type="hidden"
+                name="hf_imgbtnClose_mot"
+                id="hf_imgbtnClose_mot"
+              />
+              <input
+                type="hidden"
+                name="hf_ImgbtnExport_mo"
+                id="hf_ImgbtnExport_mo"
+              />
+              <input
+                type="hidden"
+                name="hf_ImgbtnExport_mot"
+                id="hf_ImgbtnExport_mot"
+              />
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </form>
+  <table
+    class="abl table2excel print_area"
+    cellspacing="0"
+    cellpadding="2"
+    rules="all"
+    border="1"
+    id="PrintTable"
+    style="width: 100%; border-collapse: collapse"
+  >
+    <tbody></tbody>
+  </table>
+</div>
